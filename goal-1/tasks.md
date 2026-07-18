@@ -170,10 +170,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 17 CI workflow quality gate.
 
 ### Task 17 — CI workflow quality gate
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** `.github/workflows/ci.yml` test/race/vet/build; push; confirm green run.
 - **Done criteria:** gh run success on main.
 - **Actual / evidence / risks / next:**
+  - Added Quality gate workflow; fixed build via `bash scripts/build.sh` (dash lacks pipefail).
+  - Evidence: run 29637684797 success on main (test/race/vet/build/version smoke).
+  - Risks: Node 20 deprecation annotation only.
+  - Next: Task 18 release workflow + homebrew template.
 
 ### Task 18 — Release workflow + package helpers + homebrew template
 - [ ] **Status:** pending
