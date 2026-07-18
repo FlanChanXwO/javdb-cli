@@ -108,9 +108,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 11 CHECKPOINT #3.
 
 ### Task 11 — CHECKPOINT / review-debug #3
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Type:** 集中检查-debug 循环 (+ optional live smoke if creds present, never log secrets)
 - **Actual / evidence / risks / next:**
+  - Product parity commands present: search/detail/magnets/browse/tags/entities/user/rankings/top250/lists.
+  - Evidence: `go test` + `-race` green; `go vet` clean; build OK; live smoke search/detail/magnets/browse/actor/rankings/top250/lists OK.
+  - No blocking bugs. Residual: version --json/buildinfo polish; bilingual docs; GitHub/CI/release/brew.
+  - Next: Task 12 parity polish + version --json + buildinfo.
 
 ### Task 12 — Parity polish + version --json + buildinfo
 - [ ] **Status:** pending
