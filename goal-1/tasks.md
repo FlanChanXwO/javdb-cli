@@ -141,10 +141,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 14 docs/ usage + development + sdk EN+ZH.
 
 ### Task 14 — docs/ usage + development + sdk (EN+ZH)
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** docs/index, usage, development, sdk each EN+ZH; product-only.
 - **Done criteria:** RE grep clean; links from README.
 - **Actual / evidence / risks / next:**
+  - docs/index|usage|development|sdk (+ .zh-CN) product-only.
+  - Evidence: RE grep clean on docs/; files linked from README; commit docs task14.
+  - Risks: none.
+  - Next: Task 15 CHECKPOINT #4 (docs + product).
 
 ### Task 15 — CHECKPOINT / review-debug #4 (docs + product)
 - [ ] **Status:** pending
