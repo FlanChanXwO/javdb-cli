@@ -9,14 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-18
+
+First public release.
+
 ### Added
 
 - Full CLI surface: auth, search, detail, magnets, tags, browse, entity filmography, user lists, rankings, top250, lists (合集).
 - Multi-account password login with local `auth.json` and optional `auto_relogin`.
 - Public Go SDK package `javdb`.
 - `javdb version --json` for Homebrew formula tests.
-- Bilingual README / CONTRIBUTING / docs skeleton.
-
-## [0.1.0] - TBD
-
-First public release (tag after CI/release pipeline lands).
+- Bilingual README / CONTRIBUTING / docs.
+- CI quality gate and multi-arch GitHub Release workflow.
+- Homebrew formula for `FlanChanXwO/tap/javdb-cli`.

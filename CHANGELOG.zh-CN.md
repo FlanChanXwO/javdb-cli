@@ -9,14 +9,16 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-18
+
+首个公开版本。
+
 ### 新增
 
 - 完整 CLI：登录、搜索、详情、磁力、标签、浏览、实体片单、用户列表、排行、TOP250、合集。
 - 多账号密码登录，本地 `auth.json`，可选 `auto_relogin`。
 - 公开 Go SDK 包 `javdb`。
 - `javdb version --json`（供 Homebrew formula 测试）。
-- 中英文 README / CONTRIBUTING / 文档骨架。
-
-## [0.1.0] - 待定
-
-首个公开版本（CI/发版流水线就绪后打 tag）。
+- 中英文 README / CONTRIBUTING / 文档。
+- CI quality gate 与多架构 GitHub Release 流水线。
+- Homebrew formula：`FlanChanXwO/tap/javdb-cli`。
