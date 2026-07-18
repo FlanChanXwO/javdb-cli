@@ -68,9 +68,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 7 CHECKPOINT #2.
 
 ### Task 7 — CHECKPOINT / review-debug #2
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Type:** 集中检查-debug 循环
 - **Actual / evidence / risks / next:**
+  - Post tags/browse/entity: CLI surface now includes actor/series/maker/director/code/list + browse/tags.
+  - Evidence: `go test ./...` + `-race` green; `go vet` clean; build OK; help lists all entity cmds.
+  - No TODO/FIXME/panic leftovers found; no blocking bugs.
+  - Residual: user write paths, rankings/top250, lists group, docs/CI/release still open.
+  - Next: Task 8 user write paths + auto_relogin.
 
 ### Task 8 — User write paths + auto_relogin
 - [ ] **Status:** pending
