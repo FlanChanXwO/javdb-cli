@@ -180,10 +180,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 18 release workflow + homebrew template.
 
 ### Task 18 — Release workflow + package helpers + homebrew template
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** release.yml matrix 6 arches; checksums; formula tmpl; render script.
 - **Done criteria:** workflow files valid; local package dry-run if possible.
 - **Actual / evidence / risks / next:**
+  - release.yml + package-release.sh + render-homebrew-formula.sh + javdb-cli.rb.tmpl.
+  - Evidence: local `VERSION=0.0.0-test package-release` produced 6 archives + checksums; formula render OK.
+  - Risks: tap deploy still manual/task20 (no HOMEBREW_TAP_TOKEN wired yet).
+  - Next: Task 19 release-readiness checkpoint.
 
 ### Task 19 — CHECKPOINT / review-debug #5 (release readiness)
 - [ ] **Status:** pending
