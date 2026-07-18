@@ -198,10 +198,16 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 20 tag v0.1.0 + Release + tap formula.
 
 ### Task 20 — Tag v0.1.0, publish Release, update homebrew-tap formula
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** full suite green; tag v0.1.0; wait release assets; deploy Formula/javdb-cli.rb to homebrew-tap; document brew install.
 - **Done criteria:** release has 6 archives+checksums; formula on tap; brew install path documented.
 - **Actual / evidence / risks / next:**
+  - Tagged v0.1.0; fixed release.yml parse; Release run 29637982459 success.
+  - Assets: 6 archives + checksums at https://github.com/FlanChanXwO/javdb-cli/releases/tag/v0.1.0
+  - Formula pushed: FlanChanXwO/homebrew-tap Formula/javdb-cli.rb (0.1.0).
+  - README already documents `brew install FlanChanXwO/tap/javdb-cli`.
+  - Risks: brew install network may be slow; formula test asserts version --json.
+  - Next: Task 21 FINAL REVIEW.
 
 ### Task 21 — FINAL REVIEW
 - [ ] **Status:** pending
