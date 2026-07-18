@@ -72,16 +72,6 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	return root
 }
 
-func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintln(cmd.OutOrStdout(), "javdb 0.1.0-dev")
-		},
-	}
-}
-
 func loadRuntime(rf *rootFlags) (config.Runtime, error) {
 	path, err := config.ConfigPath()
 	if err != nil {
