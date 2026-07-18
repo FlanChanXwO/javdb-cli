@@ -59,6 +59,7 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newAuthCmd(rf, aio))
 	root.AddCommand(newConfigCmd(rf, aio))
 	root.AddCommand(newSearchCmd(rf, aio))
+	root.AddCommand(newDetailCmd(rf, aio))
 	root.AddCommand(newVersionCmd())
 	return root
 }
