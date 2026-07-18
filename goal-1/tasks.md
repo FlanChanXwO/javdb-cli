@@ -27,10 +27,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 3 magnets command.
 
 ### Task 3 — Magnets command
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** `javdb magnets` cnsub/hd/min-size/best/json; filter_magnets + pick_best unit tests; movie_magnets endpoint.
 - **Done criteria:** unit tests cover best preference; CLI wired.
 - **Actual / evidence / risks / next:**
+  - FilterMagnets/PickBestMagnet/MagnetURI + CLI magnets (auth via default token).
+  - Evidence: unit tests green; live `magnets SSIS-589 --best` → cnsub+hd 5.3GB hash 3251b649…; `go test ./...` OK.
+  - Risks: requires logged-in default account.
+  - Next: Task 4 CHECKPOINT #1.
 
 ### Task 4 — CHECKPOINT / review-debug #1
 - [ ] **Status:** pending
