@@ -190,9 +190,12 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 19 release-readiness checkpoint.
 
 ### Task 19 — CHECKPOINT / review-debug #5 (release readiness)
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Type:** 集中检查-debug 循环
 - **Actual / evidence / risks / next:**
+  - Ready to tag: full test/race/vet green; ci.yml + release.yml present; package dry-run 6 arches; formula tmpl renders; RE docs clean; CI success on main (29637816959).
+  - Residual risk: Homebrew tap push needs write access (HOMEBREW_TAP_TOKEN or manual PR) in task 20.
+  - Next: Task 20 tag v0.1.0 + Release + tap formula.
 
 ### Task 20 — Tag v0.1.0, publish Release, update homebrew-tap formula
 - [ ] **Status:** pending
