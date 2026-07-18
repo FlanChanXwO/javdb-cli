@@ -160,10 +160,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 16 create public GitHub repo + push.
 
 ### Task 16 — GitHub public repo create + push
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** `gh repo create FlanChanXwO/javdb-cli --public` from local tree; push main; no secrets.
 - **Done criteria:** repo URL reachable; remote origin set.
 - **Actual / evidence / risks / next:**
+  - Created public repo + pushed main; origin tracks origin/main.
+  - Evidence: https://github.com/FlanChanXwO/javdb-cli ; no auth.json/secrets tracked.
+  - Risks: none.
+  - Next: Task 17 CI workflow quality gate.
 
 ### Task 17 — CI workflow quality gate
 - [ ] **Status:** pending
