@@ -67,6 +67,7 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	registerUserCmds(root, rf, aio)
 	root.AddCommand(newRankingsCmd(rf, aio))
 	root.AddCommand(newTop250Cmd(rf, aio))
+	root.AddCommand(newListsCmd(rf, aio))
 	root.AddCommand(newVersionCmd())
 	return root
 }
