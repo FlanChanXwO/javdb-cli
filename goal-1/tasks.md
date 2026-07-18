@@ -58,10 +58,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 6 entity filmography.
 
 ### Task 6 — Entity filmography (actor/series/maker/director/code/list)
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** entity_movies + resolve_entity including list letter `l`; six commands + shared options.
 - **Done criteria:** unit tests letters/masks; CLI spy tests.
 - **Actual / evidence / risks / next:**
+  - EntityMovies/ResolveEntity/EntityDetail/AllEntityMovies; 6 CLI cmds + shared flags.
+  - Evidence: unit tests; live `actor 山手梨愛 --main m`, `series SSS-BODY`, `list RZ8Bm` OK.
+  - Risks: resolve falls back to search first hit when name ambiguous.
+  - Next: Task 7 CHECKPOINT #2.
 
 ### Task 7 — CHECKPOINT / review-debug #2
 - [ ] **Status:** pending
