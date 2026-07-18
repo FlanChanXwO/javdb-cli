@@ -17,10 +17,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 2 detail + number resolve.
 
 ### Task 2 — Detail + number resolve
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** `javdb detail` with -i/--magnets/--json; ResolveNumber→id via search zone=all; graph print parity.
 - **Done criteria:** unit tests for resolve preference exact number; build green.
 - **Actual / evidence / risks / next:**
+  - ResolveNumber/ResolveMovieID; MovieDetail; detail CLI + PrintDetail graph.
+  - Evidence: unit tests green; live `detail SSIS-589` shows 9DGB5X/dQ5/9Dqpw; `go test ./...` OK.
+  - Risks: `--magnets` needs login (token from default account).
+  - Next: Task 3 magnets command.
 
 ### Task 3 — Magnets command
 - [ ] **Status:** pending
