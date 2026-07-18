@@ -61,6 +61,8 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newSearchCmd(rf, aio))
 	root.AddCommand(newDetailCmd(rf, aio))
 	root.AddCommand(newMagnetsCmd(rf, aio))
+	root.AddCommand(newTagsCmd(rf, aio))
+	root.AddCommand(newBrowseCmd(rf, aio))
 	root.AddCommand(newVersionCmd())
 	return root
 }
