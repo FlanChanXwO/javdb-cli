@@ -98,10 +98,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 10 lists 合集 group.
 
 ### Task 10 — Lists 合集 group
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** lists default my (sort_by required); show/search/related; list filmography already in task 6.
 - **Done criteria:** unit + CLI tests.
 - **Actual / evidence / risks / next:**
+  - MyLists/ListInfo/RelatedLists; lists + show/search/related CLI.
+  - Evidence: unit tests; live lists/search/show/related OK; list filmography already via task6.
+  - Risks: none high.
+  - Next: Task 11 CHECKPOINT #3.
 
 ### Task 11 — CHECKPOINT / review-debug #3
 - [ ] **Status:** pending
