@@ -44,7 +44,7 @@ jobs:
 
       - name: Build local binary
         shell: bash
-        run: sh scripts/build.sh
+        run: bash scripts/build.sh
 
       - name: Version smoke
         shell: bash
