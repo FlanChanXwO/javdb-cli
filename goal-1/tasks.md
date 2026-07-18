@@ -131,10 +131,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 ## Docs, license, repo, CI, release, brew
 
 ### Task 13 — LICENSE + bilingual README (disclaimer) + CONTRIBUTING + CHANGELOG
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** MIT LICENSE; README.md + README.zh-CN.md with disclaimer; CONTRIBUTING EN/ZH; CHANGELOG EN/ZH skeleton.
 - **Done criteria:** files exist; grep no Frida/blutter/apk reverse narrative.
 - **Actual / evidence / risks / next:**
+  - LICENSE MIT; README + zh-CN with disclaimer; CONTRIBUTING + CHANGELOG EN/ZH.
+  - Evidence: RE grep clean on those files; commit docs task13.
+  - Risks: README links to docs/* filled in task 14.
+  - Next: Task 14 docs/ usage + development + sdk EN+ZH.
 
 ### Task 14 — docs/ usage + development + sdk (EN+ZH)
 - [ ] **Status:** pending
