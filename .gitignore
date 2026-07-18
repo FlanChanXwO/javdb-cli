@@ -1,6 +1,7 @@
-/build/
-*.exe
-*.test
-*.out
 .DS_Store
+*.exe
+*.out
+*.test
+/build/
+/dist/
 /tmp/

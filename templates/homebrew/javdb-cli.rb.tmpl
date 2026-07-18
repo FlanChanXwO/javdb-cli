@@ -1,0 +1,35 @@
+class {{FORMULA_CLASS}} < Formula
+  desc "Unofficial JavDB app API command-line client"
+  homepage "https://github.com/FlanChanXwO/javdb-cli"
+  version "{{VERSION}}"
+  license "MIT"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "{{DARWIN_ARM64_URL}}"
+      sha256 "{{DARWIN_ARM64_SHA256}}"
+    else
+      url "{{DARWIN_AMD64_URL}}"
+      sha256 "{{DARWIN_AMD64_SHA256}}"
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm?
+      url "{{LINUX_ARM64_URL}}"
+      sha256 "{{LINUX_ARM64_SHA256}}"
+    else
+      url "{{LINUX_AMD64_URL}}"
+      sha256 "{{LINUX_AMD64_SHA256}}"
+    end
+  end
+
+  def install
+    bin.install "javdb"
+  end
+
+  test do
+    version_info = JSON.parse(shell_output("#{bin}/javdb version --json"))
+    assert_equal "v#{version}", version_info["version"]
+  end
+end
