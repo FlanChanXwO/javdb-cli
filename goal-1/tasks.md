@@ -78,10 +78,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 8 user write paths + auto_relogin.
 
 ### Task 8 — User write paths + auto_relogin
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** watched/want/mark/unmark/recent/collections; default-account client; auto_relogin once when config on.
 - **Done criteria:** unit tests auth retry path; CLI offline spies.
 - **Actual / evidence / risks / next:**
+  - user.go APIs; withAuthedClient (auto_relogin once); CLI watched/want/recent/collections/mark/unmark.
+  - Evidence: unit tests; live recent/collections/watched OK; commit feat(user)…
+  - Risks: auto_relogin needs saved password; default off per plan.
+  - Next: Task 9 rankings + top250.
 
 ### Task 9 — Rankings + top250
 - [ ] **Status:** pending
