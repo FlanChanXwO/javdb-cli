@@ -7,10 +7,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 ## Product parity (TDD)
 
 ### Task 1 — Search command + API
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** `javdb search` with zone/sort/filter-by/type/page/limit/has-magnets/json; appapi Search; public SDK wrapper; unit tests (params + printers).
 - **Done criteria:** `go test` green; CLI help shows flags; offline tests assert query keys.
-- **Actual / evidence / risks / next:** _(fill on complete)_
+- **Actual / evidence / risks / next:**
+  - Added `BuildSearchParams`, `Client.Search`, `javdb.Search`, CLI `search`, printers + FilterHasMagnets.
+  - Evidence: `go test ./...` green; live `search SSIS-589` and `search 巨乳 --type list` OK; commit `feat(search)...`.
+  - Risks: none high for search path.
+  - Next: Task 2 detail + number resolve.
 
 ### Task 2 — Detail + number resolve
 - [ ] **Status:** pending
