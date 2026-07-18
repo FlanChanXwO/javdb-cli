@@ -48,10 +48,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 5 tags + browse.
 
 ### Task 5 — Tags + browse
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** masks package; tags taxonomy cache; browse + tag alias resolve; CLI tags/browse.
 - **Done criteria:** mask golden tests; CLI tests offline.
 - **Actual / evidence / risks / next:**
+  - BuildTagFilter/EntityFilter; tags store; RefreshTagTaxonomy; browse; CLI tags/browse.
+  - Evidence: mask unit tests; tags alias resolve; live `tags` + `browse --tag 巨乳` OK; commit ae0fb61.
+  - Risks: none high.
+  - Next: Task 6 entity filmography.
 
 ### Task 6 — Entity filmography (actor/series/maker/director/code/list)
 - [ ] **Status:** pending
