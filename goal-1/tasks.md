@@ -151,9 +151,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 15 CHECKPOINT #4 (docs + product).
 
 ### Task 15 — CHECKPOINT / review-debug #4 (docs + product)
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Type:** 集中检查-debug 循环
 - **Actual / evidence / risks / next:**
+  - Product CLI complete + bilingual docs/LICENSE in place.
+  - Evidence: `go test` + `-race` green; `go vet` clean; build OK; RE grep clean on docs/README; all README-linked files exist; full command surface listed.
+  - Residual: no GitHub remote/CI/release/brew yet (tasks 16–20).
+  - Next: Task 16 create public GitHub repo + push.
 
 ### Task 16 — GitHub public repo create + push
 - [ ] **Status:** pending
