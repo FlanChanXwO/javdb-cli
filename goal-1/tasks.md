@@ -117,10 +117,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 12 parity polish + version --json + buildinfo.
 
 ### Task 12 — Parity polish + version --json + buildinfo
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** printers/has-magnets consistency; internal/buildinfo; `javdb version [--json]` for brew; root flags verified.
 - **Done criteria:** version json shape `{"version":"v..."}`; full go test green.
 - **Actual / evidence / risks / next:**
+  - buildinfo package; version text/JSON; build.sh ldflags.
+  - Evidence: unit tests; `VERSION=0.1.0 sh scripts/build.sh` → `version --json` has `"version":"v0.1.0"`; full go test green.
+  - Risks: none. Product parity phase complete.
+  - Next: Task 13 LICENSE + bilingual README/CONTRIBUTING/CHANGELOG.
 
 ---
 
