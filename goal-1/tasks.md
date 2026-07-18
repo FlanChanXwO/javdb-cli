@@ -210,7 +210,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 21 FINAL REVIEW.
 
 ### Task 21 — FINAL REVIEW
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Type:** 终审
 - **Checklist:** parity complete; docs EN/ZH; no RE; CI green; release; brew; residual risks listed.
 - **Actual / evidence / risks / next:**
+  - **Parity:** CLI has auth/search/detail/magnets/tags/browse/entity/user/rankings/top250/lists — matches Python surface.
+  - **Docs:** EN+ZH README (disclaimer), CONTRIBUTING, CHANGELOG, docs/*; LICENSE MIT; RE grep clean.
+  - **CI:** Quality gate success on main.
+  - **Release:** https://github.com/FlanChanXwO/javdb-cli/releases/tag/v0.1.0 — 6 archives + checksums.
+  - **Brew:** Formula at FlanChanXwO/homebrew-tap `Formula/javdb-cli.rb` 0.1.0; README documents install.
+  - **Residual low risks:** local brew install smoke may be slow/network-blocked; Node 20 deprecation warnings on Actions; goal-1/ control files remain in repo (harmless).
+  - **Goal complete.**
