@@ -63,6 +63,7 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newMagnetsCmd(rf, aio))
 	root.AddCommand(newTagsCmd(rf, aio))
 	root.AddCommand(newBrowseCmd(rf, aio))
+	registerEntityCmds(root, rf, aio)
 	root.AddCommand(newVersionCmd())
 	return root
 }
