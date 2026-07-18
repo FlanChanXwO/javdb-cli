@@ -1,64 +1,154 @@
-# javdb (Go)
+# javdb
 
-Command-line client for [JavDB](https://javdb.com) **app JSON API**, written in Go.
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-Binary: `javdb` · Module: `github.com/FlanChanXwO/javdb-cli`
+Unofficial command-line client for the [JavDB](https://javdb.com) **app JSON API**, written in Go.
 
-> Sibling of the Python prototype at `javdb-cli` (local tree). This Go tree is the target rewrite: no MCP, multi-account password login, full command parity in progress.
+| | |
+|---|---|
+| **Binary** | `javdb` |
+| **Module** | `github.com/FlanChanXwO/javdb-cli` |
+| **License** | [MIT](./LICENSE) |
+| **Homebrew** | `brew install FlanChanXwO/tap/javdb-cli` (after release) |
 
-## Status
+This is a **client** for the app API. It is not a website scraper and does not include MCP.
 
-**P0 done:** signature, signed HTTP client (tls-client), multi-account auth, config, `auth` / `config` / `version`.
+## Disclaimer
 
-Remaining: search/detail/magnets → browse/entities → user lists → rankings/top250/lists (see plan).
+**javdb is an unofficial third-party tool and is not affiliated with, endorsed by, or related to JavDB or its operators.**
 
-## Build
+- You are solely responsible for complying with JavDB’s terms of service and with the laws of your jurisdiction.
+- Credentials (username/password) and session tokens are stored **locally** under `~/.javdb-cli/` at your own risk. Prefer a dedicated account; never commit secrets.
+- The software is provided **as is**, without warranty of any kind. The authors are not liable for account bans, data loss, legal issues, or any other damages arising from use of this tool.
+- Intended for personal / educational use. Do not use it to harass others or to abuse the service.
+
+## Install
+
+### Build from source
 
 ```bash
-go build -o build/javdb ./cmd/javdb
-# or
+git clone https://github.com/FlanChanXwO/javdb-cli.git
+cd javdb-cli
 sh scripts/build.sh
+./build/javdb version
 ```
 
-Requires Go 1.22+ (module uses current toolchain).
+Requires Go **1.26+** (see `go.mod`).
 
-## Auth
+### go install
 
 ```bash
-javdb auth login -u USER -p PASS     # or interactive prompts
+go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@latest
+# or pin a tag after the first release:
+# go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.1.0
+```
+
+### Homebrew
+
+```bash
+brew install FlanChanXwO/tap/javdb-cli
+```
+
+## Quick start
+
+```bash
+# log in (interactive if flags omitted); never prints the JWT
+javdb auth login -u USER -p PASS
 javdb auth list
-javdb auth use <user_id>
-javdb auth remove <user_id>
-javdb auth check [--json]
+javdb auth check --json
+
+# search / detail / magnets
+javdb search SSIS-589 --limit 5
+javdb detail SSIS-589
+javdb magnets SSIS-589 --best --json
+
+# browse & entities
+javdb tags --zone censored
+javdb browse --tag 巨乳 --main m --limit 10
+javdb actor 山手梨愛 --main m --has-magnets
+javdb list RZ8Bm --limit 5
+
+# user lists (auth)
+javdb watched
+javdb want
+javdb recent
+javdb mark SSIS-589 --want
+
+# rankings / TOP250 / 合集
+javdb rankings movies --period week
+javdb top250 --limit 20
+javdb lists
+javdb lists search 巨乳
 ```
 
-Credentials: `~/.javdb-cli/auth.json` (0600) — username, password, JWT, multi-account by numeric `user_id`.
+Root flags: `--proxy URL`, `--host mirror|main` (default **mirror**).
 
-Config: `~/.javdb-cli/config.toml`
+Config & credentials:
+
+| Path | Purpose |
+|------|---------|
+| `~/.javdb-cli/auth.json` | Multi-account username/password/token (mode `0600`) |
+| `~/.javdb-cli/config.toml` | host, proxy, `auto_relogin`, lang |
+| `~/.javdb-cli/tags-*.json` | Per-zone tag taxonomy cache |
 
 ```bash
-javdb config path
-javdb config get
-javdb config set auto_relogin true
-javdb config set host mirror   # or main
+javdb config set auto_relogin true   # optional silent re-login on JWT expiry
+javdb config set host mirror
 ```
 
-Root flags: `--proxy URL`, `--host mirror|main`.
-
-Login never prints the token. User id is taken from JWT claims (`id`) / `GET /api/v1/users`.
-
-## Public SDK
+## Public Go SDK
 
 ```go
-import "github.com/FlanChanXwO/javdb-cli/javdb"
+package main
 
-c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
-token, err := c.Login(ctx, user, pass)
-uid, name, err := c.ResolveUserID(ctx)
+import (
+	"context"
+	"fmt"
+
+	"github.com/FlanChanXwO/javdb-cli/javdb"
+)
+
+func main() {
+	c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
+	if err != nil {
+		panic(err)
+	}
+	ctx := context.Background()
+	if _, err := c.Login(ctx, "user", "pass"); err != nil {
+		panic(err)
+	}
+	res, err := c.Search(ctx, "SSIS-589", javdb.SearchOptions{Limit: 5})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(len(res.Movies()))
+}
 ```
+
+See [docs/sdk.md](./docs/sdk.md) for more.
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/index.md](./docs/index.md) | Doc map |
+| [docs/usage.md](./docs/usage.md) | Command reference |
+| [docs/development.md](./docs/development.md) | Build, test, layout |
+| [docs/sdk.md](./docs/sdk.md) | Public package |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to contribute |
+| [CHANGELOG.md](./CHANGELOG.md) | Release notes |
+
+Chinese versions: `*.zh-CN.md` next to each file.
 
 ## Tests
 
 ```bash
 go test ./...
+go test -race ./...
+go vet ./...
+sh scripts/build.sh
 ```
+
+## License
+
+[MIT](./LICENSE) © FlanChanXwO
