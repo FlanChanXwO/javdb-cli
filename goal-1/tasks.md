@@ -37,10 +37,15 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 4 CHECKPOINT #1.
 
 ### Task 4 — CHECKPOINT / review-debug #1
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Type:** 集中检查-debug 循环
 - **Checklist:** input.md alignment; bugs/dead code; go test/race/vet/build; no secrets in logs; docs not yet required.
 - **Actual / evidence / risks / next:**
+  - Aligned with goal: P0+search/detail/magnets done; docs/CI/release still later tasks.
+  - Evidence: `go test ./...` + `-race` green; `go vet` clean; `scripts/build.sh` OK; CLI help lists auth/search/detail/magnets.
+  - No secrets in source; no blocking bugs found.
+  - Residual: full parity incomplete (browse/entities/user/lists/rankings); README still stub; no remote yet.
+  - Next: Task 5 tags + browse.
 
 ### Task 5 — Tags + browse
 - [ ] **Status:** pending
