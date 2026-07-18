@@ -3,16 +3,13 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]*'
+      - "v[0-9]*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing SemVer tag to (re)publish (e.g. v0.1.0)
+        description: "SemVer tag to publish (e.g. v0.1.0)"
         required: true
         type: string
-
-env:
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 permissions: {}
 
@@ -24,22 +21,36 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
+
       - name: Parse version
         id: ver
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          tag="${RELEASE_TAG}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$REF_NAME"
+          fi
           case "$tag" in
             v[0-9]*) ;;
-            *) echo "tag must look like v0.1.0" >&2; exit 1 ;;
+            *)
+              echo "tag must look like v0.1.0, got: $tag" >&2
+              exit 1
+              ;;
           esac
           ver="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$ver" >> "$GITHUB_OUTPUT"
           echo "release tag=$tag version=$ver"
 
@@ -55,30 +66,26 @@ jobs:
         include:
           - goos: darwin
             goarch: amd64
-            ext: tar.gz
           - goos: darwin
             goarch: arm64
-            ext: tar.gz
           - goos: linux
             goarch: amd64
-            ext: tar.gz
           - goos: linux
             goarch: arm64
-            ext: tar.gz
           - goos: windows
             goarch: amd64
-            ext: zip
           - goos: windows
             goarch: arm64
-            ext: zip
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+
       - name: Build archive
         shell: bash
         env:
@@ -92,7 +99,9 @@ jobs:
           date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           module="github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
           ext=""
-          [[ "$GOOS" == "windows" ]] && ext=".exe"
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
           bin="javdb${ext}"
           stage="$(mktemp -d)"
           CGO_ENABLED=0 go build -trimpath \
@@ -101,12 +110,13 @@ jobs:
           cp LICENSE README.md "${stage}/" || true
           name="javdb-cli_${ver}_${GOOS}_${GOARCH}"
           mkdir -p dist
-          if [[ "$GOOS" == "windows" ]]; then
+          if [ "$GOOS" = "windows" ]; then
             (cd "$stage" && zip -qr "${GITHUB_WORKSPACE}/dist/${name}.zip" .)
           else
             tar -C "$stage" -czf "dist/${name}.tar.gz" .
           fi
           ls -la dist/
+
       - uses: actions/upload-artifact@v4
         with:
           name: javdb-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -123,53 +133,54 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - name: Collect assets + checksums
+
+      - name: Collect assets and checksums
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          # download-artifact with merge-multiple puts files in artifacts/ or nested
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp -v {} dist/ \;
           ls -la dist/
           cd dist
           sha256sum javdb-cli_"${VERSION}"_* > checksums.txt
           cat checksums.txt
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ env.RELEASE_TAG }}
+          TAG: ${{ needs.validate.outputs.tag }}
           VERSION: ${{ needs.validate.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          # fail if release already exists (avoid accidental overwrite)
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release $TAG already exists" >&2
-            exit 1
+            echo "release $TAG already exists; uploading assets only" >&2
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            notes="Release v${VERSION}
+
+          See CHANGELOG.md for details.
+
+          Install:
+
+              brew install FlanChanXwO/tap/javdb-cli
+
+          Or download archives from this release."
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "v${VERSION}" \
+              --notes "$notes" \
+              dist/*
           fi
-          notes="Release v${VERSION}
 
-See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md).
-
-Install:
-
-\`\`\`bash
-# binary from assets, or:
-brew install FlanChanXwO/tap/javdb-cli
-\`\`\`
-"
-          gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "v${VERSION}" \
-            --notes "$notes" \
-            dist/*
-      - name: Render Homebrew formula artifact
+      - name: Render Homebrew formula
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
@@ -180,6 +191,7 @@ brew install FlanChanXwO/tap/javdb-cli
             --checksums dist/checksums.txt \
             --output dist/javdb-cli.rb
           cat dist/javdb-cli.rb
+
       - uses: actions/upload-artifact@v4
         with:
           name: homebrew-formula
