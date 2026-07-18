@@ -88,10 +88,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
   - Next: Task 9 rankings + top250.
 
 ### Task 9 — Rankings + top250
-- [ ] **Status:** pending
+- [x] **Status:** done
 - **Goal:** rankings movies/actors/playback; top250 filters; period day→daily mapping.
 - **Done criteria:** param unit tests; CLI wired.
 - **Actual / evidence / risks / next:**
+  - RankingsMovies/Actors/Playback + Top250; ActorPeriod; rankings/* + top250 CLI.
+  - Evidence: unit tests; live rankings movies/actors + top250 #1..3 OK.
+  - Risks: none high.
+  - Next: Task 10 lists 合集 group.
 
 ### Task 10 — Lists 合集 group
 - [ ] **Status:** pending
