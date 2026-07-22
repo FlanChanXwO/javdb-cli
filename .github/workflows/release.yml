@@ -179,7 +179,8 @@ jobs:
   # 在全新 runner 上从同一不可变 tag 重建。测试 job 的临时状态不会进入发布产物。
   build_production:
     name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: build
+    # 既要等待六个平台验证完成，也要直接读取 validate 产出的规范版本号。
+    needs: [validate, build]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -237,6 +238,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          # 先证明 checkout 干净，再创建本 job 的临时产物目录。
           mkdir -p dist
           binary='dist/javdb'
           if [ '${{ matrix.goos }}' = windows ]; then

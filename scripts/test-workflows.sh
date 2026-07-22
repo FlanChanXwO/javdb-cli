@@ -22,5 +22,6 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wi
 done
 
 grep -F 'ref: ${{ env.RELEASE_TAG }}' "$release_workflow" >/dev/null
+grep -F 'needs: [validate, build]' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null

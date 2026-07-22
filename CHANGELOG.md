@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mode bits, while retaining the `0600` assertion on supported platforms.
 - Release checks preserve LF source bytes on Windows so Git checkout conversion
   cannot be mistaken for an unformatted Go source file.
+- Production release builds now directly depend on validation, so their exact
+  version input is available on every native runner.
 
 ## [0.1.0] - 2026-07-18
 
