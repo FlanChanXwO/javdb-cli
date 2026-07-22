@@ -12,7 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
 	"github.com/FlanChanXwO/javdb-cli/internal/config"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/javdb-cli/javdb"
@@ -89,7 +88,7 @@ func loadRuntime(rf *rootFlags) (config.Runtime, error) {
 	if rt.DeviceUUID == "" {
 		dup, err := config.DeviceUUIDPath()
 		if err == nil {
-			if id, err := appapi.LoadOrCreateDeviceUUID(dup); err == nil {
+			if id, err := javdb.LoadOrCreateDeviceUUID(dup); err == nil {
 				rt.DeviceUUID = id
 			}
 		}
@@ -309,8 +308,8 @@ func newAuthCheckCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 				if _, _, err := c.ResolveUserID(context.Background()); err != nil {
 					result.OK = false
 					result.Error = err.Error()
-					var ar *appapi.AuthRequired
-					if errors.As(err, &ar) || errors.As(err, new(*javdb.AuthRequired)) {
+					var authRequired *javdb.AuthRequired
+					if errors.As(err, &authRequired) {
 						result.Error = "token expired or invalid; run: javdb auth login"
 					}
 				} else {

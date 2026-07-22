@@ -2,9 +2,10 @@
 
 [English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
 
-Thanks for helping improve **javdb**.
+Thanks for improving `javdb-cli`. Read the [architecture guide](docs/maintainers/architecture.md)
+and [development guide](docs/maintainers/development.md) before a broad change.
 
-## Development setup
+## Local setup
 
 ```bash
 git clone https://github.com/FlanChanXwO/javdb-cli.git
@@ -14,44 +15,65 @@ sh scripts/build.sh
 ./build/javdb version --json
 ```
 
-- Go version: see `go.mod` (currently 1.26.x).
-- Do **not** commit `~/.javdb-cli/auth.json`, tokens, or passwords.
-- Prefer offline unit tests; optional live smoke uses your local credentials and must never log secrets.
+- Use the Go version declared in `go.mod`.
+- Never commit `~/.javdb-cli/auth.json`, a password, a JWT, a tag cache, or a
+  machine-specific configuration file.
+- Prefer offline tests. A live API check may use local credentials and must be
+  explicitly authorized and free of secret output.
 
-## Layout
+## Project map
 
+```text
+cmd/javdb/                         # binary entry
+javdb/                             # public SDK facade
+internal/cli/                      # Cobra input/output adapter
+internal/javdb/appapi/             # App JSON API adapter
+internal/javdb/protocol/{httpx,signature}/
+internal/config/                   # configuration paths and merge
+internal/storage/{auth,tags}/      # local state
+internal/buildinfo/                # linker metadata
+scripts/                           # build, package, and policy checks
+skills/javdb-cli/                  # product operator skill
+docs/en/, docs/zh-CN/              # localized public contracts
+docs/maintainers/                  # architecture, development, ADR, agent rules
 ```
-cmd/javdb/          # binary entry
-javdb/              # public SDK
-internal/
-  appapi/           # signed app API client
-  cli/              # Cobra commands & printers
-  config/           # config.toml paths & merge
-  httpx/            # TLS client wrapper
-  signature/        # request signing
-  storage/auth/     # multi-account store
-  storage/tags/     # tag taxonomy cache
-  buildinfo/        # version ldflags
-scripts/            # build helpers
-skills/javdb-cli/    # agent operator skill
-docs/               # user & dev docs (EN + ZH)
+
+The CLI must use the public `javdb` facade for remote operations. Do not expose
+protocol implementation paths as SDK API or create empty layers simply to copy
+features that only exist in pixiv-cli.
+
+## Change expectations
+
+1. Preserve command names, flags, JSON fields, and text output unless a
+   compatibility change is intentional and documented.
+2. Write focused tests for behavior changes; keep pure filtering and parameter
+   construction table-driven where practical.
+3. Authentication failures must remain clear and must not reveal credentials.
+4. Update both public locales, README, the operator skill, and routed
+   maintainer docs when behavior changes.
+5. Record user-visible additions, fixes, removals, or security changes in both
+   changelogs under `Unreleased`.
+
+## Before a pull request
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+sh scripts/build.sh
+sh scripts/test-package-release.sh
+sh scripts/test-homebrew-formula.sh
+sh scripts/test-workflows.sh
+sh scripts/test-documentation.sh
+sh scripts/test-architecture.sh
+pre-commit run --all-files
 ```
 
-## Coding guidelines
-
-1. Match existing CLI behavior and flag names where a Python prototype exists.
-2. Keep printers and JSON shapes stable for agent/scripting use.
-3. New endpoints: add unit tests for param builders first (TDD).
-4. No reverse-engineering write-ups in `docs/` or README (product docs only).
-5. Auth errors: surface clear messages; honor `auto_relogin` only when configured.
-
-## Pull requests
-
-1. Run `go test ./...`, `go test -race ./...`, `go vet ./...`, `sh scripts/build.sh`, `sh scripts/test-package-release.sh`, `sh scripts/test-homebrew-formula.sh`, and `sh scripts/test-workflows.sh`.
-2. Keep commits focused; reference the feature in the message.
-3. Update `CHANGELOG.md` / `CHANGELOG.zh-CN.md` for user-visible changes.
-4. CI on `main` / PRs must stay green once workflows are enabled.
+Run the checks relevant to your change at minimum; run the full list before a
+release-sensitive or broad refactor. Keep commits focused and discuss large or
+compatibility-sensitive changes before implementation.
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the [MIT License](./LICENSE).
+By contributing, you agree that your contributions are licensed under the
+[MIT License](LICENSE).

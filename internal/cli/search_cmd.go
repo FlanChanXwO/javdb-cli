@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
 	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
@@ -31,7 +30,7 @@ func newSearchCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			opt := appapi.SearchOptions{
+			opt := javdb.SearchOptions{
 				Page:     page,
 				Limit:    limit,
 				Zone:     zone,

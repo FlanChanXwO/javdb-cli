@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 )
 
 func main() {

@@ -16,3 +16,13 @@ repos:
         entry: sh scripts/test-workflows.sh
         language: system
         pass_filenames: false
+      - id: documentation-structure
+        name: documentation structure checks
+        entry: sh scripts/test-documentation.sh
+        language: system
+        pass_filenames: false
+      - id: architecture-structure
+        name: architecture structure checks
+        entry: sh scripts/test-architecture.sh
+        language: system
+        pass_filenames: false

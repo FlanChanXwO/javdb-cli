@@ -79,7 +79,7 @@ sh scripts/build.sh
 ```
 
 The release contract covers macOS, Linux, and Windows on amd64 and arm64. See
-the [development guide](docs/development.md#release-and-platform-verification)
+the [development guide](docs/maintainers/development.md#构建打包与平台)
 for reproducible target builds and archive contents.
 
 ### Install with a coding agent
@@ -109,7 +109,7 @@ javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 ```
 
-Run `javdb --help` or read the [complete command reference](docs/usage.md) for
+Run `javdb --help` or read the [complete command reference](docs/en/cli-reference.md) for
 all commands, flags, configuration keys, and authentication requirements.
 
 ## Choose your interface
@@ -143,7 +143,7 @@ if err != nil {
 fmt.Println(len(res.Movies()))
 ```
 
-Import `github.com/FlanChanXwO/javdb-cli/javdb`. The [SDK guide](docs/sdk.md)
+Import `github.com/FlanChanXwO/javdb-cli/javdb`. The [SDK guide](docs/en/sdk.md)
 documents public models, client options, and caller responsibilities.
 
 ### Agent skill
@@ -183,10 +183,12 @@ local state and should be used deliberately.
 
 | Guide | Use it for |
 | --- | --- |
-| [CLI reference](docs/usage.md) | Commands, flags, authentication, configuration, and common workflows |
+| [CLI reference](docs/en/cli-reference.md) | Commands, flags, authentication, configuration, and common workflows |
 | [Agent operator skill](skills/javdb-cli/SKILL.md) | Safe agent routing, secrets, writes, discovery, and errors |
-| [Go SDK](docs/sdk.md) | Public client, models, and options |
-| [Development](docs/development.md) | Toolchain, tests, platform builds, packaging, and releases |
+| [Go SDK](docs/en/sdk.md) | Public client, models, and options |
+| [Architecture (Simplified Chinese)](docs/maintainers/architecture.md) | Package boundaries and runtime flow |
+| [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, platform builds, packaging, and releases |
+| [Documentation map](docs/index.md) | Localized public contracts and maintainer guides |
 | [Contributing](CONTRIBUTING.md) | Local quality gates and contribution rules |
 | [Changelog](CHANGELOG.md) | User-visible changes |
 

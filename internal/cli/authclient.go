@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
 	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
@@ -36,13 +35,9 @@ func withAuthedClient(rf *rootFlags, aio *appIO, fn func(*javdb.Client) error) e
 	if err == nil {
 		return nil
 	}
-	var ar *appapi.AuthRequired
-	if !errors.As(err, &ar) {
-		// also check javdb alias
-		var ar2 *javdb.AuthRequired
-		if !errors.As(err, &ar2) {
-			return err
-		}
+	var authRequired *javdb.AuthRequired
+	if !errors.As(err, &authRequired) {
+		return err
 	}
 	if !rt.AutoRelogin {
 		return fmt.Errorf("token expired or invalid; run: javdb auth login (or: javdb config set auto_relogin true)")

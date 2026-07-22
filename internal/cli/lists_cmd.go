@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
 	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
@@ -139,7 +138,7 @@ func newListsSearchCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := c.Search(context.Background(), args[0], appapi.SearchOptions{
+			res, err := c.Search(context.Background(), args[0], javdb.SearchOptions{
 				Page: page, Limit: limit, Zone: zone, Type: "list",
 			})
 			if err != nil {

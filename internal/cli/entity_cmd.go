@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
+	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
 type entityFlags struct {
@@ -51,7 +51,7 @@ func runEntity(rf *rootFlags, aio *appIO, kind, ref string, f entityFlags) error
 			return fmt.Errorf("%s failed: %w", kind, err)
 		}
 	}
-	opt := appapi.EntityMoviesOptions{
+	opt := javdb.EntityMoviesOptions{
 		Zone: f.zone, Page: f.page, Limit: f.limit,
 		Sort: f.sort, Order: f.order, Main: f.mainFlags, Tags: tagIDs,
 	}

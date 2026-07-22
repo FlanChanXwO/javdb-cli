@@ -1,20 +1,9 @@
-# 文档
+# 文档导航（兼容入口）
 
-[English](index.md) | [简体中文](index.zh-CN.md)
+新版文档总导航在 [docs/index.md](index.md)。
 
-欢迎阅读 **javdb** 文档。
+- 命令行公开契约：[简体中文 CLI reference](zh-CN/cli-reference.md)
+- Go SDK：[简体中文 SDK](zh-CN/sdk.md)
+- 维护者架构与开发流程：[maintainers/](maintainers/)
 
-| 文档 | 说明 |
-|------|------|
-| [usage.zh-CN.md](./usage.zh-CN.md) | 命令行参考与常见流程 |
-| [development.zh-CN.md](./development.zh-CN.md) | 构建、测试、目录结构 |
-| [sdk.zh-CN.md](./sdk.zh-CN.md) | 公开 Go 包 `javdb` |
-| [skills/javdb-cli/SKILL.md](../skills/javdb-cli/SKILL.md) | Agent 安全操作指南 |
-
-另见：
-
-- [README.zh-CN.md](../README.zh-CN.md) — 安装、快速开始、**免责声明**
-- [CONTRIBUTING.zh-CN.md](../CONTRIBUTING.zh-CN.md) — 贡献方式
-- [CHANGELOG.zh-CN.md](../CHANGELOG.zh-CN.md) — 更新日志
-
-本文档只描述**产品用法**，不包含逆向工程、第三方 App 内部实现或签名算法说明。
+新链接请使用语言目录或 `maintainers/` 下的权威路径；此文件只保留给既有书签。

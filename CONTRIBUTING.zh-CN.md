@@ -2,9 +2,10 @@
 
 [English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
 
-感谢你参与改进 **javdb**。
+感谢你参与改进 `javdb-cli`。较大改动前，请先阅读[架构说明](docs/maintainers/architecture.md)
+与[开发指南](docs/maintainers/development.md)。
 
-## 开发环境
+## 本地环境
 
 ```bash
 git clone https://github.com/FlanChanXwO/javdb-cli.git
@@ -14,44 +15,56 @@ sh scripts/build.sh
 ./build/javdb version --json
 ```
 
-- Go 版本：见 `go.mod`（当前 1.26.x）。
-- **不要**提交 `~/.javdb-cli/auth.json`、token 或密码。
-- 优先离线单测；可选真机冒烟使用本机凭证，且不得把密钥打进日志。
+- 使用 `go.mod` 声明的 Go 版本。
+- 不提交 `~/.javdb-cli/auth.json`、密码、JWT、tag cache 或机器相关配置。
+- 优先离线测试。真机 API 抽查可能使用本机凭据，必须有明确授权，且不得输出 secret。
 
-## 目录结构
+## 项目地图
 
-```
-cmd/javdb/          # 二进制入口
-javdb/              # 公开 SDK
-internal/
-  appapi/           # 签名 App API 客户端
-  cli/              # Cobra 命令与输出
-  config/           # config.toml 路径与合并
-  httpx/            # TLS 客户端封装
-  signature/        # 请求签名
-  storage/auth/     # 多账号存储
-  storage/tags/     # 标签分类缓存
-  buildinfo/        # 版本 ldflags
-scripts/            # 构建脚本
-skills/javdb-cli/    # 面向 agent 的操作 skill
-docs/               # 用户与开发文档（中英）
+```text
+cmd/javdb/                         # 二进制入口
+javdb/                             # 公开 SDK facade
+internal/cli/                      # Cobra 输入/输出 adapter
+internal/javdb/appapi/             # App JSON API adapter
+internal/javdb/protocol/{httpx,signature}/
+internal/config/                   # 配置路径与运行时合并
+internal/storage/{auth,tags}/      # 本机状态
+internal/buildinfo/                # linker 元数据
+scripts/                           # 构建、打包和策略检查
+skills/javdb-cli/                  # 产品操作 skill
+docs/en/, docs/zh-CN/              # 多语言公开契约
+docs/maintainers/                  # 架构、开发、ADR 与 agent 规则
 ```
 
-## 编码约定
+CLI 的远程操作必须通过公开 `javdb` facade。不要把协议实现路径暴露为 SDK API，也不要仅为了
+模仿 pixiv-cli 而创建不存在职责的空层。
 
-1. 有 Python 原型时，尽量对齐命令行为与参数名。
-2. 文本与 JSON 输出保持稳定，方便 agent/脚本。
-3. 新端点：先写参数构造单测（TDD）。
-4. `docs/` 与 README 只写产品文档，不写逆向过程说明。
-5. 鉴权错误信息要清晰；仅在配置开启时做 `auto_relogin`。
+## 改动要求
 
-## Pull Request
+1. 除非明确记录兼容性变更，否则保持命令、flag、JSON 字段和文本输出稳定。
+2. 行为改动补充聚焦测试；掩码、过滤、参数构造等纯逻辑优先表驱动测试。
+3. 认证失败应清晰可见，且不得泄露凭据。
+4. 行为变化时同步更新两个公开 locale、README、operator skill 与对应维护者文档。
+5. 用户可感知的新增、修复、移除或安全变更写入两个 changelog 的 `Unreleased`。
 
-1. 本地跑通 `go test ./...`、`go test -race ./...`、`go vet ./...`、`sh scripts/build.sh`、`sh scripts/test-package-release.sh`、`sh scripts/test-homebrew-formula.sh`、`sh scripts/test-workflows.sh`。
-2. 提交信息聚焦改动本身。
-3. 用户可见变更请更新 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`。
-4. 启用 CI 后，`main` / PR 必须保持绿灯。
+## 发起 Pull Request 前
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+sh scripts/build.sh
+sh scripts/test-package-release.sh
+sh scripts/test-homebrew-formula.sh
+sh scripts/test-workflows.sh
+sh scripts/test-documentation.sh
+sh scripts/test-architecture.sh
+pre-commit run --all-files
+```
+
+至少运行与改动相关的检查；涉及发布或大范围重构时运行完整列表。提交应聚焦改动本身；大型或
+兼容性敏感的改动先讨论。
 
 ## 许可证
 
-贡献代码即表示你同意以 [MIT License](./LICENSE) 授权你的贡献。
+贡献代码即表示你同意以 [MIT License](LICENSE) 授权你的贡献。

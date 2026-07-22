@@ -5,8 +5,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
 	"github.com/FlanChanXwO/javdb-cli/internal/config"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 )
 
 // Host constants.
@@ -96,6 +96,13 @@ func (c *Client) Token() string { return c.api.Token() }
 // SetToken updates the bearer token.
 func (c *Client) SetToken(token string) { c.api.SetToken(token) }
 
+// LoadOrCreateDeviceUUID loads the stable device identifier at path or creates
+// one when the file is absent. CLI callers use it before constructing a client;
+// SDK callers may use it when they need the same identifier across processes.
+func LoadOrCreateDeviceUUID(path string) (string, error) {
+	return appapi.LoadOrCreateDeviceUUID(path)
+}
+
 // Login authenticates and stores the token on the client.
 // ctx is reserved for future cancellation; the underlying client is not yet context-aware.
 func (c *Client) Login(ctx context.Context, username, password string) (string, error) {
@@ -109,5 +116,6 @@ func (c *Client) ResolveUserID(ctx context.Context) (userID int64, username stri
 	return c.api.ResolveUserID("")
 }
 
-// API exposes the internal client for advanced use (CLI). Prefer typed methods when available.
+// API 为兼容旧调用方返回底层 adapter。该返回值不是稳定的外部 SDK 契约；新代码应优先使用 typed 方法。
+// Deprecated: use the documented Client methods instead.
 func (c *Client) API() *appapi.Client { return c.api }

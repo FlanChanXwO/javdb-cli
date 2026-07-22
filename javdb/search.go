@@ -3,7 +3,7 @@ package javdb
 import (
 	"context"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 )
 
 // SearchOptions is re-exported for SDK callers.

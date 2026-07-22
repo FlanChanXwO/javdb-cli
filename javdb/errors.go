@@ -1,6 +1,6 @@
 package javdb
 
-import "github.com/FlanChanXwO/javdb-cli/internal/appapi"
+import "github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 
 // Error aliases for callers.
 type (

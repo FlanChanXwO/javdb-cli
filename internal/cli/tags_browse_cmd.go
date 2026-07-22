@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/tags"
+	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
 func newTagsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
@@ -82,7 +82,7 @@ func newBrowseCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 					return fmt.Errorf("browse failed: %w", err)
 				}
 			}
-			res, err := c.Browse(ctx, appapi.BrowseOptions{
+			res, err := c.Browse(ctx, javdb.BrowseOptions{
 				Zone: zone, Main: mainFlags, TagIDs: tagIDs,
 				Year: year, Month: month, Sort: sort, Order: order,
 				Page: page, Limit: limit,

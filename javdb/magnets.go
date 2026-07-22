@@ -1,6 +1,6 @@
 package javdb
 
-import "github.com/FlanChanXwO/javdb-cli/internal/appapi"
+import "github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 
 // Re-export magnet helpers for SDK callers.
 func FilterMagnets(magnets []map[string]any, cnsub, hd bool, minSize int) []map[string]any {

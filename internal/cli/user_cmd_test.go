@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/appapi"
+	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
 func TestUserCmdsHelp(t *testing.T) {
@@ -20,7 +20,7 @@ func TestUserCmdsHelp(t *testing.T) {
 
 func TestAuthRequiredMessageWithoutAutoRelogin(t *testing.T) {
 	// pure: errors.As path covered by type existence
-	err := &appapi.AuthRequired{API: appapi.Error{Action: "JWTVerificationError", Message: "bad"}}
+	err := &javdb.AuthRequired{API: javdb.APIError{Action: "JWTVerificationError", Message: "bad"}}
 	if err.Error() == "" {
 		t.Fatal("empty")
 	}

@@ -11,8 +11,8 @@ import (
 
 	http "github.com/bogdanfinn/fhttp"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/httpx"
-	"github.com/FlanChanXwO/javdb-cli/internal/signature"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/protocol/httpx"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/protocol/signature"
 )
 
 const (

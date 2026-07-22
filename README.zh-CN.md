@@ -71,7 +71,7 @@ sh scripts/build.sh
 ```
 
 发布契约覆盖 macOS、Linux、Windows 的 amd64 与 arm64。可复现目标构建及归档内容见
-[开发指南](docs/development.zh-CN.md#发版与平台验证)。
+[开发指南](docs/maintainers/development.md#构建打包与平台)。
 
 ### 让 Coding Agent 安装
 
@@ -99,7 +99,7 @@ javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 ```
 
-运行 `javdb --help`，或阅读[完整命令参考](docs/usage.zh-CN.md)，查看所有命令、flag、
+运行 `javdb --help`，或阅读[完整命令参考](docs/zh-CN/cli-reference.md)，查看所有命令、flag、
 配置键与认证要求。
 
 ## 选择使用入口
@@ -132,7 +132,7 @@ if err != nil {
 fmt.Println(len(res.Movies()))
 ```
 
-导入 `github.com/FlanChanXwO/javdb-cli/javdb`。[SDK 指南](docs/sdk.zh-CN.md)
+导入 `github.com/FlanChanXwO/javdb-cli/javdb`。[SDK 指南](docs/zh-CN/sdk.md)
 说明公开模型、client options 与调用方职责。
 
 ### Agent skill
@@ -167,10 +167,12 @@ javdb config set auto_relogin true
 
 | 文档 | 用途 |
 | --- | --- |
-| [命令参考](docs/usage.zh-CN.md) | 命令、flag、认证、配置与常见流程 |
+| [命令参考](docs/zh-CN/cli-reference.md) | 命令、flag、认证、配置与常见流程 |
 | [Agent 操作 skill](skills/javdb-cli/SKILL.md) | Agent 路由、密钥、写操作、检索与错误 |
-| [Go SDK](docs/sdk.zh-CN.md) | 公开 client、模型和 options |
-| [开发指南](docs/development.zh-CN.md) | 工具链、测试、平台构建、打包与发版 |
+| [Go SDK](docs/zh-CN/sdk.md) | 公开 client、模型和 options |
+| [架构说明](docs/maintainers/architecture.md) | 包边界与运行流程 |
+| [开发指南](docs/maintainers/development.md) | 工具链、测试、平台构建、打包与发版 |
+| [文档导航](docs/index.md) | 多语言公开契约与维护者指南 |
 | [贡献指南](CONTRIBUTING.zh-CN.md) | 本地质量门与贡献规范 |
 | [更新日志](CHANGELOG.zh-CN.md) | 用户可感知变更 |
 
