@@ -46,7 +46,8 @@ func Load(path string) (*Store, error) {
 	return &s, nil
 }
 
-// Save writes the store atomically with 0600 permissions.
+// Save writes the store atomically with 0600 permissions where the platform
+// supports POSIX permission bits.
 func Save(path string, s *Store) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err

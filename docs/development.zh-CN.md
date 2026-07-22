@@ -83,7 +83,7 @@ docs/                   # 产品文档（中英）
 
 | 路径 | 说明 |
 |------|------|
-| `~/.javdb-cli/auth.json` | 账号与 default_user_id；权限 `0600` |
+| `~/.javdb-cli/auth.json` | 账号与 default_user_id；支持 POSIX 权限的平台为 `0600` |
 | `~/.javdb-cli/config.toml` | host、proxy、auto_relogin、lang |
 | `~/.javdb-cli/device_uuid` | 稳定的 device id（公共参数） |
 | `~/.javdb-cli/tags-*.json` | 标签目录缓存（非密钥） |

@@ -25,7 +25,7 @@ javdb auth check [--json]
 
 - 省略 `-u` / `-p` 则交互输入（TTY 下密码不回显）。
 - 登录**不会打印** JWT，只输出用户名与 user id。
-- 多账号：`~/.javdb-cli/auth.json`（权限 `0600`）。
+- 多账号：`~/.javdb-cli/auth.json`（支持 POSIX 权限的平台为 `0600`）。
 - 切换默认账号只用 `auth use`（没有按命令的 `--uid`）。
 
 ### 配置

@@ -25,7 +25,7 @@ javdb auth check [--json]
 
 - Missing `-u` / `-p` → interactive prompts (password is silent on TTY).
 - Login **never prints** the JWT; only a short confirmation with username and user id.
-- Multi-account store: `~/.javdb-cli/auth.json` (mode `0600`).
+- Multi-account store: `~/.javdb-cli/auth.json` (mode `0600` on POSIX platforms).
 - Switch default account with `auth use` only (no per-command `--uid`).
 
 ### Config

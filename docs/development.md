@@ -83,7 +83,7 @@ Prefer mirror for direct connectivity. Use `--proxy` when targeting the main hos
 
 | Path | Notes |
 |------|--------|
-| `~/.javdb-cli/auth.json` | accounts + default_user_id; mode `0600` |
+| `~/.javdb-cli/auth.json` | accounts + default_user_id; mode `0600` on POSIX platforms |
 | `~/.javdb-cli/config.toml` | host, proxy, auto_relogin, lang |
 | `~/.javdb-cli/device_uuid` | stable device id for public params |
 | `~/.javdb-cli/tags-*.json` | public tag catalogs (not secret) |

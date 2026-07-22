@@ -26,8 +26,8 @@
   显示，不会伪装成空结果。
 - **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供
   [操作 skill](skills/javdb-cli/SKILL.md)，可安全完成多步自动化。
-- **本地多账号凭据**——用户名、密码和 token 保存在 `~/.javdb-cli/auth.json`（权限 `0600`）；
-  常规命令输出绝不会打印 JWT。
+- **本地多账号凭据**——用户名、密码和 token 保存在 `~/.javdb-cli/auth.json`（支持 POSIX
+  权限的平台使用 `0600`）；常规命令输出绝不会打印 JWT。
 - **有意识的状态变更**——看过/想看标记、默认账号变更、配置写入和标签缓存刷新都是显式操作。
 - **原生发布证据**——CI 会在 macOS、Linux、Windows 的 amd64/arm64 平台构建、打包、解包并
   冒烟运行二进制。
@@ -144,7 +144,8 @@ fmt.Println(len(res.Movies()))
 ## 认证与凭据安全
 
 推荐用 `javdb auth login` 配置账号。用户名、密码与 session token 会保存于本地多账号存储
-`~/.javdb-cli/auth.json`（权限 `0600`）。不得提交、打印、粘贴或上传该文件、密码或 JWT。
+`~/.javdb-cli/auth.json`（支持 POSIX 权限的平台使用 `0600`）。不得提交、打印、粘贴或上传
+该文件、密码或 JWT。
 
 ```bash
 javdb auth list

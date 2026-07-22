@@ -32,8 +32,8 @@ terms and the laws that apply to you.
   and an included [operator skill](skills/javdb-cli/SKILL.md) support safe,
   multi-step automation.
 - **Local multi-account credentials** — username/password/token data stays in
-  `~/.javdb-cli/auth.json` with mode `0600`; normal command output never prints
-  the JWT.
+  `~/.javdb-cli/auth.json` with mode `0600` on POSIX platforms; normal command
+  output never prints the JWT.
 - **Deliberate state changes** — watch/want marks, default-account changes,
   configuration writes, and tag-cache refreshes are explicit CLI operations.
 - **Native release evidence** — macOS, Linux, and Windows on amd64 and arm64
@@ -158,8 +158,8 @@ flags with `javdb <command> --help`.
 
 `javdb auth login` is the recommended setup. It keeps the username, password,
 and session token in the local multi-account store
-`~/.javdb-cli/auth.json` (mode `0600`). Do not commit, print, paste, or upload
-that file, passwords, or JWTs.
+`~/.javdb-cli/auth.json` (mode `0600` where POSIX permissions exist). Do not
+commit, print, paste, or upload that file, passwords, or JWTs.
 
 ```bash
 javdb auth list

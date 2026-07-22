@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   publishing, and validate the generated Homebrew formula before optional tap
   deployment.
 
+### Fixed
+
+- Credential-store permission tests now account for Windows not exposing POSIX
+  mode bits, while retaining the `0600` assertion on supported platforms.
+
 ## [0.1.0] - 2026-07-18
 
 First public release.

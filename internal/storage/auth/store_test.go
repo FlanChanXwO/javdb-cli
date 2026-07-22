@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -18,13 +19,16 @@ func TestUpsertUseRemove(t *testing.T) {
 	if err := Save(path, s); err != nil {
 		t.Fatal(err)
 	}
-	// mode
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fi.Mode().Perm() != 0o600 {
-		t.Fatalf("mode=%o", fi.Mode().Perm())
+	// Windows does not expose POSIX permission bits; os.WriteFile cannot enforce
+	// 0600 there, while Unix targets must retain the credential-file contract.
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			t.Fatalf("mode=%o", fi.Mode().Perm())
+		}
 	}
 	loaded, err := Load(path)
 	if err != nil {
