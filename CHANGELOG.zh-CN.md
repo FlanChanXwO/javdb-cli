@@ -9,6 +9,17 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-23
+
+### 新增
+
+- `skills/javdb-cli`：包含凭据、状态变更、检索、安装与排错边界的 Agent 操作 skill。
+- macOS（Intel/Apple Silicon）、Linux（amd64/arm64）与 Windows（amd64/arm64）的原生打包二进制冒烟验证。
+
+### 变更
+
+- 发版改为显式单目标构建/打包脚本；从不可变 tag 在全新原生 runner 重建，发布前校验资产集合，并在可选推送 tap 前验证生成的 Homebrew Formula。
+
 ## [0.1.0] - 2026-07-18
 
 首个公开版本。

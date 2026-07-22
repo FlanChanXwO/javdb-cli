@@ -57,13 +57,13 @@ func (e *AuthRequired) Unwrap() error { return &e.API }
 
 // Client talks to /api/v1..v4 with jdsignature.
 type Client struct {
-	http        *httpx.Client
-	host        string
-	token       string
-	deviceUUID  string
-	lang        string
-	public      map[string]string
-	retries     int
+	http       *httpx.Client
+	host       string
+	token      string
+	deviceUUID string
+	lang       string
+	public     map[string]string
+	retries    int
 }
 
 // Options for New.

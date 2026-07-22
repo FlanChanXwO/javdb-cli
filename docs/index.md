@@ -9,6 +9,7 @@ Welcome to the **javdb** docs.
 | [usage.md](./usage.md) | Command-line reference and common workflows |
 | [development.md](./development.md) | Build, test, project layout |
 | [sdk.md](./sdk.md) | Public Go package `javdb` |
+| [skills/javdb-cli/SKILL.md](../skills/javdb-cli/SKILL.md) | Agent-safe CLI operating guide |
 
 Also see:
 

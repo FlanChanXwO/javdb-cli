@@ -50,12 +50,12 @@ func BuildTop250Params(zone, year string, startRank, page, limit int, ignoreWatc
 		iw = "true"
 	}
 	return map[string]string{
-		"type":            t,
-		"type_value":      tv,
-		"start_rank":      strconv.Itoa(startRank),
-		"page":            strconv.Itoa(page),
-		"limit":           strconv.Itoa(limit),
-		"ignore_watched":  iw,
+		"type":           t,
+		"type_value":     tv,
+		"start_rank":     strconv.Itoa(startRank),
+		"page":           strconv.Itoa(page),
+		"limit":          strconv.Itoa(limit),
+		"ignore_watched": iw,
 	}, nil
 }
 

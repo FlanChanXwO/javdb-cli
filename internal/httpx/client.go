@@ -15,8 +15,8 @@ import (
 
 // Client is a thin wrapper around tls-client with proxy support.
 type Client struct {
-	inner  tls_client.HttpClient
-	proxy  string
+	inner   tls_client.HttpClient
+	proxy   string
 	timeout time.Duration
 }
 

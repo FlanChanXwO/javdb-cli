@@ -1,154 +1,188 @@
-# javdb
+<div align="center">
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+# javdb-cli
 
-面向 [JavDB](https://javdb.com) **App JSON API** 的非官方命令行客户端（Go 实现）。
+**JavDB CLI · Go SDK · Agent skill**
 
-| | |
-|---|---|
-| **二进制** | `javdb` |
-| **模块** | `github.com/FlanChanXwO/javdb-cli` |
-| **许可证** | [MIT](./LICENSE) |
-| **Homebrew** | `brew install FlanChanXwO/tap/javdb-cli`（发版后） |
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-这是 App API 的**客户端**，不是网页爬虫，也不包含 MCP。
+<p><a href="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/platform-smoke.yml"><img alt="Platform smoke" src="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/platform-smoke.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/javdb-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/javdb-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/javdb-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/javdb-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/javdb-cli.svg?style=flat-square&amp;label=views"></p>
 
-## 免责声明
+[安装](#安装) · [快速开始](#60-秒快速开始) · [使用入口](#选择使用入口) · [文档](#文档) · [参与贡献](CONTRIBUTING.zh-CN.md)
 
-**javdb 是非官方第三方工具，与 JavDB 及其运营方无任何关联、授权或背书关系。**
+</div>
 
-- 你须自行遵守 JavDB 服务条款以及所在地法律法规。
-- 账号密码与会话令牌会**保存在本机** `~/.javdb-cli/` 目录，风险自负。建议使用专用账号，切勿把密钥提交进仓库。
-- 本软件按「现状」提供，**不作任何担保**。作者不对封号、数据丢失、法律纠纷或其他损害负责。
-- 仅供个人学习 / 研究用途。请勿用于骚扰他人或滥用服务。
+`javdb-cli` 是独立开发的非官方命令行客户端与 Go SDK，用于访问
+[JavDB](https://javdb.com) App JSON API。它为用户、Coding Agent 和 Go 应用提供统一的
+搜索、目录导航、影片详情、磁力、排行与已认证用户列表能力；它不是网页爬虫、不包含 MCP，
+也不与 JavDB 或其运营方存在隶属、认可或其他关联。请仅在遵守 JavDB 条款和所在地适用法律的
+前提下使用。
+
+## 为什么选择 javdb-cli？
+
+- **一致的能力面**——CLI 与公开 Go SDK 都覆盖搜索、详情、标签、浏览、实体片单、磁力、
+  排行、TOP250、合集和已认证的想看/看过数据。
+- **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
+  显示，不会伪装成空结果。
+- **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供
+  [操作 skill](skills/javdb-cli/SKILL.md)，可安全完成多步自动化。
+- **本地多账号凭据**——用户名、密码和 token 保存在 `~/.javdb-cli/auth.json`（权限 `0600`）；
+  常规命令输出绝不会打印 JWT。
+- **有意识的状态变更**——看过/想看标记、默认账号变更、配置写入和标签缓存刷新都是显式操作。
+- **原生发布证据**——CI 会在 macOS、Linux、Windows 的 amd64/arm64 平台构建、打包、解包并
+  冒烟运行二进制。
 
 ## 安装
 
-### 源码编译
-
-```bash
-git clone https://github.com/FlanChanXwO/javdb-cli.git
-cd javdb-cli
-sh scripts/build.sh
-./build/javdb version
-```
-
-需要 Go **1.26+**（见 `go.mod`）。
-
-### go install
-
-```bash
-go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@latest
-# 发版后可钉死标签：
-# go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.1.0
-```
-
-### Homebrew
+### Homebrew（macOS 与 Linux 推荐）
 
 ```bash
 brew install FlanChanXwO/tap/javdb-cli
 ```
 
-## 快速开始
+后续更新：
 
 ```bash
-# 登录（可省略 -u/-p 进入交互；不会打印 JWT）
-javdb auth login -u USER -p PASS
-javdb auth list
+brew update
+brew upgrade javdb-cli
+```
+
+启用 tap 部署后，Formula 会在验证完成的发版后更新。
+
+### Go
+
+请使用精确的已发布 tag：
+
+```bash
+go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.1.1
+```
+
+### Release 压缩包或源码构建
+
+从 [GitHub Releases](https://github.com/FlanChanXwO/javdb-cli/releases) 下载与平台对应的
+压缩包，先用同附的 `checksums.txt` 校验；再将 `javdb`（Windows 为 `javdb.exe`）放入 PATH 中的
+目录。
+
+构建当前 checkout 时，先安装 `go.mod` 指定的 Go 版本，再运行：
+
+```bash
+sh scripts/build.sh
+./build/javdb version --json
+```
+
+发布契约覆盖 macOS、Linux、Windows 的 amd64 与 arm64。可复现目标构建及归档内容见
+[开发指南](docs/development.zh-CN.md#发版与平台验证)。
+
+### 让 Coding Agent 安装
+
+把以下 prompt 复制给能访问本机终端的 Codex、Claude Code、Cursor 或其他 Coding Agent：
+
+```text
+请为这台机器安装 https://github.com/FlanChanXwO/javdb-cli 的最新 stable 版本。检测操作系统和架构，只下载官方 GitHub Release 资产，必须先用 checksums.txt 中对应的 SHA-256 校验通过才安装；创建或修改任何 PATH 目录前先询问；绝不读取或输出 ~/.javdb-cli/auth.json 或凭据；最后运行 javdb version --json 验证，并报告安装版本和所有变更文件。
+
+同时从相同 stable release tag 安装完整的 skills/javdb-cli/ 目录到我确认的 Agent skills 目录。不要猜测 skills 路径，不要使用 main 分支的 skill 内容，并保留全部 references 文件。
+```
+
+## 60 秒快速开始
+
+```bash
+# 交互式登录；CLI 不会打印 JWT。
+javdb auth login
 javdb auth check --json
 
-# 搜索 / 详情 / 磁力
-javdb search SSIS-589 --limit 5
-javdb detail SSIS-589
-javdb magnets SSIS-589 --best --json
+# 搜索影片，再读取详情中的图 ID 以便后续导航。
+javdb search SSIS-589 --limit 5 --json
+javdb detail SSIS-589 --json
 
-# 分类浏览与实体片单
-javdb tags --zone censored
-javdb browse --tag 巨乳 --main m --limit 10
-javdb actor 山手梨愛 --main m --has-magnets
-javdb list RZ8Bm --limit 5
-
-# 用户列表（需登录）
-javdb watched
-javdb want
-javdb recent
-javdb mark SSIS-589 --want
-
-# 排行 / TOP250 / 合集
-javdb rankings movies --period week
-javdb top250 --limit 20
-javdb lists
-javdb lists search 巨乳
+# 按标签浏览，并获取经过筛选的磁力列表（需要认证）。
+javdb browse --tag 巨乳 --main m --limit 20 --json
+javdb magnets SSIS-589 --cnsub --hd --json
 ```
 
-全局参数：`--proxy URL`、`--host mirror|main`（默认 **mirror**）。
+运行 `javdb --help`，或阅读[完整命令参考](docs/usage.zh-CN.md)，查看所有命令、flag、
+配置键与认证要求。
 
-配置与凭证：
+## 选择使用入口
 
-| 路径 | 用途 |
-|------|------|
-| `~/.javdb-cli/auth.json` | 多账号 用户名/密码/token（权限 `0600`） |
-| `~/.javdb-cli/config.toml` | host、proxy、`auto_relogin`、lang |
-| `~/.javdb-cli/tags-*.json` | 各分区标签分类缓存 |
+### CLI
+
+交互时使用表格输出；命令支持时，Agent 或脚本可使用 `--json` 获取稳定字段：
 
 ```bash
-javdb config set auto_relogin true   # JWT 过期时可选静默重登
-javdb config set host mirror
+javdb rankings movies --period week
+javdb actor 山手梨愛 --main m --has-magnets --json
+javdb lists search 巨乳 --zone all --json
 ```
 
-## 公开 Go SDK
+全局 `--proxy URL` 与 `--host mirror|main` 仅影响本次命令。依赖持久化设置前先执行
+`javdb config get` 查看有效配置。
+
+### Go SDK
 
 ```go
-package main
-
-import (
-	"context"
-	"fmt"
-
-	"github.com/FlanChanXwO/javdb-cli/javdb"
-)
-
-func main() {
-	c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
-	if err != nil {
-		panic(err)
-	}
-	ctx := context.Background()
-	if _, err := c.Login(ctx, "user", "pass"); err != nil {
-		panic(err)
-	}
-	res, err := c.Search(ctx, "SSIS-589", javdb.SearchOptions{Limit: 5})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(len(res.Movies()))
+c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
+if err != nil {
+	panic(err)
 }
+
+res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
+if err != nil {
+	panic(err)
+}
+fmt.Println(len(res.Movies()))
 ```
 
-更多见 [docs/sdk.zh-CN.md](./docs/sdk.zh-CN.md)。
+导入 `github.com/FlanChanXwO/javdb-cli/javdb`。[SDK 指南](docs/sdk.zh-CN.md)
+说明公开模型、client options 与调用方职责。
+
+### Agent skill
+
+仓库提供 [skills/javdb-cli](skills/javdb-cli/SKILL.md)，为 Coding Agent 定义专用操作 skill。
+它规定了凭据处理、确认边界、命令级参数、JSON/错误处理与搜索到详情的导航。仅在明确的 JavDB
+任务中加载，并在执行前用 `javdb <command> --help` 核对参数。
+
+## 认证与凭据安全
+
+推荐用 `javdb auth login` 配置账号。用户名、密码与 session token 会保存于本地多账号存储
+`~/.javdb-cli/auth.json`（权限 `0600`）。不得提交、打印、粘贴或上传该文件、密码或 JWT。
+
+```bash
+javdb auth list
+javdb auth use USER_ID
+javdb auth check --json
+```
+
+`javdb auth check` 会验证默认 token 而不会打印它。默认会明确报告 token 过期。`auto_relogin`
+是 opt-in，且会用已保存密码重登一次；仅在接受这一行为后开启：
+
+```bash
+javdb config set auto_relogin true
+```
+
+磁力、TOP250 和用户列表需要默认已认证账号。`mark`/`unmark`、账号变更以及
+`config set`/`unset` 会修改服务端或本地状态，应审慎使用。
 
 ## 文档
 
-| 文档 | 说明 |
-|------|------|
-| [docs/index.zh-CN.md](./docs/index.zh-CN.md) | 文档导航 |
-| [docs/usage.zh-CN.md](./docs/usage.zh-CN.md) | 命令参考 |
-| [docs/development.zh-CN.md](./docs/development.zh-CN.md) | 构建、测试、目录结构 |
-| [docs/sdk.zh-CN.md](./docs/sdk.zh-CN.md) | 公开包说明 |
-| [CONTRIBUTING.zh-CN.md](./CONTRIBUTING.zh-CN.md) | 贡献指南 |
-| [CHANGELOG.zh-CN.md](./CHANGELOG.zh-CN.md) | 更新日志 |
+| 文档 | 用途 |
+| --- | --- |
+| [命令参考](docs/usage.zh-CN.md) | 命令、flag、认证、配置与常见流程 |
+| [Agent 操作 skill](skills/javdb-cli/SKILL.md) | Agent 路由、密钥、写操作、检索与错误 |
+| [Go SDK](docs/sdk.zh-CN.md) | 公开 client、模型和 options |
+| [开发指南](docs/development.zh-CN.md) | 工具链、测试、平台构建、打包与发版 |
+| [贡献指南](CONTRIBUTING.zh-CN.md) | 本地质量门与贡献规范 |
+| [更新日志](CHANGELOG.zh-CN.md) | 用户可感知变更 |
 
-英文版为同名不带 `.zh-CN` 的文件。
+## 参与贡献
 
-## 测试
+欢迎提交 bug、文档修复、测试和聚焦功能。发起 pull request 前请阅读
+[CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)；较大或影响兼容性的变更请先讨论。
 
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
-sh scripts/build.sh
-```
+## 关于 views badge
+
+`hits.sh` badge 统计图片请求，不代表唯一用户数。重复访问、机器人和缓存都会影响该数字；加载
+badge 也会向第三方 `hits.sh` 发出普通图片请求。两种语言页面使用同一 badge URL。
 
 ## 许可证
 
-[MIT](./LICENSE) © FlanChanXwO
+[MIT](LICENSE) © FlanChanXwO

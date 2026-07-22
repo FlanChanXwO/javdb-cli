@@ -10,11 +10,11 @@ import (
 )
 
 type entityFlags struct {
-	zone, sort, order        string
-	page, limit              int
-	tagRefs, mainFlags       []string
-	allPages, hasMagnets     bool
-	asJSON                   bool
+	zone, sort, order    string
+	page, limit          int
+	tagRefs, mainFlags   []string
+	allPages, hasMagnets bool
+	asJSON               bool
 }
 
 func addEntityFlags(cmd *cobra.Command, f *entityFlags) {

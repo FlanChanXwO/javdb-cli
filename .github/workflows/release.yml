@@ -3,196 +3,511 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]*"
+      - 'v[0-9]*'
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "SemVer tag to publish (e.g. v0.1.0)"
+        description: Existing immutable stable SemVer tag to publish
         required: true
         type: string
+
+# push 和手动恢复只在此处选择发布 tag。后续所有 checkout、版本和 Release 都绑定该值。
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 permissions: {}
 
 jobs:
   validate:
-    name: Validate tag
+    name: Validate release tag
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.ver.outputs.version }}
-      tag: ${{ steps.ver.outputs.tag }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
 
-      - name: Parse version
-        id: ver
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify the exact immutable stable release tag
+        id: release
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_TAG: ${{ inputs.release_tag }}
-          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            tag="$INPUT_TAG"
-          else
-            tag="$REF_NAME"
+          tag="$RELEASE_TAG"
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            printf '%s\n' "release tag must be stable SemVer vX.Y.Z, got: $tag" >&2
+            exit 1
           fi
-          case "$tag" in
-            v[0-9]*) ;;
-            *)
-              echo "tag must look like v0.1.0, got: $tag" >&2
-              exit 1
-              ;;
-          esac
-          ver="${tag#v}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "release tag=$tag version=$ver"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          fi
+          git show-ref --verify --quiet "refs/tags/$tag"
+          git fetch --no-tags origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          tag_commit=$(git rev-parse "$tag^{commit}")
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            printf '%s\n' "a GitHub Release already exists for $tag" >&2
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check release workflow policy
+        shell: bash
+        run: sh scripts/test-workflows.sh
 
   build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: validate
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - goos: darwin
+          - runner: macos-15-intel
+            goos: darwin
             goarch: amd64
-          - goos: darwin
+          - runner: macos-15
+            goos: darwin
             goarch: arm64
-          - goos: linux
+          - runner: ubuntu-22.04
+            goos: linux
             goarch: amd64
-          - goos: linux
+          - runner: ubuntu-22.04-arm
+            goos: linux
             goarch: arm64
-          - goos: windows
+          - runner: windows-2025
+            goos: windows
             goarch: amd64
-          - goos: windows
+          - runner: windows-11-arm
+            goos: windows
             goarch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Build archive
+      - name: Require the immutable native source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          test "$(go env GOOS)" = '${{ matrix.goos }}'
+          test "$(go env GOARCH)" = '${{ matrix.goarch }}'
+
+      - name: Check Go formatting
+        shell: bash
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+
+      - name: Test Go sources
+        shell: bash
+        run: go test ./... -count=1
+
+      - name: Test Go sources with the race detector
+        # Go 1.26 不支持 windows/arm64 race；其余原生目标保留该质量门。
+        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        shell: bash
+        run: go test -race ./... -count=1
+
+      - name: Vet Go sources
+        shell: bash
+        run: go vet ./...
+
+      - name: Test release packaging
+        shell: bash
+        run: sh scripts/test-package-release.sh
+
+      - name: Build, package, and smoke the versioned binary
         shell: bash
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
-          ver="$VERSION"
-          commit="$(git rev-parse --short HEAD)"
-          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          module="github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
-          ext=""
-          if [ "$GOOS" = "windows" ]; then
-            ext=".exe"
+          mkdir -p dist smoke
+          binary='dist/javdb'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='dist/javdb.exe'
           fi
-          bin="javdb${ext}"
-          stage="$(mktemp -d)"
-          CGO_ENABLED=0 go build -trimpath \
-            -ldflags "-s -w -X ${module}.Version=${ver} -X ${module}.Commit=${commit} -X ${module}.BuildDate=${date}" \
-            -o "${stage}/${bin}" ./cmd/javdb
-          cp LICENSE README.md "${stage}/" || true
-          name="javdb-cli_${ver}_${GOOS}_${GOARCH}"
-          mkdir -p dist
-          if [ "$GOOS" = "windows" ]; then
-            (cd "$stage" && zip -qr "${GITHUB_WORKSPACE}/dist/${name}.zip" .)
+          sh scripts/build-release.sh \
+            --version "$VERSION" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --output "$binary"
+          sh scripts/package-release.sh \
+            --binary "$binary" \
+            --version "$VERSION" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --output-dir dist
+          archive="dist/javdb-cli_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          smoked_binary='smoke/javdb'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            7z x "${archive}.zip" -osmoke
+            smoked_binary='smoke/javdb.exe'
           else
-            tar -C "$stage" -czf "dist/${name}.tar.gz" .
+            tar -xzf "${archive}.tar.gz" -C smoke
           fi
-          ls -la dist/
+          "./$smoked_binary" version --json | tee "$RUNNER_TEMP/javdb-version.json"
+          grep -F "\"version\":\"v${VERSION}\"" "$RUNNER_TEMP/javdb-version.json"
 
-      - uses: actions/upload-artifact@v4
+  # 在全新 runner 上从同一不可变 tag 重建。测试 job 的临时状态不会进入发布产物。
+  build_production:
+    name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            artifact: darwin-amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            artifact: darwin-arm64
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+            artifact: linux-amd64
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+            artifact: linux-arm64
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            artifact: windows-amd64
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            artifact: windows-arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          name: javdb-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/*
+          clean: true
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Rebuild and package only the immutable release source
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          mkdir -p dist
+          binary='dist/javdb'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='dist/javdb.exe'
+          fi
+          sh scripts/build-release.sh \
+            --version "$VERSION" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --output "$binary"
+          sh scripts/package-release.sh \
+            --binary "$binary" \
+            --version "$VERSION" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --output-dir dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-release-${{ matrix.artifact }}
+          path: dist/javdb-cli_*
           if-no-files-found: error
+          retention-days: 1
+
+  verify_release_source:
+    name: Verify release source trust
+    needs: build_production
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Require the tag commit on the default release branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
 
   publish:
     name: Publish GitHub Release
-    needs: [validate, build]
+    needs: [validate, verify_release_source]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          path: artifacts
-          merge-multiple: true
+          name: verified-release-darwin-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-darwin-arm64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-linux-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-linux-arm64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-windows-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-windows-arm64
+          path: dist
 
-      - name: Collect assets and checksums
+      - name: Check the exact release asset set and write checksums
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp -v {} dist/ \;
-          ls -la dist/
-          cd dist
-          sha256sum javdb-cli_"${VERSION}"_* > checksums.txt
-          cat checksums.txt
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            ext=tar.gz
+            if [ "$goos" = windows ]; then
+              ext=zip
+            fi
+            test -f "dist/javdb-cli_${VERSION}_${goos}_${goarch}.${ext}"
+          done
+          test "$(find dist -maxdepth 1 -type f -name 'javdb-cli_*' | wc -l | tr -d ' ')" = 6
+          (
+            cd dist
+            sha256sum javdb-cli_"${VERSION}"_* > checksums.txt
+          )
+          cat dist/checksums.txt
 
-      - name: Create GitHub Release
+      - name: Create and verify the GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.validate.outputs.tag }}
-          VERSION: ${{ needs.validate.outputs.version }}
-        shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release $TAG already exists; uploading assets only" >&2
-            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            notes="Release v${VERSION}
-
-          See CHANGELOG.md for details.
-
-          Install:
-
-              brew install FlanChanXwO/tap/javdb-cli
-
-          Or download archives from this release."
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "v${VERSION}" \
-              --notes "$notes" \
-              dist/*
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --notes "Release $RELEASE_TAG\n\nSee CHANGELOG.md for details." \
+            dist/javdb-cli_*.tar.gz \
+            dist/javdb-cli_*.zip \
+            dist/checksums.txt
+          expected=$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)
+          actual=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)
+          if [ "$actual" != "$expected" ]; then
+            printf '%s\n' 'draft release assets differ from the verified local set' >&2
+            printf '%s\n' "expected:$expected" >&2
+            printf '%s\n' "actual:$actual" >&2
+            exit 1
           fi
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
-      - name: Render Homebrew formula
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-release-checksums
+          path: dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  render_homebrew_formula:
+    name: Render Homebrew formula
+    needs: [validate, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-checksums
+          path: verified-release
+
+      - name: Render the formula from published checksums
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
+          mkdir -p staging-formula
           bash scripts/render-homebrew-formula.sh \
             --version "$VERSION" \
-            --checksums dist/checksums.txt \
-            --output dist/javdb-cli.rb
-          cat dist/javdb-cli.rb
+            --checksums verified-release/checksums.txt \
+            --output staging-formula/javdb-cli.rb
+          printf '%s\n' javdb-cli > staging-formula/formula-name
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: homebrew-formula
-          path: dist/javdb-cli.rb
+          name: staging-homebrew-formula
+          path: staging-formula
+          if-no-files-found: error
+          retention-days: 1
+
+  verify_homebrew_formula:
+    name: Verify Homebrew on ${{ matrix.os }}/${{ matrix.arch }}
+    needs: render_homebrew_formula
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+          - runner: ubuntu-22.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            os: linux
+            arch: arm64
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+
+      - name: Install the staging formula and verify its embedded version
+        shell: bash
+        run: |
+          set -euo pipefail
+          formula_name=$(cat staging-formula/formula-name)
+          test "$formula_name" = javdb-cli
+          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/javdb-cli.rb | LC_ALL=C sort)"
+          if [ '${{ matrix.os }}' = linux ]; then
+            staging_dir="$(pwd)/staging-formula"
+            docker run --rm \
+              --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
+              --env RELEASE_TAG \
+              --env HOMEBREW_NO_AUTO_UPDATE=1 \
+              --env HOMEBREW_NO_ENV_HINTS=1 \
+              --entrypoint bash \
+              homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd \
+              -euo pipefail -c '
+                brew tap-new javdb-cli-release/staging --no-git
+                tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
+                cp /staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
+                brew install --formula javdb-cli-release/staging/javdb-cli
+                javdb version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
+              '
+          else
+            brew tap-new javdb-cli-release/staging --no-git
+            brew trust --tap javdb-cli-release/staging
+            tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
+            cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
+            brew install --formula javdb-cli-release/staging/javdb-cli
+            javdb version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
+          fi
+
+  # 默认跳过：只有显式设置仓库变量 HOMEBREW_TAP_DEPLOY_ENABLED=true 才允许使用 protected
+  # environment 中的 deploy key 推送到 tap，避免未配置密钥的普通发布被伪装为成功部署。
+  deploy_homebrew_tap:
+    name: Deploy verified Homebrew formula
+    needs: verify_homebrew_formula
+    if: vars.HOMEBREW_TAP_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+
+      - name: Prepare the exact formula commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat staging-formula/formula-name)" = javdb-cli
+          test -f staging-formula/javdb-cli.rb
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
+          git -C "$tap_dir" config user.name github-actions[bot]
+          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          mkdir -p "$tap_dir/Formula"
+          cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
+          git -C "$tap_dir" add -- Formula/javdb-cli.rb
+          test "$(git -C "$tap_dir" diff --cached --name-only)" = Formula/javdb-cli.rb
+          git -C "$tap_dir" commit -m "$RELEASE_TAG: update javdb-cli formula"
+
+      - name: Push the verified formula with the protected deploy key
+        shell: bash
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
+          umask 077
+          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
+          trap 'rm -f "$key_path"' EXIT HUP INT TERM
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
+          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
+            git -C "$tap_dir" push origin HEAD:main

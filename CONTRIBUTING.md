@@ -33,6 +33,7 @@ internal/
   storage/tags/     # tag taxonomy cache
   buildinfo/        # version ldflags
 scripts/            # build helpers
+skills/javdb-cli/    # agent operator skill
 docs/               # user & dev docs (EN + ZH)
 ```
 
@@ -46,7 +47,7 @@ docs/               # user & dev docs (EN + ZH)
 
 ## Pull requests
 
-1. Run `go test ./...`, `go test -race ./...`, `go vet ./...`, `sh scripts/build.sh`.
+1. Run `go test ./...`, `go test -race ./...`, `go vet ./...`, `sh scripts/build.sh`, `sh scripts/test-package-release.sh`, `sh scripts/test-homebrew-formula.sh`, and `sh scripts/test-workflows.sh`.
 2. Keep commits focused; reference the feature in the message.
 3. Update `CHANGELOG.md` / `CHANGELOG.zh-CN.md` for user-visible changes.
 4. CI on `main` / PRs must stay green once workflows are enabled.

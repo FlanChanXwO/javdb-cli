@@ -33,6 +33,7 @@ internal/
   storage/tags/     # 标签分类缓存
   buildinfo/        # 版本 ldflags
 scripts/            # 构建脚本
+skills/javdb-cli/    # 面向 agent 的操作 skill
 docs/               # 用户与开发文档（中英）
 ```
 
@@ -46,7 +47,7 @@ docs/               # 用户与开发文档（中英）
 
 ## Pull Request
 
-1. 本地跑通 `go test ./...`、`go test -race ./...`、`go vet ./...`、`sh scripts/build.sh`。
+1. 本地跑通 `go test ./...`、`go test -race ./...`、`go vet ./...`、`sh scripts/build.sh`、`sh scripts/test-package-release.sh`、`sh scripts/test-homebrew-formula.sh`、`sh scripts/test-workflows.sh`。
 2. 提交信息聚焦改动本身。
 3. 用户可见变更请更新 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`。
 4. 启用 CI 后，`main` / PR 必须保持绿灯。

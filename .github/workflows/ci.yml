@@ -21,14 +21,18 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Check Go formatting
+        shell: bash
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
 
       - name: Test
         shell: bash
@@ -44,7 +48,7 @@ jobs:
 
       - name: Build local binary
         shell: bash
-        run: bash scripts/build.sh
+        run: sh scripts/build.sh
 
       - name: Version smoke
         shell: bash
@@ -52,10 +56,22 @@ jobs:
           set -euo pipefail
           ./build/javdb version
           ./build/javdb version --json | tee /tmp/javdb-version.json
-          # JSON must include a version field (dev or vX.Y.Z)
           python3 - <<'PY'
           import json
-          data = json.load(open("/tmp/javdb-version.json"))
-          assert "version" in data and data["version"], data
-          print("version ok:", data["version"])
+          data = json.load(open('/tmp/javdb-version.json'))
+          assert data['version'], data
+          print('version ok:', data['version'])
           PY
+
+      - name: Test release packaging and workflow policy
+        shell: bash
+        run: |
+          sh scripts/test-package-release.sh
+          sh scripts/test-homebrew-formula.sh
+          sh scripts/test-workflows.sh
+
+      - name: Run pre-commit checks
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check pre-commit==4.6.0
+          python -m pre_commit run --all-files

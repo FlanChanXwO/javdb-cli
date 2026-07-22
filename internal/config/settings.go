@@ -23,11 +23,11 @@ var HostURLs = map[string]string{
 
 // Settings is the on-disk config.toml schema.
 type Settings struct {
-	Host         string `toml:"host"`
-	HTTPSProxy   string `toml:"https_proxy,omitempty"`
-	AutoRelogin  bool   `toml:"auto_relogin"`
-	Lang         string `toml:"lang,omitempty"`
-	DeviceUUID   string `toml:"device_uuid,omitempty"` // optional override; else file/device_uuid
+	Host        string `toml:"host"`
+	HTTPSProxy  string `toml:"https_proxy,omitempty"`
+	AutoRelogin bool   `toml:"auto_relogin"`
+	Lang        string `toml:"lang,omitempty"`
+	DeviceUUID  string `toml:"device_uuid,omitempty"` // optional override; else file/device_uuid
 }
 
 // Defaults returns baseline settings.

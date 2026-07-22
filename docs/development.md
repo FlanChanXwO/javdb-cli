@@ -27,6 +27,7 @@ VERSION=0.1.0 sh scripts/build.sh
 ```
 
 Release CI should pass the same ldflags with `CGO_ENABLED=0`.
+The local output is `build/javdb` (`build/javdb.exe` on Windows).
 
 ## Test
 
@@ -34,6 +35,9 @@ Release CI should pass the same ldflags with `CGO_ENABLED=0`.
 go test ./...
 go test -race ./...
 go vet ./...
+sh scripts/test-package-release.sh
+sh scripts/test-homebrew-formula.sh
+sh scripts/test-workflows.sh
 ```
 
 Unit tests are offline (param builders, printers, auth store, etc.).  
@@ -60,6 +64,9 @@ internal/storage/auth/  # multi-account auth.json
 internal/storage/tags/  # tag taxonomy files
 internal/buildinfo/     # version metadata
 scripts/build.sh
+scripts/build-release.sh
+scripts/package-release.sh
+skills/javdb-cli/       # agent operator skill + focused references
 docs/                   # product docs (EN + ZH)
 ```
 
@@ -88,11 +95,49 @@ Prefer mirror for direct connectivity. Use `--proxy` when targeting the main hos
 - Auth failures must not dump tokens or passwords.
 - Product documentation only under `docs/` (no reverse-engineering narratives).
 
-## Release checklist (high level)
+## Release and platform verification
 
-1. Green `go test` / race / vet / build  
-2. Tag `vX.Y.Z`  
-3. CI builds multi-arch archives + checksums  
-4. Update Homebrew formula on `FlanChanXwO/homebrew-tap`  
+The release contract covers exactly six native targets: `darwin/amd64`,
+`darwin/arm64`, `linux/amd64`, `linux/arm64`, `windows/amd64`, and
+`windows/arm64`. Release binaries are built with `CGO_ENABLED=0`,
+`-trimpath`, and `-buildvcs=false`; each archive contains only the target
+binary, `LICENSE`, and `README.md`.
 
-See the project plan / goal tasks for the full pipeline.
+To rehearse one target locally (without publishing anything):
+
+```bash
+mkdir -p dist
+sh scripts/build-release.sh \
+  --version 0.1.1 \
+  --target darwin/arm64 \
+  --output dist/javdb
+sh scripts/package-release.sh \
+  --binary dist/javdb \
+  --version 0.1.1 \
+  --target darwin/arm64 \
+  --output-dir dist
+tar -xzf dist/javdb-cli_0.1.1_darwin_arm64.tar.gz -C /tmp/javdb-smoke
+/tmp/javdb-smoke/javdb version --json
+```
+
+`package-release.sh` refuses unsupported targets, unexpected binary names,
+symbolic-link output paths, and existing asset names. It uses `7z` on the
+Windows Git Bash runner because that image does not provide `zip`.
+
+GitHub Actions mirrors the pixiv-cli release shape while remaining appropriate
+for this pure-Go project:
+
+1. **Quality gate** runs formatting, unit/race tests, vet, local build, and the package/workflow tests on every PR and `main` push.
+2. **Platform packaged binary smoke** runs the test suite, builds, packages,
+   extracts, and executes `javdb version --json` on all six native runners.
+3. A tag `vX.Y.Z` is validated as immutable and reachable from `main`. Six
+   native jobs test the tagged source; fresh jobs then rebuild the only assets
+   allowed into the release.
+4. The publisher creates a draft Release, compares its uploaded assets with
+   the local verified set, publishes it, and renders the Homebrew formula from
+   the same `checksums.txt`. The staging formula is installed and checked on
+   macOS and Linux runners before any tap deployment.
+5. Tap deployment is intentionally opt-in: set repository variable
+   `HOMEBREW_TAP_DEPLOY_ENABLED=true` and put `HOMEBREW_TAP_DEPLOY_KEY` in the
+   protected `release` environment. Without both, the Release and Formula
+   verification complete but the deployment job is skipped.

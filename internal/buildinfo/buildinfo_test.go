@@ -4,10 +4,10 @@ import "testing"
 
 func TestNormalizeVersion(t *testing.T) {
 	cases := map[string]string{
-		"dev":     "dev",
-		"":        "dev",
-		"0.1.0":   "v0.1.0",
-		"v0.1.0":  "v0.1.0",
+		"dev":           "dev",
+		"":              "dev",
+		"0.1.0":         "v0.1.0",
+		"v0.1.0":        "v0.1.0",
 		"v0.1.0-beta.1": "v0.1.0-beta.1",
 	}
 	for in, want := range cases {

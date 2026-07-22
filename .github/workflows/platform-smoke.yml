@@ -1,0 +1,104 @@
+name: Platform packaged binary smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+concurrency:
+  group: platform-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  packaged_binary_smoke:
+    name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+          - runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Require the declared native target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = '${{ matrix.goos }}'
+          test "$(go env GOARCH)" = '${{ matrix.goarch }}'
+
+      - name: Test and vet on the native platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./... -count=1
+          go vet ./...
+
+      - name: Test with the race detector where Go supports it
+        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        shell: bash
+        run: go test -race ./... -count=1
+
+      - name: Build, package, extract, and smoke the native binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.1.1-ci.${GITHUB_RUN_ID}"
+          mkdir -p dist smoke
+          binary='dist/javdb'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='dist/javdb.exe'
+          fi
+          sh scripts/build-release.sh \
+            --version "$version" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --output "$binary"
+          sh scripts/package-release.sh \
+            --binary "$binary" \
+            --version "$version" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --output-dir dist
+          archive="dist/javdb-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          smoked_binary='smoke/javdb'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            7z x "${archive}.zip" -osmoke
+            smoked_binary='smoke/javdb.exe'
+          else
+            tar -xzf "${archive}.tar.gz" -C smoke
+          fi
+          test -f "$smoked_binary"
+          "./$smoked_binary" version --json | tee "$RUNNER_TEMP/javdb-version.json"
+          grep -F "\"version\":\"v${version}\"" "$RUNNER_TEMP/javdb-version.json"

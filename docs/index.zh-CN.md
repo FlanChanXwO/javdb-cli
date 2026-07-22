@@ -9,6 +9,7 @@
 | [usage.zh-CN.md](./usage.zh-CN.md) | 命令行参考与常见流程 |
 | [development.zh-CN.md](./development.zh-CN.md) | 构建、测试、目录结构 |
 | [sdk.zh-CN.md](./sdk.zh-CN.md) | 公开 Go 包 `javdb` |
+| [skills/javdb-cli/SKILL.md](../skills/javdb-cli/SKILL.md) | Agent 安全操作指南 |
 
 另见：
 

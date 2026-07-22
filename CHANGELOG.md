@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-23
+
+### Added
+
+- `skills/javdb-cli`: an agent operator skill with credential, state-change,
+  discovery, installation, and troubleshooting guidance.
+- Native packaged-binary smoke coverage for macOS (Intel/Apple Silicon), Linux
+  (amd64/arm64), and Windows (amd64/arm64).
+
+### Changed
+
+- Release builds now use explicit single-target build/package scripts, rebuild
+  immutable release tags on fresh native runners, verify the asset set before
+  publishing, and validate the generated Homebrew formula before optional tap
+  deployment.
+
 ## [0.1.0] - 2026-07-18
 
 First public release.
