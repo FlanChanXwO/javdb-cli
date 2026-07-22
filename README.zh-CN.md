@@ -6,7 +6,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-<p><a href="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/platform-smoke.yml"><img alt="Platform smoke" src="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/platform-smoke.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/javdb-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/javdb-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/javdb-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/javdb-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/javdb-cli.svg?style=flat-square&amp;label=views"></p>
+<p><a href="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/platform-smoke.yml"><img alt="Platform smoke" src="https://github.com/FlanChanXwO/javdb-cli/actions/workflows/platform-smoke.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/javdb-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/javdb-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/javdb-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/javdb-cli?style=flat-square"></a></p>
 
 [安装](#安装) · [快速开始](#60-秒快速开始) · [使用入口](#选择使用入口) · [文档](#文档) · [参与贡献](CONTRIBUTING.zh-CN.md)
 
@@ -180,11 +180,6 @@ javdb config set auto_relogin true
 
 欢迎提交 bug、文档修复、测试和聚焦功能。发起 pull request 前请阅读
 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)；较大或影响兼容性的变更请先讨论。
-
-## 关于 views badge
-
-`hits.sh` badge 统计图片请求，不代表唯一用户数。重复访问、机器人和缓存都会影响该数字；加载
-badge 也会向第三方 `hits.sh` 发出普通图片请求。两种语言页面使用同一 badge URL。
 
 ## 许可证
 
