@@ -75,6 +75,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    # Git for Windows 会按 runner 默认值把 tag 源码转为 CRLF；格式门必须检查 Git
+    # blob 的 LF 字节，不能把 checkout 转换误报为未执行 gofmt。
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -177,6 +183,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    # 生产构建也固定 checkout 的行尾，使所有平台从同一 tag 字节重建资产。
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
       matrix:

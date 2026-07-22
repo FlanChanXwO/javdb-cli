@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Credential-store permission tests now account for Windows not exposing POSIX
   mode bits, while retaining the `0600` assertion on supported platforms.
+- Release checks preserve LF source bytes on Windows so Git checkout conversion
+  cannot be mistaken for an unformatted Go source file.
 
 ## [0.1.0] - 2026-07-18
 
