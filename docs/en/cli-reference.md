@@ -117,11 +117,33 @@ magnet set; it does not download anything. `mark` and `unmark` change remote
 watch/want state. `mark` requires exactly one of `--watched` or `--want`; obtain
 confirmation before running either command for another person or account.
 
-## Version, JSON, and error handling
+## Update and version
 
 ```bash
-javdb version
-javdb version --json
+javdb update [--check] [--prerelease] [--json]
+javdb version [--json]
+```
+
+`update` is explicit: it never runs in the background. `update --check` only
+queries GitHub Releases and reports `source`, `current_version`,
+`latest_version`, `latest_prerelease`, and `update_available`. Add `--json` only
+with `--check` for that machine-readable result. Without `--check`, it installs
+only when a newer selected release exists.
+
+The command preserves the installation channel: Homebrew uses its Formula,
+`go install` re-runs the exact release tag, and a Release archive downloads only
+the matching platform asset. Archive installation verifies the asset SHA-256
+from that Release's `checksums.txt` and runs the downloaded binary's
+`version --json` before replacement. `--prerelease` includes prerelease tags;
+Homebrew installations cannot install those tags. `--proxy` applies to GitHub
+requests; `--host` does not, because update never contacts the JavDB App API.
+
+Development builds (`version=dev`) deliberately refuse self-update. Install a
+published release first. On Windows, a successful replacement leaves the prior
+binary as a temporary `.old` file, which javdb removes on its next startup.
+
+```bash
+javdb version [--json]
 ```
 
 `version --json` emits `version`, `commit`, and `build_date`. Commands that

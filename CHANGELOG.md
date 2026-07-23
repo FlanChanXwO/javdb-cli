@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-24
+
+### Added
+
+- `javdb update` now checks for and installs newer GitHub Releases while
+  preserving the Homebrew, `go install`, or Release-archive installation
+  channel. The read-only `--check --json` form supports automation.
+- Release-archive updates select the running OS/architecture, verify the
+  published SHA-256, preflight `javdb version --json`, and replace the binary
+  only after those checks pass.
+
 ## [0.1.1] - 2026-07-23
 
 ### Added

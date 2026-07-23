@@ -54,7 +54,7 @@ brew upgrade javdb-cli
 请使用精确的已发布 tag：
 
 ```bash
-go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.1.1
+go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.2.0
 ```
 
 ### Release 压缩包或源码构建
@@ -72,6 +72,21 @@ sh scripts/build.sh
 
 发布契约覆盖 macOS、Linux、Windows 的 amd64 与 arm64。可复现目标构建及归档内容见
 [开发指南](docs/maintainers/development.md#构建打包与平台)。
+
+### 更新
+
+已发布的安装可先检查，再安装新版：
+
+```bash
+javdb update --check
+javdb update
+```
+
+`update` 会识别 `javdb` 由 Homebrew、`go install` 还是 Release 压缩包管理，并选择对应渠道。
+压缩包更新只下载当前 OS/架构的资产，用同一 Release 的 `checksums.txt` 校验 SHA-256，再验证下载
+二进制报告的版本，最后替换可执行文件。`--check --json` 是机器可读且不写入的检查形式；
+`--prerelease` 会纳入预发布 tag。Homebrew 安装只支持 stable release。现有的 `--proxy URL` 同样
+适用于 Release 检查。
 
 ### 让 Coding Agent 安装
 

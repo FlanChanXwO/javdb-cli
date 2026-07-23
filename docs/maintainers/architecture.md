@@ -60,6 +60,12 @@ HTTP、签名或上游响应解码。
 保存 linker 注入的版本、提交和构建时间。开发构建保留明确的默认值，不伪造
 发布版本。
 
+### `internal/update`
+
+负责显式更新的 Release 发现、语义版本选择、安装来源识别、checksum 校验后的 archive 替换，
+以及平台相关的可执行文件替换边界。`internal/cli` 只翻译 `javdb update` 的 flag 和输出，
+不直接下载资产或猜测包管理器归属。
+
 ## 目录约定
 
 目录与 pixiv-cli 采用相同的高层语义：`cmd/` 是入口，`internal/cli/` 是用户

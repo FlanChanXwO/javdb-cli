@@ -61,7 +61,7 @@ The Formula is updated after a verified release when tap deployment is enabled.
 Use an exact published tag:
 
 ```bash
-go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.1.1
+go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.2.0
 ```
 
 ### Release archive or source build
@@ -81,6 +81,23 @@ sh scripts/build.sh
 The release contract covers macOS, Linux, and Windows on amd64 and arm64. See
 the [development guide](docs/maintainers/development.md#构建打包与平台)
 for reproducible target builds and archive contents.
+
+### Update
+
+Published installations can check for a newer release and install it with:
+
+```bash
+javdb update --check
+javdb update
+```
+
+`update` detects whether `javdb` is managed by Homebrew, `go install`, or a
+Release archive, then uses that matching channel. Archive updates fetch only the
+current OS/architecture asset, verify its SHA-256 against the same Release's
+`checksums.txt`, validate the downloaded binary's version, and then replace the
+executable. `--check --json` is the machine-readable, no-write form;
+`--prerelease` includes prerelease tags. A Homebrew installation supports stable
+releases only. The existing `--proxy URL` setting also applies to Release checks.
 
 ### Install with a coding agent
 

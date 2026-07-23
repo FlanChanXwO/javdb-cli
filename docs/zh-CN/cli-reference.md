@@ -104,11 +104,27 @@ javdb unmark NUMBER [--id]
 `mark`/`unmark` 会改写远程的看过/想看状态；`mark` 必须且只能传入
 `--watched` 或 `--want` 之一。替他人或其他账号操作前必须确认。
 
-## 版本、JSON 与错误
+## 更新与版本
 
 ```bash
-javdb version
-javdb version --json
+javdb update [--check] [--prerelease] [--json]
+javdb version [--json]
+```
+
+`update` 只在用户显式调用时执行，不会后台自动更新。`update --check` 只查询 GitHub Releases，
+输出 `source`、`current_version`、`latest_version`、`latest_prerelease` 与 `update_available`。
+只有 `--check` 可组合 `--json`，以获得该机器可读结果；不加 `--check` 时，仅在存在更高的所选版本后安装。
+
+命令会保留安装渠道：Homebrew 使用 Formula，`go install` 使用精确 Release tag 重新安装，Release
+压缩包只下载匹配平台的资产。压缩包安装先按同一 Release 的 `checksums.txt` 校验 SHA-256，再运行下载
+二进制的 `version --json`，两者通过后才替换。`--prerelease` 会纳入预发布 tag；Homebrew 安装无法
+安装该类 tag。`--proxy` 用于 GitHub 请求；`--host` 不生效，因为 update 不会访问 JavDB App API。
+
+开发构建（`version=dev`）会明确拒绝自更新，应先安装已发布版本。Windows 成功替换后会暂存旧二进制
+为 `.old`，下一次启动 javdb 时自动清理。
+
+```bash
+javdb version [--json]
 ```
 
 `version --json` 输出 `version`、`commit`、`build_date`。支持 `--json` 的命令会将

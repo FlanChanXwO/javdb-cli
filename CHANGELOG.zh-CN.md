@@ -9,6 +9,15 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-24
+
+### 新增
+
+- `javdb update` 可检查并安装新的 GitHub Release，同时保留 Homebrew、`go install` 或 Release
+  压缩包的安装渠道；只读的 `--check --json` 形式可供自动化使用。
+- Release 压缩包更新会选择运行中的 OS/架构、验证发布的 SHA-256、预运行
+  `javdb version --json`，并且只在全部通过后替换二进制。
+
 ## [0.1.1] - 2026-07-23
 
 ### 新增

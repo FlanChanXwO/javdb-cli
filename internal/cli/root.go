@@ -14,11 +14,18 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/config"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
+	"github.com/FlanChanXwO/javdb-cli/internal/update"
 	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
 
 // Run executes the CLI with the given args (usually os.Args[1:]).
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	// Windows 的 ReplaceFileW 会保留运行中的旧二进制到下一次启动；在命令树创建前清理，
+	// 使失败可见且不会影响已完成的替换。
+	if err := update.CleanupPendingWindowsUpdate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	root := newRoot(stdin, stdout, stderr)
 	root.SetArgs(args)
 	root.SetIn(stdin)
@@ -67,6 +74,7 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newRankingsCmd(rf, aio))
 	root.AddCommand(newTop250Cmd(rf, aio))
 	root.AddCommand(newListsCmd(rf, aio))
+	root.AddCommand(newUpdateCmd(rf, aio))
 	root.AddCommand(newVersionCmd())
 	return root
 }

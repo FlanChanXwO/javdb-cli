@@ -43,6 +43,7 @@ internal/config/                   # 配置路径、文件和运行时合并
 internal/storage/auth/             # 多账号 auth.json
 internal/storage/tags/             # 公开标签目录缓存
 internal/buildinfo/                # linker 注入版本信息
+internal/update/                   # 显式更新、Release 校验与替换
 scripts/                           # 构建、打包和静态检查
 skills/javdb-cli/                  # 面向产品使用者的 agent skill
 docs/en/, docs/zh-CN/              # 公开接口文档
@@ -76,18 +77,22 @@ Release 只支持六个原生目标：`darwin/amd64`、`darwin/arm64`、`linux/a
 ```bash
 mkdir -p dist
 sh scripts/build-release.sh \
-  --version 0.1.1 \
+  --version 0.2.0 \
   --target darwin/arm64 \
   --output dist/javdb
 sh scripts/package-release.sh \
   --binary dist/javdb \
-  --version 0.1.1 \
+  --version 0.2.0 \
   --target darwin/arm64 \
   --output-dir dist
 ```
 
 `package-release.sh` 会拒绝不支持的平台、错误二进制名、符号链接输出和既有资产名。
 Windows Git Bash runner 用预装 `7z` 生成 ZIP。
+
+`javdb update` 依赖 Release 中与当前目标严格匹配的 archive 及 `checksums.txt`。安装器在替换
+二进制前必须验证该 archive 的 SHA-256，并执行候选二进制的 `version --json` 核对 tag；因此变更
+资产命名、平台矩阵或 checksum 格式时，必须同步更新 `internal/update` 的测试和用户文档。
 
 ## CI 与发布
 
