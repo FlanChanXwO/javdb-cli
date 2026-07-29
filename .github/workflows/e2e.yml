@@ -1,0 +1,76 @@
+name: Real API e2e
+
+# 对线上 JavDB App API 跑常见只读命令的端到端冒烟。需要登录凭据,因此仅在本仓库
+# (能读到 Actions secrets) 的 push / 主分支 PR / 手动触发上运行;fork PR 拿不到
+# secrets 时,e2e 脚本会以凭据缺失的软结果(SKIP)路径完成只读部分。
+#
+# 路径排除:纯文档/changelog/skills 改动不改变 CLI 行为,不触发本工作流,避免占用
+# runner 并白白消耗线上配额。任何代码、脚本、workflow、依赖或未列出文件的改动
+# 仍会触发。
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'README.*.md'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+      - 'CHANGELOG.*.md'
+      - 'skills/**'
+      - '**/*.md'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'README.*.md'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+      - 'CHANGELOG.*.md'
+      - 'skills/**'
+      - '**/*.md'
+  workflow_dispatch: {}
+
+concurrency:
+  group: real-api-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  real_api_e2e:
+    name: Real API e2e
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build local binary
+        shell: bash
+        run: sh scripts/build.sh
+
+      - name: Run real API e2e
+        shell: bash
+        env:
+          JAVDB_BIN: ./build/javdb
+          JAVDB_E2E_USERNAME: ${{ secrets.JAVDB_E2E_USERNAME }}
+          JAVDB_E2E_PASSWORD: ${{ secrets.JAVDB_E2E_PASSWORD }}
+        run: |
+          set -uo pipefail
+          # 凭据缺失时脚本走 SKIP 路径(只跑只读命令),退出码 2 视为软通过。
+          sh e2e/run.sh
+          rc=$?
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning::e2e ran read-only only (no JAVDB_E2E_USERNAME/PASSWORD secret)"
+            exit 0
+          fi
+          exit "$rc"
