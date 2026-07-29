@@ -66,8 +66,9 @@ jobs:
           JAVDB_E2E_PASSWORD: ${{ secrets.JAVDB_E2E_PASSWORD }}
         run: |
           set -uo pipefail
+          # 脚本以 bash 写(set -o pipefail),必须用 bash 调用而非 sh/dash。
           # 凭据缺失时脚本走 SKIP 路径(只跑只读命令),退出码 2 视为软通过。
-          sh e2e/run.sh
+          bash e2e/run.sh
           rc=$?
           if [ "$rc" -eq 2 ]; then
             echo "::warning::e2e ran read-only only (no JAVDB_E2E_USERNAME/PASSWORD secret)"
