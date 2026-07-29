@@ -1,3 +1,3 @@
-# Go SDK（兼容入口）
+# Go SDK moved
 
-请使用 [简体中文 SDK guide](zh-CN/sdk.md)。新链接请指向 locale 目录。
+- [简体中文](zh-CN/sdk.md)

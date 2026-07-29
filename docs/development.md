@@ -1,3 +1,3 @@
-# 开发文档（兼容入口）
+# Development documentation moved
 
-权威开发流程见 [维护者开发指南](maintainers/development.md)。
+See [`docs/maintainers/development.md`](maintainers/development.md).
