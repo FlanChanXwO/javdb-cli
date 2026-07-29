@@ -25,7 +25,8 @@ SKIP=0
 # assert_substring <label> <haystack> <needle>
 assert_substring() {
   local label="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -Fq -- "$needle"; then
+  # here-string 避免 grep -q 提前关闭管道在大输出下触发 SIGPIPE。
+  if grep -Fq -- "$needle" <<<"$haystack"; then
     printf '  ok   %s\n' "$label"; PASS=$((PASS+1))
   else
     printf '  FAIL %s: missing %q in output\n' "$label" "$needle"; FAIL=$((FAIL+1))
