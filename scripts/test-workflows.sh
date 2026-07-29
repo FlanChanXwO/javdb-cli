@@ -7,7 +7,8 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 for workflow in \
 	"$repo_root/.github/workflows/ci.yml" \
 	"$repo_root/.github/workflows/platform-smoke.yml" \
-	"$repo_root/.github/workflows/release.yml"; do
+	"$repo_root/.github/workflows/release.yml" \
+	"$repo_root/.github/workflows/e2e.yml"; do
 	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
 done
 
@@ -25,3 +26,11 @@ grep -F 'ref: ${{ env.RELEASE_TAG }}' "$release_workflow" >/dev/null
 grep -F 'needs: [validate, build]' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
+
+# e2e workflow 必须排除纯文档/changelog/skills 路径,避免文档改动触发真实 API 冒烟。
+e2e_workflow="$repo_root/.github/workflows/e2e.yml"
+grep -F "paths-ignore:" "$e2e_workflow" >/dev/null
+grep -F "'docs/**'" "$e2e_workflow" >/dev/null
+grep -F "'CHANGELOG.md'" "$e2e_workflow" >/dev/null
+grep -F "'skills/**'" "$e2e_workflow" >/dev/null
+grep -F 'secrets.JAVDB_E2E_USERNAME' "$e2e_workflow" >/dev/null
