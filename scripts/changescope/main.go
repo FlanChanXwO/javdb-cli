@@ -80,21 +80,6 @@ func docsOnlyPaths(paths []string) bool {
 	return true
 }
 
-func isApprovedDocumentationPath(path string) bool {
-	return path == "README.md" ||
-		(strings.HasPrefix(path, "README.") && strings.HasSuffix(path, ".md")) ||
-		path == "CONTRIBUTING.md" ||
-		(strings.HasPrefix(path, "CONTRIBUTING.") && strings.HasSuffix(path, ".md")) ||
-		path == "CHANGELOG.md" ||
-		(strings.HasPrefix(path, "CHANGELOG.") && strings.HasSuffix(path, ".md")) ||
-		strings.HasPrefix(path, "docs/") ||
-		strings.HasPrefix(path, "changelog/") ||
-		strings.HasPrefix(path, "skills/") ||
-		strings.HasPrefix(path, ".agents/skills/") ||
-		strings.HasPrefix(path, ".github/ISSUE_TEMPLATE/") ||
-		path == ".github/PULL_REQUEST_TEMPLATE.md"
-}
-
 func writeOutput(path string, docsOnly bool) error {
 	if path == "" {
 		return nil

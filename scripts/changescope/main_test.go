@@ -29,6 +29,14 @@ func TestDocsOnlyPaths(t *testing.T) {
 	}
 }
 
+func TestDocumentationOnlyPolicyDoesNotTreatMarkdownAnywhereAsDocumentation(t *testing.T) {
+	t.Parallel()
+
+	if isApprovedDocumentationPath("internal/cli/README.md") {
+		t.Fatal("source-adjacent Markdown must not bypass the full CI gate")
+	}
+}
+
 func TestSplitNULPathsPreservesWhitespace(t *testing.T) {
 	t.Parallel()
 
