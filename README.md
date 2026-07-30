@@ -148,16 +148,27 @@ Use `javdb config get` before relying on persisted settings.
 ### Go SDK
 
 ```go
-c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
-if err != nil {
-	panic(err)
-}
+package main
 
-res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
-if err != nil {
-	panic(err)
+import (
+	"context"
+	"fmt"
+
+	"github.com/FlanChanXwO/javdb-cli/javdb"
+)
+
+func main() {
+	c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
+	if err != nil {
+		panic(err)
+	}
+
+	res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(len(res.Movies()))
 }
-fmt.Println(len(res.Movies()))
 ```
 
 Import `github.com/FlanChanXwO/javdb-cli/javdb`. The [SDK guide](docs/en/sdk.md)

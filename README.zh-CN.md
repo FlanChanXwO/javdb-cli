@@ -13,7 +13,7 @@
 </div>
 
 `javdb-cli` 是独立开发的非官方命令行客户端与 Go SDK，用于访问
-[JavDB](https://javdb.com) App JSON API。它为用户、Coding Agent 和 Go 应用提供统一的
+[JavDB](https://javdb.com) App JSON API。它为用户、AI Agent 和 Go 应用提供统一的
 搜索、目录导航、影片详情、磁力、排行与已认证用户列表能力；它不是网页爬虫、不包含 MCP，
 也不与 JavDB 或其运营方存在隶属、认可或其他关联。请仅在遵守 JavDB 条款和所在地适用法律的
 前提下使用。
@@ -88,9 +88,9 @@ javdb update
 `--prerelease` 会纳入预发布 tag。Homebrew 安装只支持 stable release。现有的 `--proxy URL` 同样
 适用于 Release 检查。
 
-### 让 Coding Agent 安装
+### 让 AI Agent 安装
 
-把以下 prompt 复制给能访问本机终端的 Codex、Claude Code、Cursor 或其他 Coding Agent：
+把以下 prompt 复制给能访问本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：
 
 ```text
 请为这台机器安装 https://github.com/FlanChanXwO/javdb-cli 的最新 stable 版本。检测操作系统和架构，只下载官方 GitHub Release 资产，必须先用 checksums.txt 中对应的 SHA-256 校验通过才安装；创建或修改任何 PATH 目录前先询问；绝不读取或输出 ~/.javdb-cli/auth.json 或凭据；最后运行 javdb version --json 验证，并报告安装版本和所有变更文件。
@@ -135,16 +135,27 @@ javdb lists search 巨乳 --zone all --json
 ### Go SDK
 
 ```go
-c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
-if err != nil {
-	panic(err)
-}
+package main
 
-res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
-if err != nil {
-	panic(err)
+import (
+	"context"
+	"fmt"
+
+	"github.com/FlanChanXwO/javdb-cli/javdb"
+)
+
+func main() {
+	c, err := javdb.New(javdb.WithHost(javdb.HostMirror))
+	if err != nil {
+		panic(err)
+	}
+
+	res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(len(res.Movies()))
 }
-fmt.Println(len(res.Movies()))
 ```
 
 导入 `github.com/FlanChanXwO/javdb-cli/javdb`。[SDK 指南](docs/zh-CN/sdk.md)
@@ -152,7 +163,7 @@ fmt.Println(len(res.Movies()))
 
 ### Agent skill
 
-仓库提供 [skills/javdb-cli](skills/javdb-cli/SKILL.md)，为 Coding Agent 定义专用操作 skill。
+仓库提供 [skills/javdb-cli](skills/javdb-cli/SKILL.md)，为 AI Agent 定义专用操作 skill。
 它规定了凭据处理、确认边界、命令级参数、JSON/错误处理与搜索到详情的导航。仅在明确的 JavDB
 任务中加载，并在执行前用 `javdb <command> --help` 核对参数。
 
