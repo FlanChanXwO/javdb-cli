@@ -34,6 +34,7 @@ internal/storage/{auth,tags}/      # local state
 internal/buildinfo/                # linker metadata
 scripts/                           # build, package, and policy checks
 skills/javdb-cli/                  # product operator skill
+.agents/skills/                    # repository review/docs/commit/release skills
 docs/en/, docs/zh-CN/              # localized public contracts
 docs/maintainers/                  # architecture, development, ADR, agent rules
 ```
@@ -51,8 +52,9 @@ features that only exist in pixiv-cli.
 3. Authentication failures must remain clear and must not reveal credentials.
 4. Update both public locales, README, the operator skill, and routed
    maintainer docs when behavior changes.
-5. Record user-visible additions, fixes, removals, or security changes in both
-   changelogs under `Unreleased`.
+5. Complete the required `release-note` declaration in the PR template. Feature
+   PRs do not edit `changelog/unreleased/`; an authorized release-prep PR writes
+   the reviewed bilingual versioned notes.
 
 ## Before a pull request
 

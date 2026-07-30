@@ -16,6 +16,11 @@ repos:
         entry: sh scripts/test-workflows.sh
         language: system
         pass_filenames: false
+      - id: release-notes
+        name: release notes checks
+        entry: sh scripts/test-releasenotes.sh
+        language: system
+        pass_filenames: false
       - id: documentation-structure
         name: documentation structure checks
         entry: sh scripts/test-documentation.sh

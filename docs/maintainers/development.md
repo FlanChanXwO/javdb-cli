@@ -46,6 +46,8 @@ internal/buildinfo/                # linker 注入版本信息
 internal/update/                   # 显式更新、Release 校验与替换
 scripts/                           # 构建、打包和静态检查
 skills/javdb-cli/                  # 面向产品使用者的 agent skill
+.agents/skills/                    # 仓库 review/docs/commit/release skills
+changelog/                         # 双语版本化发布说明与 release-prep plans
 docs/en/, docs/zh-CN/              # 公开接口文档
 docs/maintainers/                  # 维护者架构、流程、ADR 与协作规则
 ```
@@ -96,10 +98,22 @@ Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 
 ## CI 与发布
 
-1. Quality workflow 在 PR 与 `main` 上运行格式、测试、vet、构建和静态脚本门禁。
-2. Platform smoke workflow 在六个原生 runner 测试、打包、解包并执行 `javdb version --json`。
-3. `vX.Y.Z` tag 必须不可变且可追溯到 `main`；Release workflow 先在六个平台验证 tag 源码，再从全新 runner 重建唯一允许发布的资产。
-4. 发布器核对资产、创建 GitHub Release、从同一 `checksums.txt` 渲染 Homebrew Formula，并在 macOS/Linux 的 amd64/arm64 环境验证。
-5. tap 部署是可选的：必须设置 `HOMEBREW_TAP_DEPLOY_ENABLED=true` 并在受保护 `release` environment 配置 `HOMEBREW_TAP_DEPLOY_KEY`；条件缺失时 Release 与 Formula 验证仍会完成。
+1. Quality workflow 在 PR 与 `main` 上运行 release-note metadata 校验。仅限 README、贡献指南、
+   changelog、docs、skills、repo-local skills 和 Issue/PR template 的改动走文档门禁；其他任何路径
+   都运行格式、测试、vet、构建和静态脚本门禁。
+2. Platform smoke workflow 用同一分类器在六个原生 runner 测试、打包、解包并执行
+   `javdb version --json`；`Platform smoke gate` 始终存在，文档改动时显式确认矩阵被跳过。
+3. feature PR 只填写 `.github/PULL_REQUEST_TEMPLATE.md` 中唯一的 release-note declaration；不要
+   编辑 `changelog/unreleased/`。release-prep PR 将审核后的双语计划放入
+   `changelog/plans/vX.Y.Z.json`，然后运行 `prepare` 与 `validate` 生成版本目录。
+4. `vX.Y.Z` tag 必须不可变且可追溯到 `main`；Release workflow 在打包前校验版本化双语 notes、
+   审计来源，并以同一渲染正文创建 GitHub Release。
+5. 发布器核对资产、从同一 `checksums.txt` 渲染 Homebrew Formula，并在 macOS/Linux 的 amd64/arm64 环境验证。tap 部署是可选的：必须设置 `HOMEBREW_TAP_DEPLOY_ENABLED=true` 并在受保护 `release` environment 配置 `HOMEBREW_TAP_DEPLOY_KEY`；条件缺失时 Release 与 Formula 验证仍会完成。
+
+历史 Release 回写、GitHub description 修改、release-prep PR 合并、创建 tag 与发布均是外部写入。
+在当前会话取得目标版本、范围和影响的明确授权后，先 dry-run，再使用 `sync-history --apply` 或
+对应 GitHub 命令；本机执行联网的 `audit` 或 `sync-history` 时显式提供具有仓库读取/写入权限的
+`GH_TOKEN`，GitHub Actions 使用受限的 `github.token`。不得创建额外 tag、修改已发布资产或编造
+PR 来源。
 
 改 workflow、目标矩阵、打包或 Formula 时，同步改脚本测试、README 安装说明和本页。

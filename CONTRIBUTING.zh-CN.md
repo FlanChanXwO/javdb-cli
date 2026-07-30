@@ -32,6 +32,7 @@ internal/storage/{auth,tags}/      # 本机状态
 internal/buildinfo/                # linker 元数据
 scripts/                           # 构建、打包和策略检查
 skills/javdb-cli/                  # 产品操作 skill
+.agents/skills/                    # 仓库 review/docs/commit/release skills
 docs/en/, docs/zh-CN/              # 多语言公开契约
 docs/maintainers/                  # 架构、开发、ADR 与 agent 规则
 ```
@@ -45,7 +46,8 @@ CLI 的远程操作必须通过公开 `javdb` facade。不要把协议实现路�
 2. 行为改动补充聚焦测试；掩码、过滤、参数构造等纯逻辑优先表驱动测试。
 3. 认证失败应清晰可见，且不得泄露凭据。
 4. 行为变化时同步更新两个公开 locale、README、operator skill 与对应维护者文档。
-5. 用户可感知的新增、修复、移除或安全变更写入两个 changelog 的 `Unreleased`。
+5. 在 PR 模板中填写必需的 `release-note` declaration。功能 PR 不编辑 `changelog/unreleased/`；
+   经授权的 release-prep PR 才写入审核后的双语版本化说明。
 
 ## 发起 Pull Request 前
 

@@ -2,7 +2,7 @@
 
 # javdb-cli
 
-**JavDB CLI · Go SDK · Agent skill**
+**JavDB CLI · Public Go SDK · Agent skill**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -22,7 +22,7 @@ terms and the laws that apply to you.
 
 ## Why javdb-cli?
 
-- **One capability surface** — the CLI and public Go SDK cover search, detail,
+- **CLI and public Go SDK** — the CLI and importable `javdb` package cover search, detail,
   tags, browsing, entity filmographies, magnets, rankings, TOP250, collections,
   and authenticated watch/want data.
 - **API client, not a scraper** — commands use the App JSON API with explicit
@@ -218,7 +218,7 @@ local state and should be used deliberately.
 | [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, platform builds, packaging, and releases |
 | [Documentation map](docs/index.md) | Localized public contracts and maintainer guides |
 | [Contributing](CONTRIBUTING.md) | Local quality gates and contribution rules |
-| [Changelog](CHANGELOG.md) | User-visible changes |
+| [Changelog](changelog/README.md) | Versioned bilingual release notes |
 
 ## Contributing
 

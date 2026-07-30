@@ -11,7 +11,7 @@
 - `docs/index.md`：用户 locale 与维护者文档总导航。
 - `docs/*.md`：旧链接兼容 stub，不再承载权威内容。
 - `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`：GitHub 可发现的贡献入口。
-- `CHANGELOG.md` / `CHANGELOG.zh-CN.md`：用户可感知的变化。
+- `changelog/`：权威的双语版本化发布说明和 release-prep plans；根 `CHANGELOG*.md` 仅保留旧链接兼容入口。
 - `AGENTS.md`：agent 的短主规则和路由。
 - `skills/javdb-cli/`：指导 agent 安全使用已安装 CLI 的产品 skill。
 
@@ -28,4 +28,5 @@
 - SDK 文档只描述公开 `javdb` package，不把 `internal/` 目录宣称为集成 API。
 - 架构文档描述当前包边界与运行流，不记录上游逆向过程、签名推导或凭据细节。
 - 长期且有取舍的决策写 ADR；短期实现细节留在代码注释和测试。
-- 命令、配置、环境变量、输出语义、状态变更、构建或测试流程变化时，同步更新相应文档。
+- 命令、配置、环境变量、输出语义、状态变更、构建或测试流程变化时，同步更新相应文档；feature PR
+  填 release-note metadata，release-prep PR 才改版本化 changelog。

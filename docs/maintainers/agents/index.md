@@ -14,3 +14,4 @@
 - `CLAUDE.md` 只引用 `AGENTS.md`，不维护第二份规则。
 - `.github/copilot-instructions.md` 是短提示，不复制主规则全文。
 - `skills/javdb-cli/` 是面向产品使用者的 skill；它不是仓库重构、审查或发布规则的替代品。
+- `.agents/skills/` 提供本仓库的 review、docs、commit-message 与 release-notes 流程；只在对应任务中读取。

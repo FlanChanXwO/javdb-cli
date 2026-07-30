@@ -13,6 +13,7 @@ for workflow in \
 done
 
 platform_workflow="$repo_root/.github/workflows/platform-smoke.yml"
+quality_workflow="$repo_root/.github/workflows/ci.yml"
 release_workflow="$repo_root/.github/workflows/release.yml"
 
 for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
@@ -23,9 +24,24 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wi
 done
 
 grep -F 'ref: ${{ env.RELEASE_TAG }}' "$release_workflow" >/dev/null
-grep -F 'needs: [validate, build]' "$release_workflow" >/dev/null
+grep -F 'release_notes_audit:' "$release_workflow" >/dev/null
+grep -F 'pull-requests: read' "$release_workflow" >/dev/null
+grep -F 'needs: [validate, verify_release_source, release_notes_audit]' "$release_workflow" >/dev/null
+grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
+grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
+
+# 文档专属路径必须有一致的 classifier 与稳定汇总 gate；workflow 本身的改动不在白名单内。
+for workflow in "$quality_workflow" "$platform_workflow"; do
+	grep -F 'classify_changes:' "$workflow" >/dev/null
+	grep -F 'go run ./scripts/changescope' "$workflow" >/dev/null
+	done
+grep -F 'Validate pull request release-note declaration' "$quality_workflow" >/dev/null
+grep -F 'docs_only' "$quality_workflow" >/dev/null
+grep -F 'platform_smoke_gate:' "$platform_workflow" >/dev/null
+grep -F 'name: Platform smoke gate' "$platform_workflow" >/dev/null
+grep -F 'MATRIX_RESULT' "$platform_workflow" >/dev/null
 
 # e2e workflow 必须排除纯文档/changelog/skills 路径,避免文档改动触发真实 API 冒烟。
 e2e_workflow="$repo_root/.github/workflows/e2e.yml"
