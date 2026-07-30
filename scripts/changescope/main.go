@@ -88,7 +88,9 @@ func writeOutput(path string, docsOnly bool) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	_, err = fmt.Fprintf(file, "docs_only=%t\n", docsOnly)
-	return err
+	if _, err := fmt.Fprintf(file, "docs_only=%t\n", docsOnly); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }

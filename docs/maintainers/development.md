@@ -112,8 +112,8 @@ Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 
 历史 Release 回写、GitHub description 修改、release-prep PR 合并、创建 tag 与发布均是外部写入。
 在当前会话取得目标版本、范围和影响的明确授权后，先 dry-run，再使用 `sync-history --apply` 或
-对应 GitHub 命令；本机执行联网的 `audit` 或 `sync-history` 时显式提供具有仓库读取/写入权限的
-`GH_TOKEN`，GitHub Actions 使用受限的 `github.token`。不得创建额外 tag、修改已发布资产或编造
-PR 来源。
+对应 GitHub 命令。本机 `audit` 与 `sync-history` dry-run 只需要仓库和 PR 读取权限的 `GH_TOKEN`；
+只有 `sync-history --apply` 及上述外部写入才需要相应写权限。GitHub Actions 审计使用受限的
+只读 `github.token`。不得创建额外 tag、修改已发布资产或编造 PR 来源。
 
 改 workflow、目标矩阵、打包或 Formula 时，同步改脚本测试、README 安装说明和本页。

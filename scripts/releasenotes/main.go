@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"time"
 )
 
 var (
@@ -43,11 +44,12 @@ type githubUser struct {
 }
 
 type githubPullRequest struct {
-	Number  int        `json:"number"`
-	Title   string     `json:"title"`
-	Body    string     `json:"body"`
-	HTMLURL string     `json:"html_url"`
-	User    githubUser `json:"user"`
+	Number   int        `json:"number"`
+	Title    string     `json:"title"`
+	Body     string     `json:"body"`
+	HTMLURL  string     `json:"html_url"`
+	MergedAt *time.Time `json:"merged_at"`
+	User     githubUser `json:"user"`
 }
 
 type githubPullRequestSearchResult struct {
@@ -84,6 +86,9 @@ type auditReport struct {
 // preparePlan 是审核后、可纳入 release-prep PR 的编辑输入。工具刻意不从 PR
 // 标题自动生成面向用户的文案：维护者需要在此处合并相关变更并提供双语摘要。
 type preparePlan struct {
+	Version         string           `json:"version"`
+	PreviousTag     *string          `json:"previous_tag"`
+	CompareURL      *string          `json:"compare_url"`
 	Entries         []preparedEntry  `json:"entries"`
 	NewContributors []newContributor `json:"new_contributors,omitempty"`
 }

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateAcceptsMatchingBilingualReleaseNotes(t *testing.T) {
@@ -162,6 +163,20 @@ none_reason:
 	}
 }
 
+func TestParseReleaseNoteDeclarationRejectsTemplatePlaceholders(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseReleaseNoteDeclaration(`<!-- release-note
+category: __REQUIRED__
+breaking: __REQUIRED__
+summary: __REQUIRED__
+none_reason: __REQUIRED__
+-->`)
+	if err == nil || !strings.Contains(err.Error(), "unsupported category") {
+		t.Fatalf("parse error = %v, want placeholder rejection", err)
+	}
+}
+
 func TestRecommendedVersionBump(t *testing.T) {
 	t.Parallel()
 
@@ -186,31 +201,37 @@ func TestRecommendedVersionBump(t *testing.T) {
 func TestGitHubClientReadsPullRequestAndFindsFirstMergedPullRequest(t *testing.T) {
 	t.Parallel()
 
+	mergedAt := time.Date(2026, time.July, 30, 0, 0, 0, 0, time.UTC)
+
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/repos/owner/project/commits/abcdef012345/pulls":
 			_ = json.NewEncoder(response).Encode([]githubPullRequest{{Number: 42}})
 		case "/repos/owner/project/pulls/42":
 			_ = json.NewEncoder(response).Encode(githubPullRequest{
-				Number:  42,
-				Title:   "feat: add APNG",
-				Body:    "<!-- release-note\ncategory: Added\nbreaking: false\nsummary: Add APNG output.\nnone_reason:\n-->",
-				HTMLURL: "https://github.com/owner/project/pull/42",
-				User:    githubUser{Login: "new-contributor", Type: "User"},
+				Number:   42,
+				Title:    "feat: add APNG",
+				Body:     "<!-- release-note\ncategory: Added\nbreaking: false\nsummary: Add APNG output.\nnone_reason:\n-->",
+				HTMLURL:  "https://github.com/owner/project/pull/42",
+				MergedAt: &mergedAt,
+				User:     githubUser{Login: "new-contributor", Type: "User"},
 			})
 		case "/search/issues":
 			if got, want := request.URL.Query().Get("q"), "repo:owner/project type:pr author:new-contributor is:merged"; got != want {
-				t.Fatalf("search query = %q, want %q", got, want)
+				http.Error(response, fmt.Sprintf("search query = %q, want %q", got, want), http.StatusInternalServerError)
+				return
 			}
-			if got, want := request.URL.Query().Get("sort"), "created"; got != want {
-				t.Fatalf("search sort = %q, want %q", got, want)
+			if got, want := request.URL.Query().Get("per_page"), "100"; got != want {
+				http.Error(response, fmt.Sprintf("search per_page = %q, want %q", got, want), http.StatusInternalServerError)
+				return
 			}
-			if got, want := request.URL.Query().Get("order"), "asc"; got != want {
-				t.Fatalf("search order = %q, want %q", got, want)
+			if got, want := request.URL.Query().Get("page"), "1"; got != want {
+				http.Error(response, fmt.Sprintf("search page = %q, want %q", got, want), http.StatusInternalServerError)
+				return
 			}
 			_ = json.NewEncoder(response).Encode(githubPullRequestSearchResult{Items: []githubPullRequest{{Number: 42}}})
 		default:
-			t.Fatalf("unexpected GitHub API path %q", request.URL.Path)
+			http.Error(response, "unexpected GitHub API path "+request.URL.Path, http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
@@ -265,7 +286,9 @@ func TestPrepareRendersBilingualNotesAndIndex(t *testing.T) {
 	writeReleaseNote(t, root, "README.md", "# Changelog\n\n| Version | Date | Release notes |\n| --- | --- | --- |\n| Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.0.0](https://github.com/FlanChanXwO/javdb-cli/commits/v1.0.0) | 2026-01-01 | [English](v1.0.0/en.md) · [简体中文](v1.0.0/zh-CN.md) |\n")
 	writeReleaseNote(t, root, "README.zh-CN.md", "# 更新日志\n\n| 版本 | 日期 | 发布说明 |\n| --- | --- | --- |\n| Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |\n| [v1.0.0](https://github.com/FlanChanXwO/javdb-cli/commits/v1.0.0) | 2026-01-01 | [English](v1.0.0/en.md) · [简体中文](v1.0.0/zh-CN.md) |\n")
 	planPath := filepath.Join(root, "plan.json")
-	plan := preparePlan{Entries: []preparedEntry{{
+	previous := "v1.0.0"
+	compare := "https://github.com/FlanChanXwO/javdb-cli/compare/v1.0.0...v1.1.0"
+	plan := preparePlan{Version: "1.1.0", PreviousTag: &previous, CompareURL: &compare, Entries: []preparedEntry{{
 		Category: "Added",
 		English:  "Add APNG downloads.",
 		Chinese:  "新增 APNG 下载。",
@@ -294,6 +317,19 @@ func TestPrepareRendersBilingualNotesAndIndex(t *testing.T) {
 	}
 	if !strings.Contains(string(index), "| [v1.1.0](https://github.com/FlanChanXwO/javdb-cli/compare/v1.0.0...v1.1.0) | 2026-07-30") {
 		t.Fatalf("index missing new release row: %s", index)
+	}
+}
+
+func TestPrepareRejectsMismatchedPlanMetadata(t *testing.T) {
+	t.Parallel()
+
+	previous := "v1.0.0"
+	compare := "https://github.com/FlanChanXwO/javdb-cli/compare/v1.0.0...v1.1.0"
+	plan := preparePlan{Version: "1.1.0", PreviousTag: &previous, CompareURL: &compare, Entries: []preparedEntry{{
+		Category: "Added", English: "Add one.", Chinese: "新增一。", Sources: []string{"https://github.com/FlanChanXwO/javdb-cli/pull/42"},
+	}}}
+	if err := validatePreparePlanMetadata(plan, "1.1.1", "v1.1.0"); err == nil || !strings.Contains(err.Error(), "version") {
+		t.Fatalf("metadata validation error = %v, want version mismatch", err)
 	}
 }
 
@@ -381,13 +417,14 @@ func TestSyncHistoryDryRunAndApplyPreservesAssets(t *testing.T) {
 			patchCount++
 			var payload githubReleaseWrite
 			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
-				t.Fatalf("decode patch: %v", err)
+				http.Error(response, "decode patch: "+err.Error(), http.StatusBadRequest)
+				return
 			}
 			releaseBody = payload.Body
 			response.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(response).Encode(githubRelease{ID: 99, TagName: "v1.1.0", Body: releaseBody, Assets: []githubReleaseAsset{{Name: "javdb-cli.tar.gz"}}})
 		default:
-			t.Fatalf("unexpected %s %s", request.Method, request.URL.Path)
+			http.Error(response, "unexpected request", http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
@@ -423,14 +460,15 @@ func TestSyncHistoryCreatesMissingHistoricalReleaseWithoutAssets(t *testing.T) {
 			_, _ = response.Write([]byte(`{"message":"Not Found"}`))
 		case request.Method == http.MethodPost && request.URL.Path == "/repos/owner/project/releases":
 			if err := json.NewDecoder(request.Body).Decode(&created); err != nil {
-				t.Fatalf("decode create: %v", err)
+				http.Error(response, "decode create: "+err.Error(), http.StatusBadRequest)
+				return
 			}
 			createdRelease = githubRelease{ID: 40, TagName: created.TagName, Name: created.Name, Body: created.Body}
 			_ = json.NewEncoder(response).Encode(createdRelease)
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/owner/project/releases/tags/v0.4.0":
 			_ = json.NewEncoder(response).Encode(createdRelease)
 		default:
-			t.Fatalf("unexpected %s %s", request.Method, request.URL.Path)
+			http.Error(response, "unexpected request", http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()

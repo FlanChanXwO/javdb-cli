@@ -11,20 +11,25 @@ test -s "$repo_root/changelog/unreleased/zh-CN.md"
 grep -F 'changelog/README.md' "$repo_root/CHANGELOG.md" >/dev/null
 grep -F 'changelog/README.zh-CN.md' "$repo_root/CHANGELOG.zh-CN.md" >/dev/null
 
-for version in 0.1.0 0.1.1 0.2.0; do
-	plan="$repo_root/changelog/plans/v$version.json"
+for plan in "$repo_root"/changelog/plans/v*.json; do
 	test -s "$plan"
+	version=$(basename "$plan" .json)
+	version=${version#v}
 	previous=$(python3 - "$plan" "$version" <<'PY'
 import json, sys
 plan = json.load(open(sys.argv[1]))
-assert plan["version"] == sys.argv[2], plan
+if plan.get("version") != sys.argv[2]:
+    raise SystemExit(f"manifest version mismatch: {plan.get('version')!r}")
 previous = plan.get("previous_tag")
 compare = plan.get("compare_url")
 if previous is None:
-    assert sys.argv[2] == "0.1.0" and compare is None, plan
+    if sys.argv[2] != "0.1.0" or compare is not None:
+        raise SystemExit("only v0.1.0 may omit previous_tag and compare_url")
     print("")
 else:
-    assert compare == f"https://github.com/FlanChanXwO/javdb-cli/compare/{previous}...v{sys.argv[2]}", plan
+    expected = f"https://github.com/FlanChanXwO/javdb-cli/compare/{previous}...v{sys.argv[2]}"
+    if compare != expected:
+        raise SystemExit(f"manifest compare_url mismatch: {compare!r}, want {expected!r}")
     print(previous)
 PY
 	)

@@ -16,10 +16,10 @@ requires a concrete reason.
 -->
 
 <!-- release-note
-category: None
-breaking: false
-summary: Explain the user-visible outcome in one English sentence.
-none_reason: Explain why this pull request has no user-visible release note.
+category: __REQUIRED__
+breaking: __REQUIRED__
+summary: __REQUIRED__
+none_reason: __REQUIRED__
 -->
 
 ## Verification

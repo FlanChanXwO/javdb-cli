@@ -128,6 +128,32 @@ var chineseSectionOrder = []string{
 	"新贡献者",
 }
 
+// releaseContentSections 仅表示由 release plan 直接渲染的分类；新贡献者由独立数据
+// 渲染，不能再依赖 section order 的固定长度来排除。
+var releaseContentSections = struct {
+	English []string
+	Chinese []string
+}{
+	English: []string{
+		"Breaking changes",
+		"Added",
+		"Changed",
+		"Fixed",
+		"Security",
+		"Documentation",
+		"Maintenance",
+	},
+	Chinese: []string{
+		"破坏性变更",
+		"新增",
+		"变更",
+		"修复",
+		"安全",
+		"文档",
+		"维护",
+	},
+}
+
 func readReleaseDocument(path, version string, sectionOrder []string) (releaseDocument, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -99,7 +100,7 @@ type auditConfig struct {
 }
 
 func collectAudit(ctx context.Context, config auditConfig) (auditReport, error) {
-	commits, err := gitRevisionList(config.from, config.to)
+	commits, err := gitRevisionList(ctx, config.from, config.to)
 	if err != nil {
 		return auditReport{}, err
 	}
@@ -120,7 +121,7 @@ func collectAudit(ctx context.Context, config auditConfig) (auditReport, error) 
 			return auditReport{}, fmt.Errorf("lookup PRs for commit %s: %w", commit, err)
 		}
 		if len(pulls) == 0 {
-			title, author, detailErr := gitCommitDetail(commit)
+			title, author, detailErr := gitCommitDetail(ctx, commit)
 			if detailErr != nil {
 				return auditReport{}, detailErr
 			}
@@ -153,8 +154,6 @@ func collectAudit(ctx context.Context, config auditConfig) (auditReport, error) 
 			note, parseErr := parseReleaseNoteDeclaration(pull.Body)
 			if parseErr != nil {
 				source.Issue = parseErr.Error()
-			} else if note.Category == "None" {
-				source.Note = &note
 			} else {
 				source.Note = &note
 			}
@@ -217,21 +216,49 @@ func (client githubClient) pullRequest(ctx context.Context, repository string, n
 }
 
 // firstMergedPullRequest 使用仓库的完整 PR 历史，而不是当前 author_association，
-// 判定某个作者最早合并的 PR。该查询只取排序后的首项，不依赖任意分页上限。
+// 判定某个作者最早合并的 PR。Search API 不支持按 merged_at 排序，因此必须逐页取得
+// 全部候选 PR 的详情后再比较合并时间，不能把创建时间误当作首次贡献时间。
 func (client githubClient) firstMergedPullRequest(ctx context.Context, repository, login string) (githubPullRequest, error) {
-	query := url.Values{}
-	query.Set("q", "repo:"+repository+" type:pr author:"+login+" is:merged")
-	query.Set("sort", "created")
-	query.Set("order", "asc")
-	query.Set("per_page", "1")
-	var result githubPullRequestSearchResult
-	if err := client.getJSON(ctx, "/search/issues?"+query.Encode(), &result); err != nil {
+	pulls, err := client.mergedPullRequestsByAuthor(ctx, repository, login)
+	if err != nil {
 		return githubPullRequest{}, err
 	}
-	if len(result.Items) == 0 {
+	if len(pulls) == 0 {
 		return githubPullRequest{}, fmt.Errorf("no merged pull request found")
 	}
-	return result.Items[0], nil
+	first := pulls[0]
+	for _, pull := range pulls[1:] {
+		if pull.MergedAt.Before(*first.MergedAt) {
+			first = pull
+		}
+	}
+	return first, nil
+}
+
+func (client githubClient) mergedPullRequestsByAuthor(ctx context.Context, repository, login string) ([]githubPullRequest, error) {
+	query := url.Values{}
+	query.Set("q", "repo:"+repository+" type:pr author:"+login+" is:merged")
+	query.Set("per_page", "100")
+	pulls := make([]githubPullRequest, 0)
+	for page := 1; ; page++ {
+		query.Set("page", strconv.Itoa(page))
+		var result githubPullRequestSearchResult
+		if err := client.getJSON(ctx, "/search/issues?"+query.Encode(), &result); err != nil {
+			return nil, err
+		}
+		for _, summary := range result.Items {
+			pull, err := client.pullRequest(ctx, repository, summary.Number)
+			if err != nil {
+				return nil, err
+			}
+			if pull.MergedAt != nil {
+				pulls = append(pulls, pull)
+			}
+		}
+		if len(result.Items) < 100 {
+			return pulls, nil
+		}
+	}
 }
 
 func (client githubClient) getJSON(ctx context.Context, path string, destination any) error {
@@ -305,7 +332,7 @@ func isExternalContributor(pull githubPullRequest, owner string) bool {
 	return pull.User.Type != "Bot" && !strings.HasSuffix(strings.ToLower(pull.User.Login), "[bot]")
 }
 
-func gitRevisionList(from, to string) ([]string, error) {
+func gitRevisionList(ctx context.Context, from, to string) ([]string, error) {
 	if to == "" {
 		return nil, errors.New("git revision target is required")
 	}
@@ -313,7 +340,7 @@ func gitRevisionList(from, to string) ([]string, error) {
 	if from != "" {
 		revision = from + ".." + to
 	}
-	output, err := exec.Command("git", "rev-list", "--reverse", revision).Output()
+	output, err := exec.CommandContext(ctx, "git", "rev-list", "--reverse", revision).Output()
 	if err != nil {
 		return nil, fmt.Errorf("list commits for %s: %w", revision, err)
 	}
@@ -324,8 +351,8 @@ func gitRevisionList(from, to string) ([]string, error) {
 	return lines, nil
 }
 
-func gitCommitDetail(commit string) (title, author string, err error) {
-	output, err := exec.Command("git", "show", "-s", "--format=%s%x00%an", commit).Output()
+func gitCommitDetail(ctx context.Context, commit string) (title, author string, err error) {
+	output, err := exec.CommandContext(ctx, "git", "show", "-s", "--format=%s%x00%an", commit).Output()
 	if err != nil {
 		return "", "", fmt.Errorf("read direct commit %s: %w", commit, err)
 	}
@@ -351,9 +378,17 @@ func writeJSON(path string, value any) error {
 		}
 		file = opened
 		destination = file
-		defer file.Close()
 	}
 	encoder := json.NewEncoder(destination)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(value)
+	if err := encoder.Encode(value); err != nil {
+		if file != nil {
+			_ = file.Close()
+		}
+		return err
+	}
+	if file != nil {
+		return file.Close()
+	}
+	return nil
 }

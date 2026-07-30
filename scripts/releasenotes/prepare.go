@@ -68,6 +68,9 @@ func prepareRelease(config prepareConfig) error {
 	if err := validatePreparePlan(plan); err != nil {
 		return err
 	}
+	if err := validatePreparePlanMetadata(plan, config.Version, config.Previous); err != nil {
+		return err
+	}
 	var report *auditReport
 	if config.AuditPath != "" {
 		parsedReport, err := readAuditReport(config.AuditPath)
@@ -166,6 +169,28 @@ func validatePreparePlan(plan preparePlan) error {
 	return nil
 }
 
+// validatePreparePlanMetadata 将版本清单绑定到 prepare 的命令行参数，避免复用错误版本
+// 或错误比较范围的 plan 生成看似正常、实际归属错误的发布说明。
+func validatePreparePlanMetadata(plan preparePlan, version, previous string) error {
+	if plan.Version != version {
+		return fmt.Errorf("release plan version %q does not match requested version %q", plan.Version, version)
+	}
+	if previous == "" {
+		if plan.PreviousTag != nil || plan.CompareURL != nil {
+			return errors.New("initial release plan must use null previous_tag and compare_url")
+		}
+		return nil
+	}
+	if plan.PreviousTag == nil || *plan.PreviousTag != previous {
+		return fmt.Errorf("release plan previous_tag does not match requested previous tag %q", previous)
+	}
+	expected := changelogCompareLink(version, previous)
+	if plan.CompareURL == nil || *plan.CompareURL != expected {
+		return fmt.Errorf("release plan compare_url must be %q", expected)
+	}
+	return nil
+}
+
 func validatePlanCoverage(plan preparePlan, report auditReport) error {
 	planned := make(map[string]struct{})
 	for _, entry := range plan.Entries {
@@ -259,9 +284,9 @@ func renderReleaseDocument(config prepareConfig, plan preparePlan, chinese bool)
 		}
 		sectionEntries[section] = append(sectionEntries[section], "- "+text+" ("+strings.Join(links, ", ")+")")
 	}
-	order := englishSectionOrder[:7]
+	order := releaseContentSections.English
 	if chinese {
-		order = chineseSectionOrder[:7]
+		order = releaseContentSections.Chinese
 	}
 	for _, section := range order {
 		entries := sectionEntries[section]
@@ -298,9 +323,9 @@ func renderReleaseDocument(config prepareConfig, plan preparePlan, chinese bool)
 }
 
 func chineseSectionName(english string) string {
-	for index, candidate := range englishSectionOrder[:7] {
+	for index, candidate := range releaseContentSections.English {
 		if candidate == english {
-			return chineseSectionOrder[index]
+			return releaseContentSections.Chinese[index]
 		}
 	}
 	return english

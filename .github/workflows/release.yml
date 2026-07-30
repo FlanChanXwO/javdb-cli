@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Verify the exact immutable stable release tag
         id: release
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Validate the audited bilingual release notes
         shell: bash
@@ -100,14 +100,18 @@ jobs:
           previous=$(python3 - "$plan" "$version" <<'PY'
           import json, sys
           plan = json.load(open(sys.argv[1]))
-          assert plan["version"] == sys.argv[2], plan
+          if plan.get("version") != sys.argv[2]:
+              raise SystemExit(f"manifest version mismatch: {plan.get('version')!r}")
           previous = plan.get("previous_tag")
           compare = plan.get("compare_url")
           if previous is None:
-              assert compare is None, plan
+              if sys.argv[2] != "0.1.0" or compare is not None:
+                  raise SystemExit("only v0.1.0 may omit previous_tag and compare_url")
               print("")
           else:
-              assert compare == f"https://github.com/FlanChanXwO/javdb-cli/compare/{previous}...v{sys.argv[2]}", plan
+              expected = f"https://github.com/FlanChanXwO/javdb-cli/compare/{previous}...v{sys.argv[2]}"
+              if compare != expected:
+                  raise SystemExit(f"manifest compare_url mismatch: {compare!r}, want {expected!r}")
               print(previous)
           PY
           )
@@ -169,7 +173,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Require the immutable native source
         shell: bash
@@ -354,7 +358,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:

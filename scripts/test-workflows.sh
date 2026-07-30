@@ -12,6 +12,9 @@ for workflow in \
 	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
 done
 
+change_scope_action="$repo_root/.github/actions/classify-change-scope/action.yml"
+ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$change_scope_action"
+
 platform_workflow="$repo_root/.github/workflows/platform-smoke.yml"
 quality_workflow="$repo_root/.github/workflows/ci.yml"
 release_workflow="$repo_root/.github/workflows/release.yml"
@@ -35,8 +38,9 @@ grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
 # 文档专属路径必须有一致的 classifier 与稳定汇总 gate；workflow 本身的改动不在白名单内。
 for workflow in "$quality_workflow" "$platform_workflow"; do
 	grep -F 'classify_changes:' "$workflow" >/dev/null
-	grep -F 'go run ./scripts/changescope' "$workflow" >/dev/null
-	done
+	grep -F './.github/actions/classify-change-scope' "$workflow" >/dev/null
+done
+grep -F 'go run ./scripts/changescope' "$change_scope_action" >/dev/null
 grep -F 'Validate pull request release-note declaration' "$quality_workflow" >/dev/null
 grep -F 'docs_only' "$quality_workflow" >/dev/null
 grep -F 'platform_smoke_gate:' "$platform_workflow" >/dev/null
