@@ -8,6 +8,7 @@ grouped by user outcome and carry inline PR or historical direct-commit sources;
 | Version | Date | Release notes |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.3.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.2.0...v0.3.0) | 2026-08-03 | [English](v0.3.0/en.md) · [简体中文](v0.3.0/zh-CN.md) |
 | [v0.2.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.1.1...v0.2.0) | 2026-07-23 | [English](v0.2.0/en.md) · [简体中文](v0.2.0/zh-CN.md) |
 | [v0.1.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.1.0...v0.1.1) | 2026-07-22 | [English](v0.1.1/en.md) · [简体中文](v0.1.1/zh-CN.md) |
 | [v0.1.0](https://github.com/FlanChanXwO/javdb-cli/commits/v0.1.0) | 2026-07-18 | [English](v0.1.0/en.md) · [简体中文](v0.1.0/zh-CN.md) |
