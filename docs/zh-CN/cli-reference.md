@@ -43,7 +43,8 @@ javdb auth check [--json]
   不以相同方式公开 POSIX mode bits。
 - `auth use` 会修改默认账号，`auth remove` 会删除账号；两者都是明确状态变更。
 
-不要把密码或 JWT 写入命令记录、issue、聊天或源码。磁力、TOP250 和个人列表命令需要默认账号。
+不要把密码或 JWT 写入命令记录、issue、聊天或源码。磁力命令无需登录即可使用（有默认账号
+token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令需要默认账号。
 
 ## 只读发现
 
@@ -100,7 +101,8 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
-`magnets` 与 `top250` 需要登录。`--best` 只从服务端返回的磁力集中选择，不会下载。
+`magnets` 无需登录即可使用，token 失效时自动回退匿名请求。`top250` 需要登录。
+`--best` 只从服务端返回的磁力集中选择，不会下载。
 `mark`/`unmark` 会改写远程的看过/想看状态；`mark` 必须且只能传入
 `--watched` 或 `--want` 之一。替他人或其他账号操作前必须确认。
 

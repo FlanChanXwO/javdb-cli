@@ -109,7 +109,7 @@ javdb auth check --json
 javdb search SSIS-589 --limit 5 --json
 javdb detail SSIS-589 --json
 
-# 按标签浏览，并获取经过筛选的磁力列表（需要认证）。
+# 按标签浏览，并获取经过筛选的磁力列表（无需登录）。
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 ```
@@ -186,8 +186,8 @@ javdb auth check --json
 javdb config set auto_relogin true
 ```
 
-磁力、TOP250 和用户列表需要默认已认证账号。`mark`/`unmark`、账号变更以及
-`config set`/`unset` 会修改服务端或本地状态，应审慎使用。
+磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
+需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
 
 ## 文档
 

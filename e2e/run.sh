@@ -92,6 +92,12 @@ echo "== tags =="
 out=$(run tags --zone censored)
 assert_substring "tags lists main header" "$out" "main"
 
+echo "== magnets (read-only; uses token if available) =="
+jout=$(run magnets SSIS-001 --best --json)
+assert_json "magnets --best --json has magnet_uri" "$jout" "bool(d.get('magnet_uri'))"
+out=$(run magnets SSIS-001 --cnsub)
+assert_substring "magnets text has magnet uri line" "$out" "magnet:?xt=urn:btih:"
+
 # --- 以下命令需要登录 ---
 if [ "$HAVE_AUTH" -ne 1 ]; then
   echo "== authed commands: SKIP (set JAVDB_E2E_USERNAME/PASSWORD to enable) =="
@@ -105,12 +111,6 @@ else
   echo "== auth check =="
   out=$(run auth check --json)
   assert_json "auth check --json ok" "$out" "d.get('ok') is True or d.get('valid') is True or 'user' in d or 'username' in d or bool(d)"
-
-  echo "== magnets (authed) =="
-  jout=$(run magnets SSIS-001 --best --json)
-  assert_json "magnets --best --json has magnet_uri" "$jout" "bool(d.get('magnet_uri'))"
-  out=$(run magnets SSIS-001 --cnsub)
-  assert_substring "magnets text has magnet uri line" "$out" "magnet:?xt=urn:btih:"
 
   echo "== top250 =="
   out=$(run top250 --zone censored --limit 1)

@@ -121,7 +121,7 @@ javdb auth check --json
 javdb search SSIS-589 --limit 5 --json
 javdb detail SSIS-589 --json
 
-# Browse a tag and request a filtered magnet list (authentication required).
+# Browse a tag and request a filtered magnet list (works without login).
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 ```
@@ -203,7 +203,8 @@ password for one re-login attempt; enable it only when you accept that behavior:
 javdb config set auto_relogin true
 ```
 
-Magnet, TOP250, and user-list commands need the default authenticated account.
+Magnet commands work anonymously and use the saved token when available.
+TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
 local state and should be used deliberately.
 

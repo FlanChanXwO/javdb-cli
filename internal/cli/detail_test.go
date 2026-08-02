@@ -37,4 +37,7 @@ func TestDetailHelp(t *testing.T) {
 			t.Fatalf("missing %s", want)
 		}
 	}
+	if strings.Contains(s, "needs login") {
+		t.Fatalf("detail must not require login")
+	}
 }

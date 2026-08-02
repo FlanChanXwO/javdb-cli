@@ -33,4 +33,7 @@ func TestMagnetsHelp(t *testing.T) {
 			t.Fatalf("missing %s", want)
 		}
 	}
+	if strings.Contains(s, "needs login") {
+		t.Fatalf("magnets must not require login")
+	}
 }

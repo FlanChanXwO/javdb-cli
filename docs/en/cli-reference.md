@@ -50,7 +50,8 @@ javdb auth check [--json]
   Treat both as deliberate state changes.
 
 Do not put a password or JWT in a command transcript, issue, chat, or source
-file. Magnet, TOP250, and personal-list commands require the default account.
+file. Magnet commands work anonymously (using the saved token when available);
+TOP250 and personal-list commands require the default account.
 
 ## Read-only discovery
 
@@ -112,7 +113,8 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
-`magnets` and `top250` need authentication. `--best` chooses from the returned
+`magnets` works without login and falls back to anonymous when a saved token is
+rejected. `top250` needs authentication. `--best` chooses from the returned
 magnet set; it does not download anything. `mark` and `unmark` change remote
 watch/want state. `mark` requires exactly one of `--watched` or `--want`; obtain
 confirmation before running either command for another person or account.
