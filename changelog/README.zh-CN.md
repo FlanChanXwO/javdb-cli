@@ -1,8 +1,6 @@
 # 更新日志
 
-本目录保存按版本归档的发布说明。每个版本均有对应的英文与简体中文文件。GitHub Release 正文始终先
-展示英文、再展示简体中文。条目按用户可感知的结果分组，并标注来源 commit 或 Pull Request；空的标准
-分组不写入。`unreleased/` 是 release-prep 暂存区；功能 Pull Request 在模板中声明分类与摘要。
+本目录按版本存放发布说明。每个版本均有对应的英文和简体中文文件；GitHub Release 正文先显示英文，再显示简体中文。条目按用户结果归并，内联标注 PR 或历史 direct commit 来源；空的标准章节不输出。`unreleased/` 是 release-prep 暂存区，功能 PR 在模板中声明分类和摘要。
 
 | 版本 | 日期 | 发布说明 |
 | --- | --- | --- |

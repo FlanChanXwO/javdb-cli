@@ -1,5 +1,6 @@
-name: Bug report
-description: Report a reproducible problem in the CLI or public Go SDK.
+# Localized content: English / 中文
+name: Bug report / Bug 报告
+description: Report a reproducible problem in the CLI or public Go SDK. / 报告 CLI 或 public Go SDK 中可复现的问题。
 title: "[Bug]: "
 labels:
   - bug
@@ -7,21 +8,22 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for taking the time to report a problem. Remove or redact passwords, JWTs, proxy credentials, private URLs, `~/.javdb-cli/auth.json` contents, and private API responses before submitting.
+        English: Thank you for taking the time to report a problem. Remove or redact passwords, JWTs, proxy credentials, private URLs, `~/.javdb-cli/auth.json` contents, and private API responses before submitting.
+        中文：感谢你报告问题。提交前请删除或脱敏密码、JWT、代理凭据、私有 URL、`~/.javdb-cli/auth.json` 内容和私有 API 响应。
 
   - type: textarea
     id: summary
     attributes:
-      label: What happened?
-      description: Describe the observed behavior and why it is incorrect.
+      label: What happened? / 发生了什么？
+      description: Describe the observed behavior and why it is incorrect. / 请描述观察到的行为及其不正确的原因。
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction steps
-      description: Provide the smallest safe sequence that reproduces the problem. Use placeholder IDs or redacted values when needed.
+      label: Reproduction steps / 复现步骤
+      description: Provide the smallest safe sequence that reproduces the problem. Use placeholder IDs or redacted values when needed. / 请提供可复现问题的最小安全步骤；必要时使用占位 ID 或脱敏值。
       placeholder: |
         1. Run `javdb ...`
         2. Provide the redacted input or configuration
@@ -32,34 +34,34 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
-      description: Describe what you expected to happen instead.
+      label: Expected behavior / 预期行为
+      description: Describe what you expected to happen instead. / 请描述你期望发生的行为。
     validations:
       required: true
 
   - type: dropdown
     id: surface
     attributes:
-      label: Affected interface
-      description: Select every interface where you observed the problem.
+      label: Affected interface / 受影响的接口
+      description: Select every interface where you observed the problem. / 请选择发现该问题的所有接口。
       multiple: true
       options:
         - CLI
         - Public Go SDK
-        - Authentication or account management
-        - Magnets, rankings, TOP250, or user lists
-        - Release installer or self-update
-        - Operator skill (skills/javdb-cli)
-        - Documentation
-        - Other
+        - Authentication or account management / 认证或账号管理
+        - Magnets, rankings, TOP250, or user lists / 磁力、榜单、TOP250 或用户列表
+        - Release installer or self-update / 发布安装器或自更新
+        - Operator skill (skills/javdb-cli) / Operator skill（skills/javdb-cli）
+        - Documentation / 文档
+        - Other / 其他
     validations:
       required: true
 
   - type: textarea
     id: environment
     attributes:
-      label: Environment
-      description: Include `javdb version --json`, operating system, architecture, installation method, and any relevant proxy or authentication state. Do not include secrets.
+      label: Environment / 环境
+      description: Include `javdb version --json`, operating system, architecture, installation method, and any relevant proxy or authentication state. Do not include secrets. / 请提供 `javdb version --json`、操作系统、架构、安装方式以及相关代理或认证状态；不要包含密钥。
       render: text
     validations:
       required: true
@@ -67,14 +69,14 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Redacted logs or output
-      description: Paste only redacted output. Never include passwords, JWTs, authorization tokens, proxy userinfo, private URLs, or response bodies.
+      label: Redacted logs or output / 脱敏日志或输出
+      description: Paste only redacted output. Never include passwords, JWTs, authorization tokens, proxy userinfo, private URLs, or response bodies. / 仅粘贴已脱敏的输出，切勿包含密码、JWT、authorization token、代理用户信息、私有 URL 或响应体。
       render: shell
 
   - type: checkboxes
     id: safety
     attributes:
-      label: Safety confirmation
+      label: Safety confirmation / 安全确认
       options:
-        - label: I have removed all secrets and private content from this report.
+        - label: I have removed all secrets and private content from this report. / 我已从此报告中移除所有密钥和私密内容。
           required: true

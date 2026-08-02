@@ -1,9 +1,9 @@
 # Changelog
 
 This directory contains the versioned release notes. Each release has matching English and Simplified Chinese files.
-GitHub Release bodies present English first and Simplified Chinese second. Entries are grouped by user outcome and cite
-their source commits or pull requests; empty standard sections are omitted. `unreleased/` is the release-prep staging
-area, while feature pull requests declare their category and summary in the PR template.
+GitHub Release bodies present the two versions together, with English first and Simplified Chinese second. Entries are
+grouped by user outcome and carry inline PR or historical direct-commit sources; empty standard sections are omitted.
+`unreleased/` is the release-prep staging area, while feature PRs declare their category and summary in the PR template.
 
 | Version | Date | Release notes |
 | --- | --- | --- |

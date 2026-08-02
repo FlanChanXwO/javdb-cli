@@ -1,81 +1,81 @@
-# Contributing
+# Contributing to javdb-cli
 
-[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+English | [简体中文](CONTRIBUTING.zh-CN.md)
 
-Thanks for improving `javdb-cli`. Read the [architecture guide](docs/maintainers/architecture.md)
-and [development guide](docs/maintainers/development.md) before a broad change.
+Thanks for helping improve `javdb-cli`. Focused bug reports, documentation fixes, tests, and well-scoped features are welcome.
 
-## Local setup
+## Before you start
+
+- Search existing issues and pull requests before opening a duplicate.
+- Discuss large features, public API changes, new dependencies, or authentication changes before implementation.
+- Never include passwords, JWTs, `~/.javdb-cli/auth.json` contents, tag caches, machine-specific configuration, or private API responses in an issue, fixture, commit, or CI log.
+- Keep changes focused. Unrelated cleanup is easier to review as a separate pull request.
+
+## Development environment
+
+The supported source build uses Go `1.26.3` and a standard Go toolchain; there are no C or native dependencies.
+
+Build and test from the repository root:
 
 ```bash
-git clone https://github.com/FlanChanXwO/javdb-cli.git
-cd javdb-cli
 go test ./...
 sh scripts/build.sh
 ./build/javdb version --json
 ```
 
-- Use the Go version declared in `go.mod`.
-- Never commit `~/.javdb-cli/auth.json`, a password, a JWT, a tag cache, or a
-  machine-specific configuration file.
-- Prefer offline tests. A live API check may use local credentials and must be
-  explicitly authorized and free of secret output.
+See the [development guide (Simplified Chinese)](docs/maintainers/development.md) for opt-in real API tests, release gates, and platform details.
 
-## Project map
+## Architecture guardrails
 
-```text
-cmd/javdb/                         # binary entry
-javdb/                             # public SDK facade
-internal/cli/                      # Cobra input/output adapter
-internal/javdb/appapi/             # App JSON API adapter
-internal/javdb/protocol/{httpx,signature}/
-internal/config/                   # configuration paths and merge
-internal/storage/{auth,tags}/      # local state
-internal/buildinfo/                # linker metadata
-scripts/                           # build, package, and policy checks
-skills/javdb-cli/                  # product operator skill
-.agents/skills/                    # repository review/docs/commit/release skills
-docs/en/, docs/zh-CN/              # localized public contracts
-docs/maintainers/                  # architecture, development, ADR, agent rules
-```
+- `cmd/javdb` delegates to `internal/cli`; keep the binary thin and put Cobra, input, and output handling in `internal/cli`.
+- Remote JavDB operations are exposed only through the top-level public `javdb` SDK; protocol code lives in `internal/javdb/appapi` and `internal/javdb/protocol/*`.
+- `internal/config` manages local configuration; `internal/storage/auth` and `internal/storage/tags` manage local state; `internal/update` owns explicit update checks, source identification, and verified replacement.
+- Keep files focused on one responsibility or a few tightly related responsibilities.
 
-The CLI must use the public `javdb` facade for remote operations. Do not expose
-protocol implementation paths as SDK API or create empty layers simply to copy
-features that only exist in pixiv-cli.
+Read [the architecture guide (Simplified Chinese)](docs/maintainers/architecture.md) and the repository [AGENTS.md](AGENTS.md) before changing these boundaries.
 
-## Change expectations
+## Develop with tests
 
-1. Preserve command names, flags, JSON fields, and text output unless a
-   compatibility change is intentional and documented.
-2. Write focused tests for behavior changes; keep pure filtering and parameter
-   construction table-driven where practical.
-3. Authentication failures must remain clear and must not reveal credentials.
-4. Update both public locales, README, the operator skill, and routed
-   maintainer docs when behavior changes.
-5. Complete the required `release-note` declaration in the PR template. Feature
-   PRs do not edit `changelog/unreleased/`; an authorized release-prep PR writes
-   the reviewed bilingual versioned notes.
+Use a red-green-refactor loop for code changes:
 
-## Before a pull request
+1. Add a focused test that fails for the intended behavioral reason.
+2. Implement the smallest coherent change that makes it pass.
+3. Refactor without changing the verified public behavior.
+4. Run the focused tests, then the relevant regression suite.
 
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
-sh scripts/build.sh
-sh scripts/test-package-release.sh
-sh scripts/test-homebrew-formula.sh
-sh scripts/test-workflows.sh
-sh scripts/test-documentation.sh
-sh scripts/test-architecture.sh
-pre-commit run --all-files
-```
+Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, JavDB API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
 
-Run the checks relevant to your change at minimum; run the full list before a
-release-sensitive or broad refactor. Keep commits focused and discuss large or
-compatibility-sensitive changes before implementation.
+Real JavDB App API canaries are opt-in. Never run them with a user's local account unless that user has explicitly authorized it; never put a real token on a command line that may be stored in shell history.
+
+## Documentation
+
+Update documentation in the same pull request when changing a command, flag, SDK API, configuration key, environment variable, output contract, authentication flow, proxy behavior, or known limitation.
+
+- Keep `README.md` and `README.zh-CN.md` behaviorally aligned.
+- Keep both locale versions under `docs/en/` and `docs/zh-CN/` behaviorally aligned; never use untranslated placeholder content.
+- Update `docs/sdk.md` / `docs/sdk.zh-CN.md`, `docs/maintainers/architecture.md`, or `docs/maintainers/development.md` according to their documented responsibility.
+- Complete the required release-note declaration in the pull-request template for every contribution. Choose `Added`, `Changed`, `Fixed`, `Security`, `Documentation`, `Maintenance`, or `None`; `None` includes a concrete reason. After merge, the release-prep PR groups reviewed outcomes into matching English and Simplified Chinese version notes, with inline PR or direct-commit sources and a Full Changelog link. See the [development guide](docs/maintainers/development.md) for the exact process.
+- Check `skills/javdb-cli/` when CLI commands, flags, or safety semantics change.
+
+Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.
+
+## Pull request checklist
+
+Before requesting review:
+
+- [ ] The change is focused and its user-visible behavior is explained.
+- [ ] New or changed code has focused tests that first demonstrated the failure.
+- [ ] `go test ./... -count=1` passes.
+- [ ] `go vet ./...` passes.
+- [ ] `sh scripts/build.sh` passes.
+- [ ] The release-sensitive checks pass (`scripts/test-package-release.sh`, `test-homebrew-formula.sh`, `test-workflows.sh`, `test-documentation.sh`, `test-architecture.sh`).
+- [ ] `python -m pre_commit run --all-files` passes when pre-commit is available.
+- [ ] `git diff --check` passes.
+- [ ] English and Simplified Chinese documentation are synchronized where required.
+- [ ] No credential, local state, or machine-specific artifact is included.
+
+Conventional Commits are recommended for commit messages, for example `feat(cli): add account selection` or `docs: clarify anonymous fallback`. The project does not require a CLA, DCO sign-off, or signed commits unless a future policy explicitly says otherwise.
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the
-[MIT License](LICENSE).
+By contributing, you agree that your contribution may be distributed under the repository's [MIT License](LICENSE).
