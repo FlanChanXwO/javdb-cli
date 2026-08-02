@@ -2,12 +2,26 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/javdb-cli/javdb"
 )
+
+// isolateHome points the platform home lookups at a fresh temp directory so the
+// auth store never leaks across tests or into a real user profile. config.Dir
+// resolves via os.UserHomeDir, which reads HOME on Unix but USERPROFILE on
+// Windows, so both must be redirected.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(dir))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(dir, filepath.VolumeName(dir)))
+}
 
 // seedAuth writes a default account with token into the temp HOME.
 func seedAuth(t *testing.T, token string) {
@@ -23,7 +37,7 @@ func seedAuth(t *testing.T, token string) {
 }
 
 func TestWithOptionalAuthClientNoTokenAnonymous(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateHome(t)
 	aio := &appIO{in: strings.NewReader(""), out: &bytes.Buffer{}, err: &bytes.Buffer{}}
 
 	calls := 0
@@ -43,7 +57,7 @@ func TestWithOptionalAuthClientNoTokenAnonymous(t *testing.T) {
 }
 
 func TestWithOptionalAuthClientFallbackAnonymous(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateHome(t)
 	seedAuth(t, "saved-token")
 
 	var errb bytes.Buffer
@@ -78,7 +92,7 @@ func TestWithOptionalAuthClientFallbackAnonymous(t *testing.T) {
 }
 
 func TestWithOptionalAuthClientNonAuthErrorNoFallback(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateHome(t)
 	seedAuth(t, "saved-token")
 
 	aio := &appIO{in: strings.NewReader(""), out: &bytes.Buffer{}, err: &bytes.Buffer{}}
