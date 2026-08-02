@@ -5,52 +5,36 @@
   "entries": [
     {
       "category": "Added",
-      "english": "Introduce a versioned bilingual release-notes workflow with offline validation and machine-readable pull-request release-note declarations.",
-      "zh_cn": "引入带离线校验与机器可读 PR release-note 声明的版本化双语发布说明流程。",
-      "sources": [
-        "https://github.com/FlanChanXwO/javdb-cli/commit/aa5360b",
-        "https://github.com/FlanChanXwO/javdb-cli/commit/e77ef7a",
-        "https://github.com/FlanChanXwO/javdb-cli/commit/633bcfa"
-      ]
-    },
-    {
-      "category": "Changed",
-      "english": "Let `magnets` and `detail --magnets` run without a default account, falling back to anonymous requests when a saved token is rejected.",
-      "zh_cn": "让 `magnets` 与 `detail --magnets` 不再要求默认账号，已保存 token 被拒绝时回退匿名请求。",
-      "sources": ["https://github.com/FlanChanXwO/javdb-cli/commit/5aab9bb"]
+      "english": "Introduce a versioned bilingual release-notes workflow with offline validation and machine-readable pull-request declarations, and let `magnets` and `detail --magnets` run without a default account.",
+      "zh_cn": "引入带离线校验与机器可读 PR 声明的版本化双语发布说明流程，并让 `magnets` 与 `detail --magnets` 不再要求默认账号。",
+      "sources": ["https://github.com/FlanChanXwO/javdb-cli/pull/6"]
     },
     {
       "category": "Documentation",
-      "english": "Add bilingual issue and pull-request templates, Copilot instructions, and contribution guides.",
-      "zh_cn": "新增双语 issue 与 pull-request 模板、Copilot 说明与贡献指南。",
+      "english": "Add structured issue and pull-request templates.",
+      "zh_cn": "新增结构化的 issue 与 pull-request 模板。",
+      "sources": ["https://github.com/FlanChanXwO/javdb-cli/pull/4"]
+    },
+    {
+      "category": "Documentation",
+      "english": "Clarify AI-agent terminology and add complete Go import blocks to the SDK quick-start examples, and add a views badge to the READMEs.",
+      "zh_cn": "澄清 AI agent 术语并为 SDK 快速上手示例补充完整 Go import 块，同时在 README 中新增 views 徽章。",
       "sources": [
-        "https://github.com/FlanChanXwO/javdb-cli/commit/9ec4e0c",
-        "https://github.com/FlanChanXwO/javdb-cli/commit/160ad21"
+        "https://github.com/FlanChanXwO/javdb-cli/pull/5",
+        "https://github.com/FlanChanXwO/javdb-cli/pull/1"
       ]
     },
     {
       "category": "Documentation",
-      "english": "Clarify AI-agent and SDK import guidance and add the views badge to the README.",
-      "zh_cn": "在 README 中澄清 AI agent 与 SDK 导入指引，并新增 views 徽章。",
-      "sources": [
-        "https://github.com/FlanChanXwO/javdb-cli/commit/ce3717b",
-        "https://github.com/FlanChanXwO/javdb-cli/commit/0d892f5"
-      ]
-    },
-    {
-      "category": "Documentation",
-      "english": "Align the SDK compatibility stub style with the sister project and document the release-notes system design.",
-      "zh_cn": "对齐姊妹项目的 SDK 兼容 stub 风格，并补充发布说明系统设计文档。",
-      "sources": [
-        "https://github.com/FlanChanXwO/javdb-cli/commit/889f6b5",
-        "https://github.com/FlanChanXwO/javdb-cli/commit/6791942"
-      ]
+      "english": "Align SDK and CLI reference stub pages with localized documentation links.",
+      "zh_cn": "对齐 SDK 与 CLI 参考存根页面，链接到本地化文档。",
+      "sources": ["https://github.com/FlanChanXwO/javdb-cli/pull/3"]
     },
     {
       "category": "Maintenance",
       "english": "Add an opt-in real-API end-to-end workflow with docs path filtering.",
       "zh_cn": "新增带文档路径过滤的可选真实 API 端到端 workflow。",
-      "sources": ["https://github.com/FlanChanXwO/javdb-cli/commit/a17d69c"]
+      "sources": ["https://github.com/FlanChanXwO/javdb-cli/pull/2"]
     }
   ]
 }
