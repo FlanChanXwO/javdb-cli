@@ -67,3 +67,40 @@ func withAuthedClient(rf *rootFlags, aio *appIO, fn func(*javdb.Client) error) e
 	c2.SetToken(tok)
 	return fn(c2)
 }
+
+// withOptionalAuthClient runs fn with the default account token when one is
+// saved, otherwise anonymously. It never fails upfront for missing auth.
+// If the server rejects the token (AuthRequired), it retries fn once with an
+// anonymous client so read-only discovery still works.
+func withOptionalAuthClient(rf *rootFlags, aio *appIO, fn func(*javdb.Client) error) error {
+	rt, err := loadRuntime(rf)
+	if err != nil {
+		return err
+	}
+	token := ""
+	if _, store, err := openAuth(); err == nil {
+		if acc, aerr := store.Default(); aerr == nil {
+			token = acc.Token
+		}
+	}
+	c, err := newClient(rt, token)
+	if err != nil {
+		return err
+	}
+	err = fn(c)
+	if err == nil {
+		return nil
+	}
+	var authRequired *javdb.AuthRequired
+	if token == "" || !errors.As(err, &authRequired) {
+		return err
+	}
+	if aio != nil && aio.err != nil {
+		fmt.Fprintln(aio.err, "token 无效，改用匿名请求…")
+	}
+	c2, err := newClient(rt, "")
+	if err != nil {
+		return err
+	}
+	return fn(c2)
+}

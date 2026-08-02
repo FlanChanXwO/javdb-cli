@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "previous_tag": "v0.1.1",
+  "compare_url": "https://github.com/FlanChanXwO/javdb-cli/compare/v0.1.1...v0.2.0",
+  "entries": [
+    {
+      "category": "Added",
+      "english": "Add verified self-update support that preserves the Homebrew, go install, or Release-archive installation channel.",
+      "zh_cn": "新增经校验的自更新能力，并保留 Homebrew、go install 或 Release 压缩包的安装渠道。",
+      "sources": ["https://github.com/FlanChanXwO/javdb-cli/commit/a51115d"]
+    },
+    {
+      "category": "Fixed",
+      "english": "Preserve LF source bytes on Windows release runners and pass the validated version into production builds.",
+      "zh_cn": "修复 Windows 发布 runner 的 LF 源码字节保留问题，并将已校验版本传递给生产构建。",
+      "sources": [
+        "https://github.com/FlanChanXwO/javdb-cli/commit/8a7c3a0",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/3924241"
+      ]
+    },
+    {
+      "category": "Changed",
+      "english": "Align the repository layout with the public SDK facade and protocol-boundary conventions.",
+      "zh_cn": "调整仓库布局，使其与公开 SDK facade 和协议边界约定保持一致。",
+      "sources": ["https://github.com/FlanChanXwO/javdb-cli/commit/5e5b769"]
+    }
+  ]
+}

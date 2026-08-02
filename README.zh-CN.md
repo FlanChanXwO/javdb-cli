@@ -2,7 +2,7 @@
 
 # javdb-cli
 
-**JavDB CLI · Go SDK · Agent skill**
+**JavDB CLI · Public Go SDK · Agent skill**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -20,7 +20,7 @@
 
 ## 为什么选择 javdb-cli？
 
-- **一致的能力面**——CLI 与公开 Go SDK 都覆盖搜索、详情、标签、浏览、实体片单、磁力、
+- **CLI 与公开 Go SDK**——CLI 与可导入的 `javdb` 包都覆盖搜索、详情、标签、浏览、实体片单、磁力、
   排行、TOP250、合集和已认证的想看/看过数据。
 - **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
   显示，不会伪装成空结果。
@@ -109,7 +109,7 @@ javdb auth check --json
 javdb search SSIS-589 --limit 5 --json
 javdb detail SSIS-589 --json
 
-# 按标签浏览，并获取经过筛选的磁力列表（需要认证）。
+# 按标签浏览，并获取经过筛选的磁力列表（无需登录）。
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 ```
@@ -186,8 +186,8 @@ javdb auth check --json
 javdb config set auto_relogin true
 ```
 
-磁力、TOP250 和用户列表需要默认已认证账号。`mark`/`unmark`、账号变更以及
-`config set`/`unset` 会修改服务端或本地状态，应审慎使用。
+磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
+需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
 
 ## 文档
 
@@ -200,7 +200,7 @@ javdb config set auto_relogin true
 | [开发指南](docs/maintainers/development.md) | 工具链、测试、平台构建、打包与发版 |
 | [文档导航](docs/index.md) | 多语言公开契约与维护者指南 |
 | [贡献指南](CONTRIBUTING.zh-CN.md) | 本地质量门与贡献规范 |
-| [更新日志](CHANGELOG.zh-CN.md) | 用户可感知变更 |
+| [更新日志](changelog/README.zh-CN.md) | 按版本归档的双语发布说明 |
 
 ## 参与贡献
 

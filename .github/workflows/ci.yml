@@ -16,7 +16,28 @@ concurrency:
 permissions: {}
 
 jobs:
+  # 仅允许严格的文档白名单走轻量门禁；其他任何改动均运行完整质量检查。
+  classify_changes:
+    name: Classify change scope
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/classify-change-scope
+        id: scope
+        with:
+          base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
   quality:
+    needs: classify_changes
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -30,27 +51,43 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Validate pull request release-note declaration
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        run: go run ./scripts/releasenotes pr-validate --event "$GITHUB_EVENT_PATH"
+
+      - name: Test documentation contracts
+        if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}
+        shell: bash
+        run: sh scripts/test-documentation.sh
+
       - name: Check Go formatting
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: test -z "$(gofmt -l $(git ls-files '*.go'))"
 
       - name: Test
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: go test ./... -count=1
 
       - name: Test with race detector
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: go test -race ./... -count=1
 
       - name: Vet
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: go vet ./...
 
       - name: Build local binary
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: sh scripts/build.sh
 
       - name: Version smoke
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -64,6 +101,7 @@ jobs:
           PY
 
       - name: Test release packaging and workflow policy
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           sh scripts/test-package-release.sh
@@ -71,6 +109,7 @@ jobs:
           sh scripts/test-workflows.sh
 
       - name: Run pre-commit checks
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check pre-commit==4.6.0

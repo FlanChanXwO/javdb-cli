@@ -24,6 +24,9 @@ grep -F 'docs/en/cli-reference.md' "$repo_root/README.md" >/dev/null
 grep -F 'docs/en/sdk.md' "$repo_root/README.md" >/dev/null
 grep -F 'docs/zh-CN/cli-reference.md' "$repo_root/README.zh-CN.md" >/dev/null
 grep -F 'docs/zh-CN/sdk.md' "$repo_root/README.zh-CN.md" >/dev/null
+grep -F 'changelog/README.md' "$repo_root/CHANGELOG.md" >/dev/null
+grep -F 'changelog/README.zh-CN.md' "$repo_root/CHANGELOG.zh-CN.md" >/dev/null
+sh "$repo_root/scripts/test-releasenotes.sh"
 grep -F 'internal/javdb/appapi' "$repo_root/AGENTS.md" >/dev/null
 grep -F '@AGENTS.md' "$repo_root/CLAUDE.md" >/dev/null
 

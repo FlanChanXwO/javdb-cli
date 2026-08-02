@@ -22,7 +22,8 @@ sh scripts/build.sh
 - 命令、flag、JSON、配置或认证行为：更新两个 locale 的 CLI reference、README 与 `skills/javdb-cli/`。
 - 公开 SDK：更新两个 locale 的 SDK 文档与 `docs/maintainers/architecture.md`。
 - 构建或发布：更新 `docs/maintainers/development.md`、workflow 测试和 README。
-- 用户可感知的变化：更新两个 changelog 的 `Unreleased`。
+- 用户可感知的变化：在 PR 模板中填写 release-note metadata；仅经授权的 release-prep PR 更新
+  `changelog/` 下的双语版本说明。
 
 完整协作规则、审查清单与文档边界见 `docs/maintainers/agents/`；架构细节见
 `docs/maintainers/architecture.md`。

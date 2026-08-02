@@ -2,7 +2,7 @@
 
 # javdb-cli
 
-**JavDB CLI · Go SDK · Agent skill**
+**JavDB CLI · Public Go SDK · Agent skill**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -22,7 +22,7 @@ terms and the laws that apply to you.
 
 ## Why javdb-cli?
 
-- **One capability surface** — the CLI and public Go SDK cover search, detail,
+- **CLI and public Go SDK** — the CLI and importable `javdb` package cover search, detail,
   tags, browsing, entity filmographies, magnets, rankings, TOP250, collections,
   and authenticated watch/want data.
 - **API client, not a scraper** — commands use the App JSON API with explicit
@@ -121,7 +121,7 @@ javdb auth check --json
 javdb search SSIS-589 --limit 5 --json
 javdb detail SSIS-589 --json
 
-# Browse a tag and request a filtered magnet list (authentication required).
+# Browse a tag and request a filtered magnet list (works without login).
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 ```
@@ -203,7 +203,8 @@ password for one re-login attempt; enable it only when you accept that behavior:
 javdb config set auto_relogin true
 ```
 
-Magnet, TOP250, and user-list commands need the default authenticated account.
+Magnet commands work anonymously and use the saved token when available.
+TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
 local state and should be used deliberately.
 
@@ -218,7 +219,7 @@ local state and should be used deliberately.
 | [Development (Simplified Chinese)](docs/maintainers/development.md) | Toolchain, tests, platform builds, packaging, and releases |
 | [Documentation map](docs/index.md) | Localized public contracts and maintainer guides |
 | [Contributing](CONTRIBUTING.md) | Local quality gates and contribution rules |
-| [Changelog](CHANGELOG.md) | User-visible changes |
+| [Changelog](changelog/README.md) | Versioned bilingual release notes |
 
 ## Contributing
 

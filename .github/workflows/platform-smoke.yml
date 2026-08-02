@@ -16,7 +16,29 @@ concurrency:
 permissions: {}
 
 jobs:
+  # 与 Quality gate 使用相同的严格文档白名单，避免纯文档改动占用六个平台 runner。
+  classify_changes:
+    name: Classify change scope
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/classify-change-scope
+        id: scope
+        with:
+          base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
   packaged_binary_smoke:
+    needs: classify_changes
+    if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
     name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -102,3 +124,26 @@ jobs:
           test -f "$smoked_binary"
           "./$smoked_binary" version --json | tee "$RUNNER_TEMP/javdb-version.json"
           grep -F "\"version\":\"v${version}\"" "$RUNNER_TEMP/javdb-version.json"
+
+  # 分支保护只需要此稳定汇总 job：完整变更要求六个平台均成功，文档改动则确认矩阵被有意跳过。
+  platform_smoke_gate:
+    name: Platform smoke gate
+    needs:
+      - classify_changes
+      - packaged_binary_smoke
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Require the expected matrix outcome
+        shell: bash
+        env:
+          DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
+          MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
+        run: |
+          set -euo pipefail
+          if [ "$DOCS_ONLY" = true ]; then
+            test "$MATRIX_RESULT" = skipped
+            exit 0
+          fi
+          test "$MATRIX_RESULT" = success

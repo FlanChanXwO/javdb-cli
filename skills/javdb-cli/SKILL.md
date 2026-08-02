@@ -27,15 +27,16 @@ description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影�
 
 | 类型 | 命令 | Agent 行为 |
 | --- | --- | --- |
-| 只读 | `search`、`detail`、实体命令、`rankings`、`tags`、`browse`、`version`、`config get/path`、`update --check` | 用户任务需要时执行 |
+| 只读 | `search`、`detail`、`magnets`、实体命令、`rankings`、`tags`、`browse`、`version`、`config get/path`、`update --check` | 用户任务需要时执行 |
 | 软件更新 | `update` | 仅在用户明确要求升级时执行；会联网并替换二进制，或调用 Homebrew／`go install` |
 | 认证诊断 | `auth list/check` | 仅在账号选择或认证判定需要时执行 |
 | 远端状态写入 | `mark`、`unmark` | 执行前说明影片与将要设置/删除的状态 |
 | 本地账号/配置写入 | `auth login/use/remove`、`config set/unset` | 每次都需要明确授权 |
 | 本地缓存写入 | `tags --refresh` | 仅在用户要求刷新标签或允许重建缓存时执行 |
 
-`magnets`、`top250`、`watched`、`want`、`recent`、`collections` 与默认 `lists`
-需要默认登录账号。`detail --magnets` 同样需要认证。
+`top250`、`watched`、`want`、`recent`、`collections` 与默认 `lists`
+需要默认登录账号。`magnets` 与 `detail --magnets` 无需登录即可使用：有默认账号时携带其
+token，token 失效则自动回退匿名请求。
 
 ## 输出与参数控制
 
@@ -90,7 +91,7 @@ URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `conf
 3. `search --type` 可返回 `movie` 以外的维度。将搜索结果交给 `actor`、`series`、`maker`、`director`、`code` 或 `list` 前，使用 JSON 中的实际 ID/名称，不要从显示文本臆测。
 4. `tags` 的首次调用可能联网建立缓存；`--refresh` 会明确覆写该缓存。标签参数可用 ID、英文名或中文名，优先使用刚读取到的确切值。
 5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。
-6. `auth check`、磁力、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。
+6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 
 ## 路由

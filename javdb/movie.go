@@ -8,7 +8,7 @@ func (c *Client) MovieDetail(ctx context.Context, movieID string) (map[string]an
 	return c.api.MovieDetail(movieID)
 }
 
-// MovieMagnets returns GET /api/v1/movies/{id}/magnets (auth required).
+// MovieMagnets returns GET /api/v1/movies/{id}/magnets (works anonymously).
 func (c *Client) MovieMagnets(ctx context.Context, movieID string) ([]map[string]any, error) {
 	_ = ctx
 	return c.api.MovieMagnets(movieID)

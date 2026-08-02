@@ -23,7 +23,7 @@ func (c *Client) MovieDetail(movieID string) (map[string]any, error) {
 }
 
 // MovieMagnets returns magnets for an internal id (GET /api/v1/movies/{id}/magnets).
-// Requires bearer token.
+// Works without a bearer token; the token (when set) is forwarded as-is.
 func (c *Client) MovieMagnets(movieID string) ([]map[string]any, error) {
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/movies/"+movieID+"/magnets", nil, &data); err != nil {

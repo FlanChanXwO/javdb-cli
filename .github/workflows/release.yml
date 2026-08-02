@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Verify the exact immutable stable release tag
         id: release
@@ -68,6 +68,66 @@ jobs:
       - name: Check release workflow policy
         shell: bash
         run: sh scripts/test-workflows.sh
+
+  release_notes_audit:
+    name: Audit release notes
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Validate the audited bilingual release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          plan="changelog/plans/${RELEASE_TAG}.json"
+          test -f "$plan"
+          previous=$(python3 - "$plan" "$version" <<'PY'
+          import json, sys
+          plan = json.load(open(sys.argv[1]))
+          if plan.get("version") != sys.argv[2]:
+              raise SystemExit(f"manifest version mismatch: {plan.get('version')!r}")
+          previous = plan.get("previous_tag")
+          compare = plan.get("compare_url")
+          if previous is None:
+              if sys.argv[2] != "0.1.0" or compare is not None:
+                  raise SystemExit("only v0.1.0 may omit previous_tag and compare_url")
+              print("")
+          else:
+              expected = f"https://github.com/FlanChanXwO/javdb-cli/compare/{previous}...v{sys.argv[2]}"
+              if compare != expected:
+                  raise SystemExit(f"manifest compare_url mismatch: {compare!r}, want {expected!r}")
+              print(previous)
+          PY
+          )
+          args=(validate --version "$version" --dir "changelog/v$version")
+          if [ -n "$previous" ]; then
+            args+=(--previous "$previous")
+          fi
+          go run ./scripts/releasenotes "${args[@]}"
+          go run ./scripts/releasenotes audit \
+            --repo "$GITHUB_REPOSITORY" \
+            --from "$previous" \
+            --to "$RELEASE_TAG" \
+            --require-classified \
+            --output "$RUNNER_TEMP/release-notes-audit.json"
+          args+=(--audit "$RUNNER_TEMP/release-notes-audit.json")
+          go run ./scripts/releasenotes "${args[@]}"
 
   build:
     name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -113,7 +173,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Require the immutable native source
         shell: bash
@@ -285,7 +345,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [validate, verify_release_source]
+    needs: [validate, verify_release_source, release_notes_audit]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -294,6 +354,11 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -348,12 +413,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p release
+          go run ./scripts/releasenotes render \
+            --version "${RELEASE_TAG#v}" \
+            --dir "changelog/v${RELEASE_TAG#v}" \
+            --output release/release-notes.md
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --draft \
             --verify-tag \
             --title "$RELEASE_TAG" \
-            --notes "Release $RELEASE_TAG\n\nSee CHANGELOG.md for details." \
+            --notes-file release/release-notes.md \
             dist/javdb-cli_*.tar.gz \
             dist/javdb-cli_*.zip \
             dist/checksums.txt
