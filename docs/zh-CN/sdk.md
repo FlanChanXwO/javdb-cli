@@ -49,6 +49,8 @@ userID, username, err := client.ResolveUserID(ctx)
 | 能力 | 方法 |
 | --- | --- |
 | 发现 | `Search`、`MovieDetail`、`ResolveMovieID`、`Browse`、`ResolveTags` |
+| 评论 | `MovieComments` |
+| 本地媒体下载 | `DownloadMovieMedia`、`MovieMediaDownloadOptions`、`MovieMediaDownloadResult` |
 | 实体图 | `ResolveEntity`、`EntityDetail`、`EntityMovies`、`AllEntityMovies` |
 | 磁力 | `MovieMagnets`、`FilterMagnets`、`PickBestMagnet`、`MagnetURI` |
 | 排行 | `RankingsMovies`、`RankingsActors`、`RankingsPlayback`、`Top250` |
@@ -67,7 +69,29 @@ movies := result.Movies()
 actors := result.Named("actors")
 ```
 
+`MovieComments(ctx, movieID, page, limit)` 只请求一页，绝不会遍历后续页。非正值会使用第 `1` 页、
+每页 `20` 条，与 CLI 的单页默认语义一致。
+
+只有在调用方已明确选择新的本地路径时才使用 `DownloadMovieMedia`：
+
+```go
+downloaded, err := client.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+    PreviewImagePath: "/chosen/output/preview-0.jpg", // 只取 preview_images[0]
+    PreviewVideoPath: "/chosen/output/preview.ts",
+})
+if err != nil {
+    return err
+}
+fmt.Println(downloaded.PreviewImageBytes, downloaded.PreviewVideoBytes)
+```
+
+每个非空路径选择一个媒体项。`PreviewImagePath` 始终只取首张预览图，不会遍历后续图片；图片会在
+写入前校验。视频路径支持已结束的单媒体 HLS playlist（含 AES-128）；master、byte-range、
+fragmented MP4、未结束或直播 playlist 会返回错误。所有输出路径必须互异、父目录必须已存在，且
+目标文件不得存在。
+
 更新看过/想看状态及刷新本机公开标签缓存都是 mutation；只有在应用获得明确授权时才调用。
+媒体下载会写入本地文件，也必须由应用用户明确指定目标路径。
 
 ## 错误与兼容性
 

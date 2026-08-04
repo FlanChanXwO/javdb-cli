@@ -14,14 +14,14 @@
 
 `javdb-cli` 是独立开发的非官方命令行客户端与 Go SDK，用于访问
 [JavDB](https://javdb.com) App JSON API。它为用户、AI Agent 和 Go 应用提供统一的
-搜索、目录导航、影片详情、磁力、排行与已认证用户列表能力；它不是网页爬虫、不包含 MCP，
+搜索、目录导航、影片详情、单页评论、选定媒体下载、磁力、排行与已认证用户列表能力；它不是网页爬虫、不包含 MCP，
 也不与 JavDB 或其运营方存在隶属、认可或其他关联。请仅在遵守 JavDB 条款和所在地适用法律的
 前提下使用。
 
 ## 为什么选择 javdb-cli？
 
 - **CLI 与公开 Go SDK**——CLI 与可导入的 `javdb` 包都覆盖搜索、详情、标签、浏览、实体片单、磁力、
-  排行、TOP250、合集和已认证的想看/看过数据。
+  单页评论、选定缩略图/预览媒体下载、排行、TOP250、合集和已认证的想看/看过数据。
 - **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
   显示，不会伪装成空结果。
 - **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供
@@ -108,10 +108,14 @@ javdb auth check --json
 # 搜索影片，再读取详情中的图 ID 以便后续导航。
 javdb search SSIS-589 --limit 5 --json
 javdb detail SSIS-589 --json
+javdb comments SSIS-589 --page 1 --limit 20 --json
 
 # 按标签浏览，并获取经过筛选的磁力列表（无需登录）。
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
+
+# 明确指定本地输出路径；--preview-image 只下载首张预览图。
+javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg --preview-video ./preview.ts
 ```
 
 运行 `javdb --help`，或阅读[完整命令参考](docs/zh-CN/cli-reference.md)，查看所有命令、flag、
@@ -188,6 +192,7 @@ javdb config set auto_relogin true
 
 磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
 需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
+`download` 会将选定媒体写入明确指定的新本地路径，绝不会替换已有文件。
 
 ## 文档
 

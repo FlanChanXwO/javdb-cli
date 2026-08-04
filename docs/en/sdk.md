@@ -52,6 +52,8 @@ log, panic, error wrapper, or test fixture.
 | Capability | Methods |
 | --- | --- |
 | Discovery | `Search`, `MovieDetail`, `ResolveMovieID`, `Browse`, `ResolveTags` |
+| Reviews | `MovieComments` |
+| Local media downloads | `DownloadMovieMedia`, `MovieMediaDownloadOptions`, `MovieMediaDownloadResult` |
 | Entity graph | `ResolveEntity`, `EntityDetail`, `EntityMovies`, `AllEntityMovies` |
 | Magnets | `MovieMagnets`, `FilterMagnets`, `PickBestMagnet`, `MagnetURI` |
 | Rankings | `RankingsMovies`, `RankingsActors`, `RankingsPlayback`, `Top250` |
@@ -71,8 +73,34 @@ movies := result.Movies()
 actors := result.Named("actors")
 ```
 
+`MovieComments(ctx, movieID, page, limit)` requests exactly one page and never
+walks subsequent pages. Non-positive values use page `1` and limit `20`, which
+matches the CLI's one-page default.
+
+Use `DownloadMovieMedia` only with explicitly chosen new local paths:
+
+```go
+downloaded, err := client.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+    PreviewImagePath: "/chosen/output/preview-0.jpg", // only preview_images[0]
+    PreviewVideoPath: "/chosen/output/preview.ts",
+})
+if err != nil {
+    return err
+}
+fmt.Println(downloaded.PreviewImageBytes, downloaded.PreviewVideoBytes)
+```
+
+Each non-empty path selects one media item. `PreviewImagePath` always uses only
+the first preview image; the method never enumerates later images. Images are
+validated before writing. The HLS video path supports completed single-media
+playlists (including AES-128); master, byte-range, fragmented-MP4, and
+unfinished/live playlists return an error. All selected outputs must be
+distinct, their parent directories must exist, and no output may already exist.
+
 Methods that update watch/want state or refresh the local public tag cache are
 mutations. Call them only when the application has explicit authority to do so.
+Media downloads are local file writes and likewise require an explicitly chosen
+destination from the application user.
 
 ## Errors and compatibility
 

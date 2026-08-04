@@ -27,12 +27,13 @@ description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影�
 
 | 类型 | 命令 | Agent 行为 |
 | --- | --- | --- |
-| 只读 | `search`、`detail`、`magnets`、实体命令、`rankings`、`tags`、`browse`、`version`、`config get/path`、`update --check` | 用户任务需要时执行 |
+| 只读 | `search`、`detail`、`comments`、`magnets`、实体命令、`rankings`、`tags`、`browse`、`version`、`config get/path`、`update --check` | 用户任务需要时执行 |
 | 软件更新 | `update` | 仅在用户明确要求升级时执行；会联网并替换二进制，或调用 Homebrew／`go install` |
 | 认证诊断 | `auth list/check` | 仅在账号选择或认证判定需要时执行 |
 | 远端状态写入 | `mark`、`unmark` | 执行前说明影片与将要设置/删除的状态 |
 | 本地账号/配置写入 | `auth login/use/remove`、`config set/unset` | 每次都需要明确授权 |
 | 本地缓存写入 | `tags --refresh` | 仅在用户要求刷新标签或允许重建缓存时执行 |
+| 本地媒体写入 | `download` | 仅在用户明确要求保存媒体并提供或确认新输出路径时执行；不会替换已有文件 |
 
 `top250`、`watched`、`want`、`recent`、`collections` 与默认 `lists`
 需要默认登录账号。`magnets` 与 `detail --magnets` 无需登录即可使用：有默认账号时携带其
@@ -45,6 +46,8 @@ token，token 失效则自动回退匿名请求。
 3. `--json` 只描述成功输出。先检查命令退出状态；遇到认证、参数、网络或服务端错误时，报告 stderr 的真实原因，不要把它解析成 JSON 或伪装为“无结果”。
 4. `--all` 只在用户明确要求完整遍历时使用；它仅出现在实体/合集电影列表等支持的命令上。不要把它加到不支持的命令，也不要猜测 CLI 内部的分页行为。
 5. `--best` 会把 `magnets` 的结果缩为单个优先项（中字 > HD > 体积）。用户要完整列表时不要添加它。
+6. `comments` 每次只读一个页面，默认第 `1` 页、每页 `20` 条；不要为它附加 `--all` 或自动读取下一页。用户指定页码或条数时，原样传入正数。
+7. `download --preview-image PATH` 只保存首张预览图；`--preview-video PATH` 保存完整预览流。两者都是本地写入，需先确认目标路径，而且目标不能已存在。
 
 ## 命令速查
 
@@ -62,8 +65,11 @@ javdb search "SSIS-589" --limit 5 --json
 javdb search "巨乳" --type actor --json
 javdb detail SSIS-589 --json
 javdb detail MOVIE_ID --id --json        # 仅当 MOVIE_ID 已确认是内部 ID
+javdb comments SSIS-589 --page 1 --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 javdb magnets SSIS-589 --best --json
+javdb download SSIS-589 --preview-image ./preview-0.jpg
+javdb download SSIS-589 --preview-video ./preview.ts
 
 javdb tags --zone censored
 javdb browse --tag 巨乳 --main m --limit 20 --json
@@ -93,6 +99,8 @@ URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `conf
 5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。
 6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
+8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
+9. `download NUMBER` 也默认解析番号。`--thumbnail` 保存缩略图；`--preview-image` 只取 `preview_images[0]`，不会选择后续图片；`--preview-video` 需要已结束的单媒体 HLS 预览流。下载失败时如实报告，不能把已包装的图片字节或不完整视频当作成功结果。
 
 ## 路由
 
