@@ -39,7 +39,13 @@ jobs:
   packaged_binary_smoke:
     needs: classify_changes
     if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-    name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    # job 级 if 会在矩阵展开前判断；纯文档改动被跳过时 matrix 尚不可用，
+    # 因此使用固定说明名，避免 GitHub UI 显示未展开的占位符。正常矩阵仍保留
+    # 既有的目标名称，以兼容分支保护所识别的六个平台检查。
+    name: >-
+      ${{ needs.classify_changes.outputs.docs_only == 'true' &&
+          'Packaged binary smoke (docs-only; intentionally skipped)' ||
+          format('Packaged binary smoke {0}/{1}', matrix.goos, matrix.goarch) }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
