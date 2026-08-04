@@ -6,8 +6,11 @@ import (
 	"crypto/cipher"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,6 +29,23 @@ func TestDecodeImagePayloadUnwrapsXORResponse(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("decoded image = %x, want %x", got, want)
+	}
+}
+
+func TestFetchMediaRejectsNon2xxResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte("gone"))
+	}))
+	defer server.Close()
+
+	client, err := New(Options{})
+	if err != nil {
+		t.Fatalf("new app API client: %v", err)
+	}
+	_, err = client.fetchMedia(server.URL)
+	if err == nil || !strings.Contains(err.Error(), "HTTP 410") {
+		t.Fatalf("fetch media error = %v, want HTTP status error", err)
 	}
 }
 
@@ -80,6 +100,34 @@ func TestDownloadHLSRejectsUnfinishedPlaylistWithoutCreatingFile(t *testing.T) {
 	}
 }
 
+func TestDownloadHLSRejectsInvalidPKCS7PaddingWithoutOutput(t *testing.T) {
+	const playlistURL = "https://media.example.test/previews/index.m3u8"
+	key := []byte("0123456789abcdef")
+	invalidPlaintext := bytes.Repeat([]byte{0x01}, aes.BlockSize)
+	invalidPlaintext[len(invalidPlaintext)-1] = 0x02
+	resources := map[string][]byte{
+		playlistURL: []byte("#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n#EXTINF:1.0,\nsegment.ts\n#EXT-X-ENDLIST\n"),
+		"https://media.example.test/previews/key.bin":    key,
+		"https://media.example.test/previews/segment.ts": encryptHLSRawPayload(t, invalidPlaintext, key, hlsSequenceIV(0)),
+	}
+	fetch := func(uri string) ([]byte, error) {
+		body, ok := resources[uri]
+		if !ok {
+			return nil, fmt.Errorf("unexpected media URI %q", uri)
+		}
+		return body, nil
+	}
+
+	target := filepath.Join(t.TempDir(), "preview.ts")
+	_, err := downloadHLS(fetch, playlistURL, target)
+	if err == nil || !strings.Contains(err.Error(), "PKCS#7") {
+		t.Fatalf("download HLS error = %v, want invalid padding", err)
+	}
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("invalid padding left output file: %v", statErr)
+	}
+}
+
 func TestWriteNewMediaFileNeverOverwritesExistingOutput(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "existing.jpg")
 	if err := os.WriteFile(target, []byte("original"), 0o644); err != nil {
@@ -103,16 +151,24 @@ func TestWriteNewMediaFileNeverOverwritesExistingOutput(t *testing.T) {
 
 func encryptHLSTestPayload(t *testing.T, plaintext, key, iv []byte) []byte {
 	t.Helper()
+	padding := aes.BlockSize - len(plaintext)%aes.BlockSize
+	padded := append([]byte(nil), plaintext...)
+	for i := 0; i < padding; i++ {
+		padded = append(padded, byte(padding))
+	}
+	return encryptHLSRawPayload(t, padded, key, iv)
+}
+
+func encryptHLSRawPayload(t *testing.T, plaintext, key, iv []byte) []byte {
+	t.Helper()
+	if len(plaintext)%aes.BlockSize != 0 {
+		t.Fatalf("plaintext length %d is not a cipher block multiple", len(plaintext))
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		t.Fatalf("new AES cipher: %v", err)
 	}
-	padding := aes.BlockSize - len(plaintext)%aes.BlockSize
-	padded := append([]byte(nil), plaintext...)
-	for range padding {
-		padded = append(padded, byte(padding))
-	}
-	ciphertext := make([]byte, len(padded))
-	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, padded)
+	ciphertext := make([]byte, len(plaintext))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, plaintext)
 	return ciphertext
 }

@@ -48,12 +48,15 @@ func (c *Client) fetchMedia(rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request media: %w", err)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("close media response after HTTP %d: %w", resp.StatusCode, closeErr)
+		}
+		return nil, fmt.Errorf("media request returned HTTP %d", resp.StatusCode)
+	}
 	body, err := httpx.ReadAll(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read media: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("media request returned HTTP %d", resp.StatusCode)
 	}
 	return body, nil
 }
@@ -380,23 +383,23 @@ func decryptHLSSegment(payload, key, iv []byte) ([]byte, error) {
 	}
 	plain := append([]byte(nil), payload...)
 	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, plain)
-	return removePKCS7Padding(plain), nil
+	return removePKCS7Padding(plain)
 }
 
-func removePKCS7Padding(data []byte) []byte {
+func removePKCS7Padding(data []byte) ([]byte, error) {
 	if len(data) == 0 {
-		return data
+		return nil, fmt.Errorf("invalid PKCS#7 padding")
 	}
 	padding := int(data[len(data)-1])
 	if padding == 0 || padding > aes.BlockSize || padding > len(data) {
-		return data
+		return nil, fmt.Errorf("invalid PKCS#7 padding")
 	}
 	for _, b := range data[len(data)-padding:] {
 		if int(b) != padding {
-			return data
+			return nil, fmt.Errorf("invalid PKCS#7 padding")
 		}
 	}
-	return data[:len(data)-padding]
+	return data[:len(data)-padding], nil
 }
 
 func writeNewMediaFile(path string, write func(io.Writer) (int64, error)) (written int64, err error) {

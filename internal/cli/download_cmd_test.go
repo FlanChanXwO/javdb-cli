@@ -29,3 +29,14 @@ func TestDownloadRequiresASelectedOutputBeforeNetworkAccess(t *testing.T) {
 		t.Fatalf("unexpected error: %s", errb.String())
 	}
 }
+
+func TestDownloadRejectsWhitespaceOnlyOutputBeforeNetworkAccess(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := Run([]string{"download", "WTEX-15", "--thumbnail", " \t "}, strings.NewReader(""), &out, &errb)
+	if code == 0 {
+		t.Fatal("download with a whitespace-only output unexpectedly succeeded")
+	}
+	if !strings.Contains(errb.String(), "set at least one") {
+		t.Fatalf("unexpected error: %s", errb.String())
+	}
+}

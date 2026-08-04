@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,7 +19,7 @@ func newDownloadCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 		Long:  "Download a thumbnail, only the first preview image, and/or the complete preview video. Output paths must not already exist.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if thumbnailPath == "" && previewImagePath == "" && previewVideoPath == "" {
+			if strings.TrimSpace(thumbnailPath) == "" && strings.TrimSpace(previewImagePath) == "" && strings.TrimSpace(previewVideoPath) == "" {
 				return fmt.Errorf("set at least one of --thumbnail, --preview-image, or --preview-video")
 			}
 			return withOptionalAuthClient(rf, aio, func(c *javdb.Client) error {
