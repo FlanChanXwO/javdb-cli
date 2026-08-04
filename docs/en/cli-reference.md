@@ -59,6 +59,7 @@ TOP250 and personal-list commands require the default account.
 javdb search KEYWORD [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
   [--type TYPE] [--page N] [--limit N] [--has-magnets] [--json]
 javdb detail NUMBER [--id] [--magnets] [--json]
+javdb comments NUMBER [--id] [--page N] [--limit N] [--json]
 javdb tags [--zone ZONE] [--refresh]
 javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
   [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json]
@@ -73,6 +74,30 @@ cache, so it is not read-only local behavior.
 `browse --tag` accepts a tag ID, English name, or Chinese name. Repeat
 `--main` for server-side category masks. Use `--json` for programs; human output
 uses tab-separated rows and is not a stable machine schema.
+
+`comments` calls the movie reviews endpoint exactly once for the selected page;
+it never prefetches or follows another page. Its default is page `1` with a
+page size of `20`; pass any positive `--page` and `--limit` when a different
+single page is needed. `--json` preserves the complete review objects returned
+for that page.
+
+## Local media downloads
+
+```bash
+javdb download NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
+```
+
+Set at least one output flag. `--thumbnail` writes the detail thumbnail;
+`--preview-image` writes only `preview_images[0]` (the first preview image) and
+does not enumerate or fall through to later previews. `--preview-video` writes
+the complete HLS preview stream to the given path, including AES-128 decryption
+when the playlist requires it. Use a `.ts` path for the current transport-stream
+previews.
+
+The command creates new files only: it refuses an existing output path and does
+not create missing parent directories. It accepts completed single-media HLS
+playlists; master playlists, byte-range media, fragmented-MP4 media, and
+unfinished/live playlists fail explicitly instead of producing a partial file.
 
 ## Entity and list navigation
 
@@ -160,7 +185,9 @@ represented as a fabricated empty result.
    command; verify flags with `--help`.
 3. Use `magnets --best --json` only after confirming that a magnet URI is in
    scope for the user.
-4. Treat login, tag refresh, configuration edits, account selection, and
+4. Treat `download` as a local file write: obtain an explicit output path and
+   do not replace an existing file.
+5. Treat login, tag refresh, configuration edits, account selection, and
    mark/unmark operations as state changes and ask before performing them.
 
 For coding-agent confirmation, credential, and error-handling rules, use the

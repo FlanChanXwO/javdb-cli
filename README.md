@@ -15,7 +15,8 @@
 `javdb-cli` is an independent, unofficial command-line client and Go SDK for the
 [JavDB](https://javdb.com) App JSON API. It gives people, coding agents, and Go
 applications one consistent capability surface for search, catalog navigation,
-movie details, magnets, rankings, and authenticated user lists. It is not a
+movie details, review pages, selected media downloads, magnets, rankings, and
+authenticated user lists. It is not a
 website scraper, does not include MCP, and is not affiliated with, endorsed by,
 or related to JavDB or its operators. Use it only in accordance with JavDB's
 terms and the laws that apply to you.
@@ -23,8 +24,9 @@ terms and the laws that apply to you.
 ## Why javdb-cli?
 
 - **CLI and public Go SDK** — the CLI and importable `javdb` package cover search, detail,
-  tags, browsing, entity filmographies, magnets, rankings, TOP250, collections,
-  and authenticated watch/want data.
+  review pages, selected thumbnail/preview downloads, tags, browsing, entity
+  filmographies, magnets, rankings, TOP250, collections, and authenticated
+  watch/want data.
 - **API client, not a scraper** — commands use the App JSON API with explicit
   host and proxy selection; failures remain visible rather than becoming
   fabricated empty results.
@@ -120,10 +122,14 @@ javdb auth check --json
 # Find a movie and inspect graph IDs for the next navigation step.
 javdb search SSIS-589 --limit 5 --json
 javdb detail SSIS-589 --json
+javdb comments SSIS-589 --page 1 --limit 20 --json
 
 # Browse a tag and request a filtered magnet list (works without login).
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
+
+# Explicit local output paths; --preview-image downloads only the first preview.
+javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg --preview-video ./preview.ts
 ```
 
 Run `javdb --help` or read the [complete command reference](docs/en/cli-reference.md) for
@@ -206,7 +212,8 @@ javdb config set auto_relogin true
 Magnet commands work anonymously and use the saved token when available.
 TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
-local state and should be used deliberately.
+local state and should be used deliberately. `download` writes selected media
+to explicit new local paths; it never replaces an existing file.
 
 ## Documentation
 

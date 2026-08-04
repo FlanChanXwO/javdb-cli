@@ -32,18 +32,21 @@ HTTP、签名或上游响应解码。
 
 公开 Go SDK facade，导入路径为
 `github.com/FlanChanXwO/javdb-cli/javdb`。它提供 client options、稳定的操作
-方法、公开的请求/错误别名和本机 device UUID helper。CLI 与外部 Go 调用方应
-共享这条能力面；`internal` 下的包不是外部集成 API。
+方法、公开的请求/错误别名、本机 device UUID helper，以及影片单页评论和选定媒体下载的
+请求类型。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部集成 API。
 
 ### `internal/javdb/appapi`
 
-签名 App JSON API adapter：端点、wire response、请求参数、认证状态和
-本地标签分类刷新。它不解析终端参数，也不格式化面向用户的输出。
+签名 App JSON API adapter：端点、wire response、请求参数、认证状态、本地标签分类刷新，
+以及详情给出的缩略图/首张预览图和 HLS 预览视频的直接媒体传输。图片载荷在 adapter 内完成
+格式校验和还原；已结束的单媒体 HLS 在 adapter 内下载、解密并合并。它不解析终端参数，也不格式化
+面向用户的输出。
 
 ### `internal/javdb/protocol/httpx` 与 `signature`
 
-协议细节。`httpx` 构造 TLS 指纹 HTTP transport；`signature` 生成请求所需
-签名头。两者只服务 JavDB adapter，不应被 CLI 或公开 SDK 调用方直接依赖。
+协议细节。`httpx` 构造 TLS 指纹 HTTP transport，供签名 API 和直接媒体传输复用；
+`signature` 生成 API 请求所需签名头。两者只服务 JavDB adapter，不应被 CLI 或公开 SDK
+调用方直接依赖。
 
 ### `internal/config`
 
@@ -71,7 +74,8 @@ HTTP、签名或上游响应解码。
 目录与 pixiv-cli 采用相同的高层语义：`cmd/` 是入口，`internal/cli/` 是用户
 适配层，顶层领域目录是公开 SDK，`internal/<domain>/` 是协议/领域实现，
 `internal/storage/` 是本机持久化，`docs/maintainers/` 是开发者权威文档。JavDB
-没有 MCP、下载器或 Rust 组件，不能为了目录对称创建空层。
+没有 MCP、独立下载器服务或 Rust 组件；媒体下载只属于 `javdb` facade 与
+`internal/javdb/appapi`，不能为了目录对称创建空层。
 
 ## 修改路由
 
