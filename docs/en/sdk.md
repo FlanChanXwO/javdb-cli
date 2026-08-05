@@ -2,17 +2,26 @@
 
 [Documentation](../index.md) · [简体中文](../zh-CN/sdk.md)
 
-The public package is `github.com/FlanChanXwO/javdb-cli/javdb`. It is the same
-remote capability surface used by the CLI; it does not load `auth.json` or
-manage local accounts for an application.
+The public SDK is imported from `github.com/FlanChanXwO/javdb-cli/sdk` and
+declares `package javdb`. It is the same remote capability surface used by the
+CLI; it does not load `auth.json` or manage local accounts for an application.
 
 ## Install and construct
 
 Pin an exact published tag in applications:
 
 ```bash
-go get github.com/FlanChanXwO/javdb-cli/javdb@vX.Y.Z
+go get github.com/FlanChanXwO/javdb-cli/sdk@vX.Y.Z
 ```
+
+## Migrating from `/javdb`
+
+This is a breaking import-path migration. Replace
+`github.com/FlanChanXwO/javdb-cli/javdb` with
+`github.com/FlanChanXwO/javdb-cli/sdk` in each import declaration, then resolve
+dependencies at a release containing this move. The package name, public types,
+and documented methods remain `javdb`, so selectors such as `javdb.New` do not
+change. The former `/javdb` import path is no longer supported.
 
 ```go
 client, err := javdb.New(

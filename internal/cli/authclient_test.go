@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // isolateHome points the platform home lookups at a fresh temp directory so the

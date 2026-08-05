@@ -10,8 +10,8 @@ sh scripts/build.sh
 ## 架构边界
 
 - `cmd/javdb` 只委托 `internal/cli`。
-- `internal/cli` 负责 Cobra、输入和输出；远程 JavDB 操作只通过顶层 `javdb` public facade。
-- `javdb` 是唯一公开 Go SDK；协议实现位于 `internal/javdb/appapi` 与 `internal/javdb/protocol/*`。
+- `internal/cli` 负责 Cobra、输入和输出；远程 JavDB 操作只通过顶层 `sdk/` public facade。
+- `sdk/`（声明为 `package javdb`）是唯一公开 Go SDK；协议实现位于 `internal/javdb/appapi` 与 `internal/javdb/protocol/*`。
 - `internal/config` 管理本机配置；`internal/storage/auth` 与 `internal/storage/tags` 管理本机状态。
 - `internal/update` 只负责显式更新的 Release 检查、来源识别与校验替换；`internal/cli` 只负责
   `javdb update` 的 flag、输出和配置代理解析。

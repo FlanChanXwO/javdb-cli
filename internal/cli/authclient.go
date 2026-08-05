@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // withAuthedClient runs fn with a client carrying the default account token.

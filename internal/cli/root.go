@@ -15,7 +15,7 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/config"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/javdb-cli/internal/update"
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // Run executes the CLI with the given args (usually os.Args[1:]).

@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/tags"
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 func newTagsCmd(rf *rootFlags, aio *appIO) *cobra.Command {

@@ -160,7 +160,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 func main() {
@@ -177,8 +177,9 @@ func main() {
 }
 ```
 
-Import `github.com/FlanChanXwO/javdb-cli/javdb`. The [SDK guide](docs/en/sdk.md)
-documents public models, client options, and caller responsibilities.
+Import `github.com/FlanChanXwO/javdb-cli/sdk`; it declares `package javdb`, so
+examples continue to use `javdb`. The [SDK guide](docs/en/sdk.md) documents public
+models, client options, and caller responsibilities.
 
 ### Agent skill
 

@@ -28,7 +28,7 @@ opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/mai
 ## 架构边界
 
 - `cmd/javdb` 只委托 `internal/cli`；保持二进制精简，把 Cobra、输入与输出放在 `internal/cli`。
-- 远程 JavDB 操作只通过顶层 public `javdb` SDK 暴露；协议实现在 `internal/javdb/appapi` 与 `internal/javdb/protocol/*`。
+- 远程 JavDB 操作只通过顶层 public `sdk/` SDK（`package javdb`）暴露；协议实现在 `internal/javdb/appapi` 与 `internal/javdb/protocol/*`。
 - `internal/config` 管理本机配置；`internal/storage/auth` 与 `internal/storage/tags` 管理本机状态；`internal/update` 负责显式更新的 Release 检查、来源识别与校验替换。
 - 文件应聚焦于一个职责或少数紧密相关职责。
 
