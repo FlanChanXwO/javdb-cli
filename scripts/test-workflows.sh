@@ -46,6 +46,9 @@ grep -F 'docs_only' "$quality_workflow" >/dev/null
 grep -F 'platform_smoke_gate:' "$platform_workflow" >/dev/null
 grep -F 'name: Platform smoke gate' "$platform_workflow" >/dev/null
 grep -F 'MATRIX_RESULT' "$platform_workflow" >/dev/null
+# job 级 if 在矩阵展开前执行；纯文档改动须显示说明名，完整变更仍须生成受保护的目标名。
+grep -F "'Packaged binary smoke (docs-only; intentionally skipped)'" "$platform_workflow" >/dev/null
+grep -F "format('Packaged binary smoke {0}/{1}', matrix.goos, matrix.goarch)" "$platform_workflow" >/dev/null
 
 # e2e workflow 必须排除纯文档/changelog/skills 路径,避免文档改动触发真实 API 冒烟。
 e2e_workflow="$repo_root/.github/workflows/e2e.yml"
