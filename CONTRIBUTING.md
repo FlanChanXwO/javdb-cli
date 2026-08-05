@@ -28,7 +28,7 @@ See the [development guide (Simplified Chinese)](docs/maintainers/development.md
 ## Architecture guardrails
 
 - `cmd/javdb` delegates to `internal/cli`; keep the binary thin and put Cobra, input, and output handling in `internal/cli`.
-- Remote JavDB operations are exposed only through the top-level public `javdb` SDK; protocol code lives in `internal/javdb/appapi` and `internal/javdb/protocol/*`.
+- Remote JavDB operations are exposed only through the top-level public `sdk/` SDK (`package javdb`); protocol code lives in `internal/javdb/appapi` and `internal/javdb/protocol/*`.
 - `internal/config` manages local configuration; `internal/storage/auth` and `internal/storage/tags` manage local state; `internal/update` owns explicit update checks, source identification, and verified replacement.
 - Keep files focused on one responsibility or a few tightly related responsibilities.
 

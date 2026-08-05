@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 func TestUserCmdsHelp(t *testing.T) {

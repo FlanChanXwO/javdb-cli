@@ -4,12 +4,23 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
+test -d "$repo_root/sdk"
+test ! -e "$repo_root/javdb"
 test -d "$repo_root/internal/javdb/appapi"
 test -d "$repo_root/internal/javdb/protocol/httpx"
 test -d "$repo_root/internal/javdb/protocol/signature"
 test ! -e "$repo_root/internal/appapi"
 test ! -e "$repo_root/internal/httpx"
 test ! -e "$repo_root/internal/signature"
+
+if rg -n -F 'github.com/FlanChanXwO/javdb-cli/javdb' \
+	"$repo_root/cmd" \
+	"$repo_root/internal" \
+	"$repo_root/sdk" \
+	-g '*.go'; then
+	printf '%s\n' 'source code imports the retired public SDK path' >&2
+	exit 1
+fi
 
 if rg -n 'internal/javdb/(appapi|protocol)' \
 	"$repo_root/cmd" \

@@ -4,13 +4,13 @@
 
 `cmd/javdb/main.go` 是唯一官方二进制入口，只负责把进程参数和标准流交给
 `internal/cli.Run` 并返回退出码。命令层处理 Cobra 参数、交互输入和文本/JSON
-呈现；远程 JavDB 操作只能通过公开 `javdb` facade 调用。facade 再组合
+呈现；远程 JavDB 操作只能通过公开 `sdk/` facade（声明为 `package javdb`）调用。facade 再组合
 `internal/javdb/` 下的 App API 与协议实现。
 
 ```text
-cmd/javdb → internal/cli → javdb (public SDK) → internal/javdb/appapi
-                                      ├── internal/config
-                                      └── internal/storage/{auth,tags}
+cmd/javdb → internal/cli → sdk (public SDK; package javdb) → internal/javdb/appapi
+                                                       ├── internal/config
+                                                       └── internal/storage/{auth,tags}
 ```
 
 `config` 与 `storage` 负责本机状态，而不是远程业务协议。CLI 可以直接使用它们
@@ -28,10 +28,10 @@ cmd/javdb → internal/cli → javdb (public SDK) → internal/javdb/appapi
 将用户选择映射为 `javdb` 的公开请求类型。它维护 CLI 输出兼容性，但不实现
 HTTP、签名或上游响应解码。
 
-### `javdb`
+### `sdk/`（`package javdb`）
 
 公开 Go SDK facade，导入路径为
-`github.com/FlanChanXwO/javdb-cli/javdb`。它提供 client options、稳定的操作
+`github.com/FlanChanXwO/javdb-cli/sdk`，声明为 `package javdb`。它提供 client options、稳定的操作
 方法、公开的请求/错误别名、本机 device UUID helper，以及影片单页评论和选定媒体下载的
 请求类型。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部集成 API。
 
@@ -72,9 +72,9 @@ HTTP、签名或上游响应解码。
 ## 目录约定
 
 目录与 pixiv-cli 采用相同的高层语义：`cmd/` 是入口，`internal/cli/` 是用户
-适配层，顶层领域目录是公开 SDK，`internal/<domain>/` 是协议/领域实现，
+适配层，顶层 `sdk/` 是公开 SDK（`package javdb`），`internal/<domain>/` 是协议/领域实现，
 `internal/storage/` 是本机持久化，`docs/maintainers/` 是开发者权威文档。JavDB
-没有 MCP、独立下载器服务或 Rust 组件；媒体下载只属于 `javdb` facade 与
+没有 MCP、独立下载器服务或 Rust 组件；媒体下载只属于 `sdk/` facade 与
 `internal/javdb/appapi`，不能为了目录对称创建空层。
 
 ## 修改路由

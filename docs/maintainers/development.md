@@ -34,7 +34,7 @@ pre-commit run --all-files
 
 ```text
 cmd/javdb/                         # 二进制入口 → cli.Run
-javdb/                             # 公开 Go SDK facade
+sdk/                               # 公开 Go SDK facade（package javdb）
 internal/cli/                      # Cobra、交互和输出 adapter
 internal/javdb/appapi/             # JavDB App JSON API adapter
 internal/javdb/protocol/httpx/     # TLS 指纹 HTTP transport

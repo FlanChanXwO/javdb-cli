@@ -3,7 +3,7 @@
 ## 边界与兼容性
 
 - `cmd/javdb` 是否仍只委托 CLI？
-- CLI 是否只通过公开 `javdb` facade 执行远程 JavDB 操作？
+- CLI 是否只通过公开 `sdk/` facade（`package javdb`）执行远程 JavDB 操作？
 - 是否把协议、签名或 HTTP 细节错误地暴露为公开 SDK 契约？
 - CLI flag、JSON 字段和文本列是否保持既有脚本/agent 的兼容性？
 

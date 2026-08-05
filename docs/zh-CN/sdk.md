@@ -2,16 +2,24 @@
 
 [文档导航](../index.md) · [English](../en/sdk.md)
 
-公开包为 `github.com/FlanChanXwO/javdb-cli/javdb`。它与 CLI 共享同一远程能力面，
-不会为应用自动读取 `auth.json` 或管理本机账号。
+公开 SDK 的导入路径为 `github.com/FlanChanXwO/javdb-cli/sdk`，并声明为
+`package javdb`。它与 CLI 共享同一远程能力面，不会为应用自动读取 `auth.json` 或管理本机账号。
 
 ## 安装与创建
 
 应用应钉住已发布的精确 tag：
 
 ```bash
-go get github.com/FlanChanXwO/javdb-cli/javdb@vX.Y.Z
+go get github.com/FlanChanXwO/javdb-cli/sdk@vX.Y.Z
 ```
+
+## 从 `/javdb` 迁移
+
+这是一次破坏性导入路径迁移。将每个 import declaration 中的
+`github.com/FlanChanXwO/javdb-cli/javdb` 替换为
+`github.com/FlanChanXwO/javdb-cli/sdk`，再解析包含本次迁移的发布版本依赖。
+package 名、公开类型和已记录的方法仍为 `javdb`，因此 `javdb.New` 等选择器无需修改。
+旧的 `/javdb` 导入路径不再受支持。
 
 ```go
 client, err := javdb.New(

@@ -145,7 +145,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/javdb-cli/javdb"
+	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 func main() {
@@ -162,8 +162,8 @@ func main() {
 }
 ```
 
-导入 `github.com/FlanChanXwO/javdb-cli/javdb`。[SDK 指南](docs/zh-CN/sdk.md)
-说明公开模型、client options 与调用方职责。
+导入 `github.com/FlanChanXwO/javdb-cli/sdk`；它声明为 `package javdb`，因此示例仍使用
+`javdb`。[SDK 指南](docs/zh-CN/sdk.md)说明公开模型、client options 与调用方职责。
 
 ### Agent skill
 
