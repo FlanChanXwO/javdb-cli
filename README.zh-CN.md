@@ -174,14 +174,14 @@ func main() {
 ### 从 SkillHub 安装 javdb-cli Skill
 
 支持 SkillHub 的 Agent 可以直接从 SkillHub 安装已发布的 [`javdb-cli` Skill](https://www.skillhub.cn/skills/javdb-cli)。
-每个 Skill 版本都对应它所教导的 `javdb-cli` 版本；命令语法最终应以
-`javdb <command> --help` 为准。
+每个 Skill 版本都对应它所教导的 `javdb-cli` 版本；当前已发布的版本为 `0.5.2`。
+命令语法最终应以 `javdb <command> --help` 为准。
 
 ### 从 ClawHub 安装 javdb-cli Skill
 
 使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
 [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)；请将已安装的 skill 固定到对应的
-published release 版本，不要跟随无版本的 `latest` tag。
+published release 版本（当前为 `0.5.2`），不要跟随无版本的 `latest` tag。
 
 ## 认证与凭据安全
 
