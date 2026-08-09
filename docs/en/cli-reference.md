@@ -124,9 +124,9 @@ public or user list.
 
 ```bash
 javdb magnets NUMBER [--id] [--cnsub] [--hd] [--min-size SIZE] [--best] [--json]
-javdb rankings movies [--type TYPE] [--period day|week|month] [--has-magnets]
-javdb rankings actors [--period day|week|month]
-javdb rankings playback [--filter-by TYPE] [--period day|week|month] [--has-magnets]
+javdb rankings movies [--type TYPE] [--period day|week|month] [--has-magnets] [--json]
+javdb rankings actors [--period day|week|month] [--json]
+javdb rankings playback [--filter-by TYPE] [--period day|week|month] [--has-magnets] [--json]
 javdb top250 [--zone ZONE] [--year YYYY] [--from RANK] [--page N] [--limit N] \
   [--ignore-watched] [--has-magnets]
 
@@ -138,7 +138,9 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
-`magnets` works without login and falls back to anonymous when a saved token is
+`rankings movies` and `rankings playback` emit `{"movies":[...]}` with `--json`;
+`rankings actors` emits `{"actors":[...]}`. These result-only objects are emitted
+after any `--has-magnets` filtering. `magnets` works without login and falls back to anonymous when a saved token is
 rejected. `top250` needs authentication. `--best` chooses from the returned
 magnet set; it does not download anything. `mark` and `unmark` change remote
 watch/want state. `mark` requires exactly one of `--watched` or `--want`; obtain

@@ -128,7 +128,7 @@ javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg 
 交互时使用表格输出；命令支持时，Agent 或脚本可使用 `--json` 获取稳定字段：
 
 ```bash
-javdb rankings movies --period week
+javdb rankings movies --period week --json
 javdb actor 山手梨愛 --main m --has-magnets --json
 javdb lists search 巨乳 --zone all --json
 ```
