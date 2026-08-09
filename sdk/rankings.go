@@ -6,8 +6,8 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 )
 
-// ActorPeriod re-export.
-func ActorPeriod(period string) string { return appapi.ActorPeriod(period) }
+// RankingPeriod re-export.
+func RankingPeriod(period string) string { return appapi.RankingPeriod(period) }
 
 // RankingsMovies fetches movie rankings.
 func (c *Client) RankingsMovies(ctx context.Context, type_, period string) (SearchResult, error) {
@@ -15,7 +15,7 @@ func (c *Client) RankingsMovies(ctx context.Context, type_, period string) (Sear
 	return c.api.RankingsMovies(type_, period)
 }
 
-// RankingsActors fetches actor rankings (period already daily/weekly/monthly or use ActorPeriod).
+// RankingsActors fetches actor rankings (period already daily/weekly/monthly or use RankingPeriod).
 func (c *Client) RankingsActors(ctx context.Context, period string) (SearchResult, error) {
 	_ = ctx
 	return c.api.RankingsActors(period)

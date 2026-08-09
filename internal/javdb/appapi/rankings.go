@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-// ActorPeriod maps CLI day/week/month → API daily/weekly/monthly for actor rankings.
-func ActorPeriod(period string) string {
+// RankingPeriod maps CLI day/week/month → API daily/weekly/monthly for rankings.
+func RankingPeriod(period string) string {
 	switch period {
 	case "day":
 		return "daily"
@@ -61,9 +61,14 @@ func BuildTop250Params(zone, year string, startRank, page, limit int, ignoreWatc
 
 // RankingsMovies GET /api/v1/rankings
 func (c *Client) RankingsMovies(type_, period string) (SearchResult, error) {
+	t := type_
+	if z, ok := Zones[type_]; ok {
+		t = strconv.Itoa(z)
+	}
+
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/rankings", map[string]string{
-		"type": type_, "period": period,
+		"type": t, "period": RankingPeriod(period),
 	}, &data); err != nil {
 		return nil, err
 	}
@@ -74,7 +79,7 @@ func (c *Client) RankingsMovies(type_, period string) (SearchResult, error) {
 func (c *Client) RankingsActors(period string) (SearchResult, error) {
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/rankings/actors", map[string]string{
-		"type": period,
+		"type": RankingPeriod(period),
 	}, &data); err != nil {
 		return nil, err
 	}
@@ -83,9 +88,13 @@ func (c *Client) RankingsActors(period string) (SearchResult, error) {
 
 // RankingsPlayback GET /api/v1/rankings/playback
 func (c *Client) RankingsPlayback(filterBy, period string) (SearchResult, error) {
+	fb := filterBy
+	if z, ok := Zones[filterBy]; ok {
+		fb = strconv.Itoa(z)
+	}
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/rankings/playback", map[string]string{
-		"filter_by": filterBy, "period": period,
+		"filter_by": fb, "period": RankingPeriod(period),
 	}, &data); err != nil {
 		return nil, err
 	}
