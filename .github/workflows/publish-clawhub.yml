@@ -155,16 +155,17 @@ jobs:
         shell: bash
         env:
           CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub/config.json
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           SKILL_VERSION: ${{ steps.skill_change.outputs.skill_version }}
           EXPECTED_FINGERPRINT: ${{ steps.dry_run.outputs.fingerprint }}
         run: |
           set -euo pipefail
-          test -n "$CLAWHUB_TOKEN"
-          mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
-          clawhub --no-input login --token "$CLAWHUB_TOKEN"
+          public_config_path="$RUNNER_TEMP/clawhub-public/config.json"
+          mkdir -p "$(dirname "$public_config_path")"
           verify_exit=0
-          clawhub skill verify javdb-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
+          # 发布后强制从无凭据的公开端点核验；带 publisher token 时，ClawHub
+          # 可能在异步 moderation 期间返回非 JSON 的隐藏提示，而不是公开版本证据。
+          env -u CLAWHUB_TOKEN CLAWHUB_CONFIG_PATH="$public_config_path" \
+            clawhub skill verify javdb-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
           node - "$RUNNER_TEMP/clawhub-verify.json" "$SKILL_VERSION" "$EXPECTED_FINGERPRINT" "$verify_exit" <<'NODE'
           const fs = require("fs");
           const [verifyFile, version, fingerprint, exitCode] = process.argv.slice(2);
@@ -205,8 +206,13 @@ jobs:
             --source-commit "$RELEASE_COMMIT" \
             --source-path skills/javdb-cli \
             --json > "$RUNNER_TEMP/clawhub-publish.json"
+          public_config_path="$RUNNER_TEMP/clawhub-public/config.json"
+          mkdir -p "$(dirname "$public_config_path")"
           verify_exit=0
-          clawhub skill verify javdb-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
+          # 发布后强制从无凭据的公开端点核验；带 publisher token 时，ClawHub
+          # 可能在异步 moderation 期间返回非 JSON 的隐藏提示，而不是公开版本证据。
+          env -u CLAWHUB_TOKEN CLAWHUB_CONFIG_PATH="$public_config_path" \
+            clawhub skill verify javdb-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
           node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$SKILL_VERSION" "$EXPECTED_FINGERPRINT" "$verify_exit" <<'NODE'
           const fs = require("fs");
           const [publishFile, verifyFile, version, fingerprint, exitCode] = process.argv.slice(2);
