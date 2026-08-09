@@ -143,7 +143,7 @@ Use tabular output interactively and `--json` when a command exposes it and an
 agent or script needs stable fields:
 
 ```bash
-javdb rankings movies --period week
+javdb rankings movies --period week --json
 javdb actor 山手梨愛 --main m --has-magnets --json
 javdb lists search 巨乳 --zone all --json
 ```

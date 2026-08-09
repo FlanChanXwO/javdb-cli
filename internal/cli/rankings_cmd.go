@@ -41,6 +41,28 @@ func PrintNamedNoCount(w io.Writer, errW io.Writer, items []map[string]any) {
 	}
 }
 
+func renderRankingsMovies(aio *appIO, movies []map[string]any, asJSON bool) error {
+	if movies == nil {
+		movies = []map[string]any{}
+	}
+	if asJSON {
+		return EmitJSON(aio.out, map[string]any{"movies": movies})
+	}
+	PrintMovies(aio.out, aio.err, movies)
+	return nil
+}
+
+func renderRankingsActors(aio *appIO, actors []map[string]any, asJSON bool) error {
+	if actors == nil {
+		actors = []map[string]any{}
+	}
+	if asJSON {
+		return EmitJSON(aio.out, map[string]any{"actors": actors})
+	}
+	PrintNamedNoCount(aio.out, aio.err, actors)
+	return nil
+}
+
 func newRankingsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rankings",
@@ -54,7 +76,7 @@ func newRankingsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 
 func newRankingsMoviesCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	var type_, period string
-	var hasMagnets bool
+	var hasMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "movies",
 		Short: "Movie rankings",
@@ -75,18 +97,19 @@ func newRankingsMoviesCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if hasMagnets {
 				movies = FilterHasMagnets(movies)
 			}
-			PrintMovies(aio.out, aio.err, movies)
-			return nil
+			return renderRankingsMovies(aio, movies, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&type_, "type", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 
 func newRankingsActorsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	var period string
+	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "actors",
 		Short: "Actor rankings",
@@ -103,17 +126,17 @@ func newRankingsActorsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("rankings failed: %w", err)
 			}
-			PrintNamedNoCount(aio.out, aio.err, res.Named("actors"))
-			return nil
+			return renderRankingsActors(aio, res.Named("actors"), asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 
 func newRankingsPlaybackCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	var filterBy, period string
-	var hasMagnets bool
+	var hasMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "playback",
 		Short: "Playback rankings",
@@ -134,20 +157,20 @@ func newRankingsPlaybackCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if hasMagnets {
 				movies = FilterHasMagnets(movies)
 			}
-			PrintMovies(aio.out, aio.err, movies)
-			return nil
+			return renderRankingsMovies(aio, movies, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&filterBy, "filter-by", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 
 func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	var zone, year string
 	var startRank, page, limit int
-	var ignoreWatched, hasMagnets bool
+	var ignoreWatched, hasMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "top250",
 		Short: "TOP250 list (needs login)",
@@ -157,12 +180,18 @@ func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("top250 failed: %w", err)
 				}
-				if gen := resRawString(res, "generated_at"); gen != "" {
+				if gen := resRawString(res, "generated_at"); gen != "" && !asJSON {
 					fmt.Fprintf(aio.err, "# generated_at=%s\n", gen)
 				}
 				movies := res.Movies()
 				if hasMagnets {
 					movies = FilterHasMagnets(movies)
+				}
+				if movies == nil {
+					movies = []map[string]any{}
+				}
+				if asJSON {
+					return EmitJSON(aio.out, map[string]any{"movies": movies})
 				}
 				PrintRankedMovies(aio.out, aio.err, movies)
 				return nil
@@ -176,6 +205,7 @@ func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().BoolVar(&ignoreWatched, "ignore-watched", false, "Skip already watched titles")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 
