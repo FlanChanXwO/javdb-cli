@@ -51,7 +51,8 @@ grep -F -- '--skip-self-upgrade publish skills/javdb-cli' "$skillhub_workflow" >
 grep -F "SKILLHUB_TOKEN: $github_expr{{ secrets.SKILLHUB_TOKEN }}" "$skillhub_workflow" >/dev/null
 grep -F -- '--dry-run' "$skillhub_workflow" >/dev/null
 
-test "$(grep -c "CLAWHUB_TOKEN: $github_expr{{ secrets.CLAWHUB_TOKEN }}" "$clawhub_workflow")" = 2
+test "$(grep -c "CLAWHUB_TOKEN: $github_expr{{ secrets.CLAWHUB_TOKEN }}" "$clawhub_workflow")" = 1
+test "$(grep -c "env -u CLAWHUB_TOKEN CLAWHUB_CONFIG_PATH=\"\$public_config_path\"" "$clawhub_workflow")" = 2
 test "$(grep -c "SKILLHUB_TOKEN: $github_expr{{ secrets.SKILLHUB_TOKEN }}" "$skillhub_workflow")" = 1
 grep -F 'name: Hand off the immutable release tag to skill publishers' "$release_workflow" >/dev/null
 grep -F 'skillhub-release-tag/release-tag' "$release_workflow" >/dev/null
