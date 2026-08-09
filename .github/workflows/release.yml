@@ -437,6 +437,22 @@ jobs:
           fi
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
+      # 下游 skill 发布 workflow 只信任这个由已公开 Release 生成的 tag handoff；
+      # 不从 workflow_run 的 head_branch 推断版本，也不重新读取 main。
+      - name: Hand off the immutable release tag to skill publishers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p skillhub-release-tag
+          printf '%s\n' "$RELEASE_TAG" > skillhub-release-tag/release-tag
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: skillhub-release-tag
+          path: skillhub-release-tag/release-tag
+          if-no-files-found: error
+          retention-days: 1
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verified-release-checksums
