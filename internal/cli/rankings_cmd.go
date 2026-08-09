@@ -99,7 +99,7 @@ func newRankingsActorsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := c.RankingsActors(context.Background(), javdb.RankingPeriod(period))
+			res, err := c.RankingsActors(context.Background(), period)
 			if err != nil {
 				return fmt.Errorf("rankings failed: %w", err)
 			}

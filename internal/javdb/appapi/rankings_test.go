@@ -10,6 +10,9 @@ func TestRankingPeriod(t *testing.T) {
 	if RankingPeriod("day") != "daily" || RankingPeriod("week") != "weekly" || RankingPeriod("month") != "monthly" {
 		t.Fatal("RankingPeriod mapping")
 	}
+	if ActorPeriod("day") != "daily" || ActorPeriod("week") != "weekly" || ActorPeriod("month") != "monthly" {
+		t.Fatal("ActorPeriod mapping")
+	}
 }
 
 func TestBuildTop250Params(t *testing.T) {

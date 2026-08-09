@@ -9,6 +9,10 @@ import (
 // RankingPeriod re-export.
 func RankingPeriod(period string) string { return appapi.RankingPeriod(period) }
 
+// ActorPeriod is a deprecated alias for RankingPeriod.
+// Deprecated: Use RankingPeriod instead.
+func ActorPeriod(period string) string { return appapi.ActorPeriod(period) }
+
 // RankingsMovies fetches movie rankings.
 func (c *Client) RankingsMovies(ctx context.Context, type_, period string) (SearchResult, error) {
 	_ = ctx
