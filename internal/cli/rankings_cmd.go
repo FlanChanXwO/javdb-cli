@@ -94,7 +94,7 @@ func newRankingsMoviesCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			return renderRankingsMovies(aio, movies, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&type_, "type", "censored", "censored|uncensored|western")
+	cmd.Flags().StringVar(&type_, "type", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
@@ -116,7 +116,7 @@ func newRankingsActorsCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := c.RankingsActors(context.Background(), javdb.ActorPeriod(period))
+			res, err := c.RankingsActors(context.Background(), period)
 			if err != nil {
 				return fmt.Errorf("rankings failed: %w", err)
 			}
@@ -154,7 +154,7 @@ func newRankingsPlaybackCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 			return renderRankingsMovies(aio, movies, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&filterBy, "filter-by", "censored", "censored|uncensored|western")
+	cmd.Flags().StringVar(&filterBy, "filter-by", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
