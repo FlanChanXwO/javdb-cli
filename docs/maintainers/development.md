@@ -109,6 +109,7 @@ Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 4. `vX.Y.Z` tag 必须不可变且可追溯到 `main`；Release workflow 在打包前校验版本化双语 notes、
    审计来源，并以同一渲染正文创建 GitHub Release。
 5. 发布器核对资产、从同一 `checksums.txt` 渲染 Homebrew Formula，并在 macOS/Linux 的 amd64/arm64 环境验证。tap 部署是可选的：必须设置 `HOMEBREW_TAP_DEPLOY_ENABLED=true` 并在受保护 `release` environment 配置 `HOMEBREW_TAP_DEPLOY_KEY`；条件缺失时 Release 与 Formula 验证仍会完成。
+6. `.github/CODEOWNERS` 将默认 review 路由到唯一维护者；它只会为未来 PR 请求 reviewer，不能让 PR 作者批准自己的 PR，也不替代 `main` 的分支保护要求。
 
 历史 Release 回写、GitHub description 修改、release-prep PR 合并、创建 tag 与发布均是外部写入。
 在当前会话取得目标版本、范围和影响的明确授权后，先 dry-run，再使用 `sync-history --apply` 或
