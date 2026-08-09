@@ -75,3 +75,40 @@ func TestTop250JSONOutput(t *testing.T) {
 		t.Fatalf("unexpected JSON: %#v", got)
 	}
 }
+
+func TestRenderRankingsJSONNilNormalization(t *testing.T) {
+	aioMovies := &appIO{out: &bytes.Buffer{}, err: &bytes.Buffer{}}
+	if err := renderRankingsMovies(aioMovies, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(aioMovies.out.(*bytes.Buffer).String()) != `{"movies":[]}` {
+		t.Fatalf("expected {\"movies\":[]}, got %q", aioMovies.out.(*bytes.Buffer).String())
+	}
+
+	aioActors := &appIO{out: &bytes.Buffer{}, err: &bytes.Buffer{}}
+	if err := renderRankingsActors(aioActors, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(aioActors.out.(*bytes.Buffer).String()) != `{"actors":[]}` {
+		t.Fatalf("expected {\"actors\":[]}, got %q", aioActors.out.(*bytes.Buffer).String())
+	}
+}
+
+func TestRenderRankingsPlaybackJSONFiltersMagnets(t *testing.T) {
+	aio := &appIO{out: &bytes.Buffer{}, err: &bytes.Buffer{}}
+	playbackMovies := []map[string]any{
+		{"number": "PB-HAS", "magnets_count": float64(3)},
+		{"number": "PB-NONE", "magnets_count": float64(0)},
+	}
+	filtered := FilterHasMagnets(playbackMovies)
+	if err := renderRankingsMovies(aio, filtered, true); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string][]map[string]any
+	if err := json.Unmarshal(aio.out.(*bytes.Buffer).Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got["movies"]) != 1 || got["movies"][0]["number"] != "PB-HAS" {
+		t.Fatalf("unexpected JSON for playback: %#v", got)
+	}
+}

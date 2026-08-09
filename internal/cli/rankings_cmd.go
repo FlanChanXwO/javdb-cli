@@ -42,6 +42,9 @@ func PrintNamedNoCount(w io.Writer, errW io.Writer, items []map[string]any) {
 }
 
 func renderRankingsMovies(aio *appIO, movies []map[string]any, asJSON bool) error {
+	if movies == nil {
+		movies = []map[string]any{}
+	}
 	if asJSON {
 		return EmitJSON(aio.out, map[string]any{"movies": movies})
 	}
@@ -50,6 +53,9 @@ func renderRankingsMovies(aio *appIO, movies []map[string]any, asJSON bool) erro
 }
 
 func renderRankingsActors(aio *appIO, actors []map[string]any, asJSON bool) error {
+	if actors == nil {
+		actors = []map[string]any{}
+	}
 	if asJSON {
 		return EmitJSON(aio.out, map[string]any{"actors": actors})
 	}
@@ -180,6 +186,9 @@ func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 				movies := res.Movies()
 				if hasMagnets {
 					movies = FilterHasMagnets(movies)
+				}
+				if movies == nil {
+					movies = []map[string]any{}
 				}
 				if asJSON {
 					return EmitJSON(aio.out, map[string]any{"movies": movies})
