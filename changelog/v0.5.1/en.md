@@ -6,7 +6,7 @@
 
 ## Fixed
 
-- Fix movie and playback rankings query mapping by translating textual zones such as `censored`, `uncensored`, `western`, and `fc2` to the App API's numeric values, and normalize ranking periods consistently across ranking endpoints. ([#13](https://github.com/FlanChanXwO/javdb-cli/pull/13))
+- Fix movie and playback rankings query mapping by translating textual zones such as `censored`, `uncensored`, `western`, and `fc2` to the App API's numeric values, and normalizing ranking periods consistently across ranking endpoints. ([#13](https://github.com/FlanChanXwO/javdb-cli/pull/13))
 
 ## New Contributors
 
