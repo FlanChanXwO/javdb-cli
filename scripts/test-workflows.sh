@@ -8,7 +8,9 @@ for workflow in \
 	"$repo_root/.github/workflows/ci.yml" \
 	"$repo_root/.github/workflows/platform-smoke.yml" \
 	"$repo_root/.github/workflows/release.yml" \
-	"$repo_root/.github/workflows/e2e.yml"; do
+	"$repo_root/.github/workflows/e2e.yml" \
+	"$repo_root/.github/workflows/publish-clawhub.yml" \
+	"$repo_root/.github/workflows/publish-skillhub.yml"; do
 	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
 done
 
@@ -34,6 +36,7 @@ grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
 grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
+sh "$repo_root/scripts/test-skill-publish-workflows.sh"
 
 # 文档专属路径必须有一致的 classifier 与稳定汇总 gate；workflow 本身的改动不在白名单内。
 for workflow in "$quality_workflow" "$platform_workflow"; do
