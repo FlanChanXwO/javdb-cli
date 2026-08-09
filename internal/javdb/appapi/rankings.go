@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-// ActorPeriod maps CLI day/week/month → API daily/weekly/monthly for actor rankings.
-func ActorPeriod(period string) string {
+// RankingPeriod maps CLI day/week/month → API daily/weekly/monthly for rankings.
+func RankingPeriod(period string) string {
 	switch period {
 	case "day":
 		return "daily"
@@ -18,6 +18,19 @@ func ActorPeriod(period string) string {
 	default:
 		return period
 	}
+}
+
+// ActorPeriod maps CLI day/week/month → API daily/weekly/monthly for actor rankings.
+// Deprecated: Use RankingPeriod instead.
+func ActorPeriod(period string) string {
+	return RankingPeriod(period)
+}
+
+func normalizeZone(zone string) string {
+	if z, ok := Zones[zone]; ok {
+		return strconv.Itoa(z)
+	}
+	return zone
 }
 
 // BuildTop250Params builds query for GET /api/v1/movies/top.
@@ -63,18 +76,18 @@ func BuildTop250Params(zone, year string, startRank, page, limit int, ignoreWatc
 func (c *Client) RankingsMovies(type_, period string) (SearchResult, error) {
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/rankings", map[string]string{
-		"type": type_, "period": period,
+		"type": normalizeZone(type_), "period": RankingPeriod(period),
 	}, &data); err != nil {
 		return nil, err
 	}
 	return SearchResult(data), nil
 }
 
-// RankingsActors GET /api/v1/rankings/actors — period must be daily|weekly|monthly.
+// RankingsActors GET /api/v1/rankings/actors — period accepts day|week|month or daily|weekly|monthly.
 func (c *Client) RankingsActors(period string) (SearchResult, error) {
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/rankings/actors", map[string]string{
-		"type": period,
+		"type": RankingPeriod(period),
 	}, &data); err != nil {
 		return nil, err
 	}
@@ -85,7 +98,7 @@ func (c *Client) RankingsActors(period string) (SearchResult, error) {
 func (c *Client) RankingsPlayback(filterBy, period string) (SearchResult, error) {
 	var data map[string]json.RawMessage
 	if err := c.GetJSON("/api/v1/rankings/playback", map[string]string{
-		"filter_by": filterBy, "period": period,
+		"filter_by": normalizeZone(filterBy), "period": RankingPeriod(period),
 	}, &data); err != nil {
 		return nil, err
 	}
