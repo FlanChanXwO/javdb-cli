@@ -20,7 +20,7 @@ func TestRankingsTop250Help(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("%v: %s", args, errb.String())
 		}
-		if len(args) == 3 && !strings.Contains(out.String(), "--json") {
+		if (len(args) == 3 || args[0] == "top250") && !strings.Contains(out.String(), "--json") {
 			t.Fatalf("%v: missing --json", args)
 		}
 	}
@@ -55,6 +55,23 @@ func TestRenderRankingsActorsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got["actors"]) != 1 || got["actors"][0]["id"] != "actor-1" {
+		t.Fatalf("unexpected JSON: %#v", got)
+	}
+}
+
+func TestTop250JSONOutput(t *testing.T) {
+	aio := &appIO{out: &bytes.Buffer{}, err: &bytes.Buffer{}}
+	movies := []map[string]any{
+		{"ranking": float64(1), "number": "SSIS-001", "id": "m1", "title": "Test Title"},
+	}
+	if err := EmitJSON(aio.out, map[string]any{"movies": movies}); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string][]map[string]any
+	if err := json.Unmarshal(aio.out.(*bytes.Buffer).Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got["movies"]) != 1 || got["movies"][0]["number"] != "SSIS-001" {
 		t.Fatalf("unexpected JSON: %#v", got)
 	}
 }

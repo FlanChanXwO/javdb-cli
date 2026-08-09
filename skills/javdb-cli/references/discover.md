@@ -8,7 +8,7 @@
 4. 主题浏览：先 `javdb tags --zone ZONE` 取得准确标签，再 `javdb browse --tag TAG --json`。需要重建缓存时，用户应明确要求 `tags --refresh`。
 5. 合集：用 `javdb lists search QUERY` 找公开合集，用 `javdb list LIST_ID` 读取其中影片。不要将认证的“我的合集”默认命令 `javdb lists` 误作公开搜索。
 6. 磁力：`javdb magnets NUMBER --json` 无需登录即可获取磁力链接；已保存默认账号 token 时自动带上，token 失效则回退匿名。用户要求一条推荐结果时才加 `--best`；需要指定条件可用 `--cnsub`、`--hd`、`--min-size`，并在回应中说明过滤条件。
-7. 排行：`javdb rankings movies|actors|playback --json` 无需登录；影片排行的结果字段为 `movies`，演员排行为 `actors`。需要仅保留有磁力的影片时加 `--has-magnets`，不要把过滤后结果误称为完整榜单。
+7. 排行：`javdb rankings movies|actors|playback --json` 无需登录；`javdb top250 --json` 需要登录。影片排行的结果字段为 `movies`，演员排行为 `actors`。需要仅保留有磁力的影片时加 `--has-magnets`，不要把过滤后结果误称为完整榜单。
 8. 评论：`javdb comments NUMBER --page 1 --limit 20 --json` 每次只取所选一页；不要自动读取后续页，也不要把页面评论误称为全量评论。
 9. 媒体：只有用户明确要求写入本机文件时，才执行 `javdb download NUMBER --thumbnail PATH`、`--preview-image PATH` 或 `--preview-video PATH`。`--preview-image` 只下载首张预览图；路径必须是新的，不能替换已有文件。
 

@@ -111,7 +111,7 @@ javdb rankings movies [--type TYPE] [--period day|week|month] [--has-magnets] [-
 javdb rankings actors [--period day|week|month] [--json]
 javdb rankings playback [--filter-by TYPE] [--period day|week|month] [--has-magnets] [--json]
 javdb top250 [--zone ZONE] [--year YYYY] [--from RANK] [--page N] [--limit N] \
-  [--ignore-watched] [--has-magnets]
+  [--ignore-watched] [--has-magnets] [--json]
 
 javdb watched [--has-magnets]
 javdb want [--has-magnets]
@@ -121,7 +121,7 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
-`rankings movies` 与 `rankings playback` 使用 `--json` 时输出 `{"movies":[...]}`；
+`rankings movies`、`rankings playback` 与 `top250` 使用 `--json` 时输出 `{"movies":[...]}`；
 `rankings actors` 输出 `{"actors":[...]}`。这些只含结果的对象会在 `--has-magnets`
 过滤后输出。`magnets` 无需登录即可使用，token 失效时自动回退匿名请求。`top250` 需要登录。
 `--best` 只从服务端返回的磁力集中选择，不会下载。

@@ -164,7 +164,7 @@ func newRankingsPlaybackCmd(rf *rootFlags, aio *appIO) *cobra.Command {
 func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	var zone, year string
 	var startRank, page, limit int
-	var ignoreWatched, hasMagnets bool
+	var ignoreWatched, hasMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "top250",
 		Short: "TOP250 list (needs login)",
@@ -174,12 +174,15 @@ func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("top250 failed: %w", err)
 				}
-				if gen := resRawString(res, "generated_at"); gen != "" {
+				if gen := resRawString(res, "generated_at"); gen != "" && !asJSON {
 					fmt.Fprintf(aio.err, "# generated_at=%s\n", gen)
 				}
 				movies := res.Movies()
 				if hasMagnets {
 					movies = FilterHasMagnets(movies)
+				}
+				if asJSON {
+					return EmitJSON(aio.out, map[string]any{"movies": movies})
 				}
 				PrintRankedMovies(aio.out, aio.err, movies)
 				return nil
@@ -193,6 +196,7 @@ func newTop250Cmd(rf *rootFlags, aio *appIO) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().BoolVar(&ignoreWatched, "ignore-watched", false, "Skip already watched titles")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 
