@@ -1,7 +1,7 @@
 # Localized content: English / 中文
 name: Bug report / Bug 报告
 description: Report a reproducible problem in the CLI or public Go SDK. / 报告 CLI 或 public Go SDK 中可复现的问题。
-title: "[Bug]: "
+title: "[Bug] "
 labels:
   - bug
 body:

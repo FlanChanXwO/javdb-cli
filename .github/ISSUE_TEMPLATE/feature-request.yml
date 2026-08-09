@@ -1,7 +1,7 @@
 # Localized content: English / 中文
 name: Feature request / 功能请求
 description: Propose a focused improvement to javdb-cli. / 为 javdb-cli 提出明确的改进建议。
-title: "[Feature]: "
+title: "[Feature] "
 labels:
   - enhancement
 body:
