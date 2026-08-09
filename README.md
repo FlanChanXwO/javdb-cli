@@ -189,6 +189,20 @@ boundaries, command-scoped flags, JSON/error handling, and search-to-detail
 navigation. Load it only for explicit JavDB work, and verify each command's
 flags with `javdb <command> --help`.
 
+### Install the javdb-cli Skill from SkillHub
+
+Agents with SkillHub support can install the published [`javdb-cli` Skill](https://www.skillhub.cn/skills/javdb-cli)
+directly from SkillHub. Each Skill version matches the `javdb-cli` release it
+teaches; the current published version is `0.5.2`. Always use
+`javdb <command> --help` as the final source of command syntax.
+
+### Install the javdb-cli Skill from ClawHub
+
+Agents using ClawHub can install the published [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)
+with `clawhub install javdb-cli`; pin the installed skill to the matching
+published release version, currently `0.5.2`, rather than following an
+unversioned `latest` tag.
+
 ## Authentication and credential safety
 
 `javdb auth login` is the recommended setup. It keeps the username, password,
