@@ -24,9 +24,7 @@ grep -F 'docs/en/cli-reference.md' "$repo_root/README.md" >/dev/null
 grep -F 'docs/en/sdk.md' "$repo_root/README.md" >/dev/null
 grep -F 'docs/zh-CN/cli-reference.md' "$repo_root/README.zh-CN.md" >/dev/null
 grep -F 'docs/zh-CN/sdk.md' "$repo_root/README.zh-CN.md" >/dev/null
-grep -F 'https://www.skillhub.cn/skills/javdb-cli' "$repo_root/README.md" >/dev/null
 grep -F 'https://clawhub.ai/flanchanxwo/skills/javdb-cli' "$repo_root/README.md" >/dev/null
-grep -F 'https://www.skillhub.cn/skills/javdb-cli' "$repo_root/README.zh-CN.md" >/dev/null
 grep -F 'https://clawhub.ai/flanchanxwo/skills/javdb-cli' "$repo_root/README.zh-CN.md" >/dev/null
 grep -F 'changelog/README.md' "$repo_root/CHANGELOG.md" >/dev/null
 grep -F 'changelog/README.zh-CN.md' "$repo_root/CHANGELOG.zh-CN.md" >/dev/null

@@ -12,7 +12,7 @@ Go SDK 与 Agent skill。项目当前没有 MCP server；任何文档或元数�
 
 - 不新增 MCP、下载器、Rust 组件或其他仅因与 `pixiv-cli` 对称而存在的层。
 - 不改变 CLI、公开 SDK、认证、配置、输出或发布资产的现有行为。
-- 不迁移 Pixiv 专属的 Rust、OAuth、SkillHub、ClawHub 与 Homebrew prepublish 工作流。
+- 不迁移 Pixiv 专属的 Rust、OAuth、ClawHub 与 Homebrew prepublish 工作流。
 
 ## 内容模型与目录
 
