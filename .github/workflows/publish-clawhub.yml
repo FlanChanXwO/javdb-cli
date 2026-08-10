@@ -38,8 +38,8 @@ jobs:
         if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: skillhub-release-tag
-          path: ${{ runner.temp }}/skill-release-tag
+          name: clawhub-release-tag
+          path: ${{ runner.temp }}/clawhub-release-tag
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
@@ -54,7 +54,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             release_tag="$WORKFLOW_DISPATCH_RELEASE_TAG"
           else
-            handoff_dir="$RUNNER_TEMP/skill-release-tag"
+            handoff_dir="$RUNNER_TEMP/clawhub-release-tag"
             test "$(find "$handoff_dir" -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$handoff_dir/release-tag"
             release_tag=$(cat "$handoff_dir/release-tag")
           fi

@@ -171,12 +171,6 @@ func main() {
 它规定了凭据处理、确认边界、命令级参数、JSON/错误处理与搜索到详情的导航。仅在明确的 JavDB
 任务中加载，并在执行前用 `javdb <command> --help` 核对参数。
 
-### 从 SkillHub 安装 javdb-cli Skill
-
-支持 SkillHub 的 Agent 可以直接从 SkillHub 安装已发布的 [`javdb-cli` Skill](https://www.skillhub.cn/skills/javdb-cli)。
-每个 Skill 版本都对应它所教导的 `javdb-cli` 版本；当前已发布的版本为 `0.5.2`。
-命令语法最终应以 `javdb <command> --help` 为准。
-
 ### 从 ClawHub 安装 javdb-cli Skill
 
 使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
