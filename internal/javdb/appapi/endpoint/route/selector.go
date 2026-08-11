@@ -308,7 +308,11 @@ func probeBootstraps(ctx context.Context, probe Probe) (bootstraps []probeResult
 				bestLatency = r.latency
 			}
 		case <-ticker.C:
-			cancelProvablySlower(states, &stateMu, bestLatency)
+			// 只有已取得首个合法动态来源后才淘汰"不可能更快"的 bootstrap；否则仍在进行的
+			// 探测可能是唯一能返回 apiDomains 的动态来源，提前取消会永久丢失动态候选。
+			if dynamicData != nil {
+				cancelProvablySlower(states, &stateMu, bestLatency)
+			}
 		}
 	}
 	return bootstraps, dynamicData, probed, failures

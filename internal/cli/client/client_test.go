@@ -278,3 +278,40 @@ func TestResolveRuntimeReturnsDeviceUUIDError(t *testing.T) {
 		t.Fatal("resolveRuntime swallowed device uuid creation error")
 	}
 }
+
+// TestResolveRuntimeRejectsProxyBeforeDeviceUUID 验证非法 proxy 在 device UUID provision
+// 之前完成无副作用校验：不留下 device_uuid 本机状态副作用。
+func TestResolveRuntimeRejectsProxyBeforeDeviceUUID(t *testing.T) {
+	home := isolateHome(t)
+	if _, err := resolveRuntime(&invocation.RootOptions{Host: settings.HostMirror, Proxy: "://bad"}); err == nil || !strings.Contains(err.Error(), "proxy") {
+		t.Fatalf("resolveRuntime error = %v, want proxy validation error", err)
+	}
+	devicePath := filepath.Join(home, ".javdb-cli", "device_uuid")
+	if _, statErr := os.Stat(devicePath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("device_uuid created despite invalid proxy: %v", statErr)
+	}
+}
+
+// TestResolveClientCreatesConfigBeforeSelection 验证：参数完全有效的首次 auto 命令即使网络
+// 选线失败，也会先创建基线配置（"正常可执行命令触发创建"契约）。
+func TestResolveClientCreatesConfigBeforeSelection(t *testing.T) {
+	home := isolateHome(t)
+	ah := autoHost{
+		loadCache: func(path string) (storageroute.Document, bool, error) {
+			return storageroute.Document{}, false, nil
+		},
+		saveCache: func(path string, doc storageroute.Document) error { return nil },
+		selectHost: func(ctx context.Context, opts javdb.AutoHostOptions) (javdb.AutoHostResult, error) {
+			return javdb.AutoHostResult{}, errors.New("selection failed")
+		},
+	}
+	// 默认 auto host；selectHost 注入失败以模拟断网选线失败。
+	_, _, err := resolveClientWithAutoHost(&invocation.RootOptions{}, ah)
+	if err == nil || !strings.Contains(err.Error(), "auto select host") {
+		t.Fatalf("error = %v, want selection failure", err)
+	}
+	configPath := filepath.Join(home, ".javdb-cli", "config.toml")
+	if _, statErr := os.Stat(configPath); statErr != nil {
+		t.Fatalf("config.toml not created before failing selection: %v", statErr)
+	}
+}

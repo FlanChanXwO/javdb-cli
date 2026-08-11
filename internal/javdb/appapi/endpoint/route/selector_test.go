@@ -430,6 +430,42 @@ func TestSelectKeepsSlowConstructionFastRequestNonDynamicBootstrap(t *testing.T)
 	}
 }
 
+// TestSelectDoesNotCancelPotentialDynamicSource 验证：在取得首个合法动态来源前，即使某个
+// bootstrap 已"不可能成为最快 bootstrap"，也不能被取消——它可能是唯一能返回 apiDomains 的
+// 来源；取消会永久丢失请求耗时更短的动态候选。
+func TestSelectDoesNotCancelPotentialDynamicSource(t *testing.T) {
+	dyn := "https://dyn.example"
+	slowWithDomains := "https://apidd.czssdgz.com" // 50ms，唯一动态来源
+	probe := func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
+		switch host {
+		case model.HostMirror:
+			onRequestStart()
+			return 5 * time.Millisecond, map[string]any{}, nil
+		case slowWithDomains:
+			onRequestStart()
+			time.Sleep(50 * time.Millisecond) // 请求慢
+			return 50 * time.Millisecond, startupWithDomains(dyn), nil
+		case dyn:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 1 * time.Millisecond, map[string]any{}, nil
+		default:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 0, nil, errors.New("offline " + host)
+		}
+	}
+	result, err := Select(context.Background(), SelectorOptions{}, probe)
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if result.Host != dyn {
+		t.Fatalf("result host = %s, want %s (potential dynamic source must not be cancelled early)", result.Host, dyn)
+	}
+}
+
 // TestStartupProbeLatencyExcludesTransportConstruction 验证测速 latency 只统计单次 /startup
 // 请求耗时，不包含 transport 构造（TLS client/cookie jar/proxy 初始化）。
 func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {
