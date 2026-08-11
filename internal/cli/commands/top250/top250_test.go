@@ -13,13 +13,10 @@ func TestNewBuildsTop250Command(t *testing.T) {
 	if cmd.Name() != "top250" || cmd.Use != "top250" {
 		t.Fatalf("name=%q use=%q", cmd.Name(), cmd.Use)
 	}
-	for _, flag := range []string{"zone", "year", "from", "page", "limit", "ignore-watched", "has-magnets"} {
+	for _, flag := range []string{"zone", "year", "from", "page", "limit", "ignore-watched", "has-magnets", "json"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Fatalf("missing --%s", flag)
 		}
-	}
-	if cmd.Flags().Lookup("json") != nil {
-		t.Fatal("top250 must not have --json in this baseline")
 	}
 }
 

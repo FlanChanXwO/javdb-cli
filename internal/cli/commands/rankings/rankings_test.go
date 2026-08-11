@@ -24,16 +24,13 @@ func TestNewBuildsRankingsGroup(t *testing.T) {
 	}
 }
 
-func TestNewMoviesHasNoJSONFlag(t *testing.T) {
+func TestNewMoviesHasJSONFlag(t *testing.T) {
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := NewMovies(&invocation.RootOptions{}, streams)
-	for _, flag := range []string{"type", "period", "has-magnets"} {
+	for _, flag := range []string{"type", "period", "has-magnets", "json"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Fatalf("movies missing --%s", flag)
 		}
-	}
-	if cmd.Flags().Lookup("json") != nil {
-		t.Fatal("movies must not have --json in this baseline")
 	}
 }
 
@@ -42,6 +39,19 @@ func TestNewActorsFlags(t *testing.T) {
 	cmd := NewActors(&invocation.RootOptions{}, streams)
 	if cmd.Flags().Lookup("period") == nil {
 		t.Fatal("actors missing --period")
+	}
+	if cmd.Flags().Lookup("json") == nil {
+		t.Fatal("actors missing --json")
+	}
+}
+
+func TestNewPlaybackHasJSONFlag(t *testing.T) {
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := NewPlayback(&invocation.RootOptions{}, streams)
+	for _, flag := range []string{"filter-by", "period", "has-magnets", "json"} {
+		if cmd.Flags().Lookup(flag) == nil {
+			t.Fatalf("playback missing --%s", flag)
+		}
 	}
 }
 

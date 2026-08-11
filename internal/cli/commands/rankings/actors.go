@@ -15,6 +15,7 @@ import (
 // NewActors builds the actor rankings command.
 func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var period string
+	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "actors",
 		Short: "Actor rankings",
@@ -27,10 +28,18 @@ func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *co
 			if err != nil {
 				return fmt.Errorf("rankings failed: %w", err)
 			}
-			return writeNamedNoCount(streams.Out, streams.Err, res.Named("actors"))
+			actors := res.Named("actors")
+			if asJSON {
+				if actors == nil {
+					actors = []map[string]any{}
+				}
+				return writeJSON(streams.Out, map[string]any{"actors": actors})
+			}
+			return writeNamedNoCount(streams.Out, streams.Err, actors)
 		},
 	}
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 

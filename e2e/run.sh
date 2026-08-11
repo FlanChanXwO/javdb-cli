@@ -115,6 +115,8 @@ else
   echo "== top250 =="
   out=$(run top250 --zone censored --limit 1)
   assert_substring "top250 has ranked row" "$out" "#1"
+  out=$(run top250 --zone censored --limit 1 --json)
+  assert_json "top250 --json ok" "$out" "'movies' in d and len(d['movies']) == 1"
 
   echo "== watched / want / recent =="
   out=$(run watched)

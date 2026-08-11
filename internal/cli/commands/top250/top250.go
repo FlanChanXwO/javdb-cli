@@ -19,7 +19,7 @@ import (
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var zone, year string
 	var startRank, page, limit int
-	var ignoreWatched, hasMagnets bool
+	var ignoreWatched, hasMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "top250",
 		Short: "TOP250 list (needs login)",
@@ -29,12 +29,23 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				if err != nil {
 					return fmt.Errorf("top250 failed: %w", err)
 				}
-				if gen := jsonx.RawString(res["generated_at"]); gen != "" {
+				if gen := jsonx.RawString(res["generated_at"]); gen != "" && !asJSON {
 					fmt.Fprintf(streams.Err, "# generated_at=%s\n", gen)
 				}
 				movies := res.Movies()
 				if hasMagnets {
 					movies = result.FilterMoviesWithMagnets(movies)
+				}
+				if asJSON {
+					if movies == nil {
+						movies = []map[string]any{}
+					}
+					b, err := jsonx.MarshalLine(map[string]any{"movies": movies})
+					if err != nil {
+						return err
+					}
+					_, err = streams.Out.Write(b)
+					return err
 				}
 				return writeRanked(streams.Out, streams.Err, movies)
 			})
@@ -47,6 +58,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().BoolVar(&ignoreWatched, "ignore-watched", false, "Skip already watched titles")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }
 

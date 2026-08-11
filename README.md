@@ -144,6 +144,7 @@ agent or script needs stable fields:
 
 ```bash
 javdb rankings movies --type fc2 --period week
+javdb rankings movies --period week --json
 javdb actor 山手梨愛 --main m --has-magnets --json
 javdb lists search 巨乳 --zone all --json
 ```
@@ -191,6 +192,13 @@ operator skill for coding agents. It defines credential handling, confirmation
 boundaries, command-scoped flags, JSON/error handling, and search-to-detail
 navigation. Load it only for explicit JavDB work, and verify each command's
 flags with `javdb <command> --help`.
+
+### Install the javdb-cli Skill from ClawHub
+
+Agents using ClawHub can install the published [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)
+with `clawhub install javdb-cli`; pin the installed skill to the matching
+published release version, currently `0.5.2`, rather than following an
+unversioned `latest` tag.
 
 ## Authentication and credential safety
 

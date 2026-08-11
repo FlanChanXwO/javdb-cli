@@ -14,7 +14,7 @@ import (
 // NewPlayback builds the playback rankings command.
 func NewPlayback(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var filterBy, period string
-	var hasMagnets bool
+	var hasMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "playback",
 		Short: "Playback rankings",
@@ -31,11 +31,18 @@ func NewPlayback(options *invocation.RootOptions, streams *invocation.Streams) *
 			if hasMagnets {
 				movies = result.FilterMoviesWithMagnets(movies)
 			}
+			if asJSON {
+				if movies == nil {
+					movies = []map[string]any{}
+				}
+				return writeJSON(streams.Out, map[string]any{"movies": movies})
+			}
 			return writeMovies(streams.Out, streams.Err, movies)
 		},
 	}
 	cmd.Flags().StringVar(&filterBy, "filter-by", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	return cmd
 }

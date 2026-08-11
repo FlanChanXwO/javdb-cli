@@ -129,6 +129,7 @@ javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg 
 
 ```bash
 javdb rankings movies --type fc2 --period week
+javdb rankings movies --period week --json
 javdb actor 山手梨愛 --main m --has-magnets --json
 javdb lists search 巨乳 --zone all --json
 ```
@@ -173,6 +174,12 @@ func main() {
 仓库提供 [skills/javdb-cli](skills/javdb-cli/SKILL.md)，为 AI Agent 定义专用操作 skill。
 它规定了凭据处理、确认边界、命令级参数、JSON/错误处理与搜索到详情的导航。仅在明确的 JavDB
 任务中加载，并在执行前用 `javdb <command> --help` 核对参数。
+
+### 从 ClawHub 安装 javdb-cli Skill
+
+使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
+[`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)；请将已安装的 skill 固定到对应的
+published release 版本（当前为 `0.5.2`），不要跟随无版本的 `latest` tag。
 
 ## 认证与凭据安全
 

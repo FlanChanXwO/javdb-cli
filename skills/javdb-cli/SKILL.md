@@ -1,4 +1,11 @@
 ---
+slug: javdb-cli
+version: 0.5.2
+displayName: JavDB CLI
+summary: Safely operate JavDB through the javdb-cli binary for discovery, authenticated lists, and explicit state changes.
+license: MIT
+homepage: https://github.com/FlanChanXwO/javdb-cli
+tags: [javdb, cli, agent]
 name: javdb-cli
 description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影片、人物、标签、榜单与合集，并在用户明确授权时管理账号、配置和观看标记。仅当用户明确提到 JavDB、javdb-cli、`javdb` 命令，或提供明显的 JavDB 编号/链接并要求操作时加载；不要用于泛搜索、泛成人内容或下载请求。每次执行前以 `javdb <command> --help` 核对当前可用参数。
 ---
