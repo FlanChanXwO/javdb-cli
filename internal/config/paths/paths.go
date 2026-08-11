@@ -57,6 +57,15 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "config.toml"), nil
 }
 
+// RouteCachePath 返回自动选线路由缓存文件的路径（~/.javdb-cli/route.json）。
+func RouteCachePath() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "route.json"), nil
+}
+
 // EnsureDefaultConfigFile 在配置首次缺失时创建只含常用选项的私有基线文件。
 func EnsureDefaultConfigFile() error {
 	path, err := ConfigPath()
