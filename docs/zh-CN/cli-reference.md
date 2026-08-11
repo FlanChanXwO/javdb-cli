@@ -121,6 +121,11 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
+`rankings movies --type` 与 `rankings playback --filter-by` 可用
+`censored`、`uncensored`、`western` 或 `fc2`。CLI 将这些名称交给 SDK，由 SDK
+映射为 App API 的数字排行分区值。三个排行命令的周期均使用 `day`、`week` 或 `month`，
+内部会完成周期归一化。
+
 `rankings movies`、`rankings playback` 与 `top250` 使用 `--json` 时输出 `{"movies":[...]}`；
 `rankings actors` 输出 `{"actors":[...]}`。这些只含结果的对象会在 `--has-magnets`
 过滤后输出。`magnets` 无需登录即可使用，token 失效时自动回退匿名请求。`top250` 需要登录。

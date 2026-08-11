@@ -1,6 +1,7 @@
 package tags
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -37,5 +38,28 @@ func TestSaveLoad(t *testing.T) {
 	got, err := Load(path)
 	if err != nil || got == nil || len(got.Categories) != 1 {
 		t.Fatalf("%v %v", got, err)
+	}
+}
+
+func TestLoadMissingAndMalformed(t *testing.T) {
+	dir := t.TempDir()
+	missing, err := Load(filepath.Join(dir, "missing.json"))
+	if err != nil || missing != nil {
+		t.Fatalf("missing taxonomy = %+v, %v", missing, err)
+	}
+	invalidPath := filepath.Join(dir, "invalid.json")
+	if err := os.WriteFile(invalidPath, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(invalidPath); err == nil {
+		t.Fatal("invalid taxonomy JSON unexpectedly loaded")
+	}
+	validWithoutCategories := filepath.Join(dir, "no-categories.json")
+	if err := os.WriteFile(validWithoutCategories, []byte(`{"zone":"censored","type":0}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(validWithoutCategories)
+	if err != nil || got != nil {
+		t.Fatalf("taxonomy without categories = %+v, %v", got, err)
 	}
 }

@@ -128,10 +128,14 @@ javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg 
 交互时使用表格输出；命令支持时，Agent 或脚本可使用 `--json` 获取稳定字段：
 
 ```bash
+javdb rankings movies --type fc2 --period week
 javdb rankings movies --period week --json
 javdb actor 山手梨愛 --main m --has-magnets --json
 javdb lists search 巨乳 --zone all --json
 ```
+
+影片榜与播放榜的分区参数可用 `censored`、`uncensored`、`western` 或 `fc2`；
+排行周期使用 `day`、`week` 或 `month`。
 
 全局 `--proxy URL` 与 `--host mirror|main` 仅影响本次命令。依赖持久化设置前先执行
 `javdb config get` 查看有效配置。

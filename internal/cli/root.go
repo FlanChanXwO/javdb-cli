@@ -1,460 +1,99 @@
-// Package cli is the Cobra command tree for the javdb binary.
+// Package cli assembles the Cobra root command and implements the CLI entrypoint.
 package cli
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/config"
-	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
-	"github.com/FlanChanXwO/javdb-cli/internal/update"
-	"github.com/FlanChanXwO/javdb-cli/sdk"
+	actorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/actor"
+	authcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/auth"
+	browsecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/browse"
+	codecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/code"
+	collectionscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/collections"
+	commentscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/comments"
+	configcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/config"
+	detailcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/detail"
+	directorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/director"
+	downloadcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/download"
+	listcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/list"
+	listscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/lists"
+	magnetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
+	makercmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/maker"
+	markcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/mark"
+	rankingscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/rankings"
+	recentcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/recent"
+	searchcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/search"
+	seriescmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/series"
+	tagscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/tags"
+	top250cmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/top250"
+	unmarkcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/unmark"
+	updatecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/update"
+	versioncmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/version"
+	wantcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/want"
+	watchedcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/watched"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/update/process"
 )
 
-// Run executes the CLI with the given args (usually os.Args[1:]).
-func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	// Windows 的 ReplaceFileW 会保留运行中的旧二进制到下一次启动；在命令树创建前清理，
-	// 使失败可见且不会影响已完成的替换。
-	if err := update.CleanupPendingWindowsUpdate(); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	root := newRoot(stdin, stdout, stderr)
-	root.SetArgs(args)
-	root.SetIn(stdin)
-	root.SetOut(stdout)
-	root.SetErr(stderr)
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	return 0
-}
-
-type rootFlags struct {
-	proxy string
-	host  string
-}
-
-type appIO struct {
-	in  io.Reader
-	out io.Writer
-	err io.Writer
-}
-
-func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
-	rf := &rootFlags{}
-	aio := &appIO{in: stdin, out: stdout, err: stderr}
-
-	root := &cobra.Command{
+// New builds the root command with the original persistent flags and command order.
+func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	options := &invocation.RootOptions{}
+	streams := invocation.NewStreams(stdin, stdout, stderr)
+	command := &cobra.Command{
 		Use:           "javdb",
 		Short:         "JavDB app API command-line client",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	root.PersistentFlags().StringVar(&rf.proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
-	root.PersistentFlags().StringVar(&rf.host, "host", "", "mirror|main (default: config or mirror)")
+	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
+	command.PersistentFlags().StringVar(&options.Host, "host", "", "mirror|main (default: config or mirror)")
 
-	root.AddCommand(newAuthCmd(rf, aio))
-	root.AddCommand(newConfigCmd(rf, aio))
-	root.AddCommand(newSearchCmd(rf, aio))
-	root.AddCommand(newDetailCmd(rf, aio))
-	root.AddCommand(newCommentsCmd(rf, aio))
-	root.AddCommand(newMagnetsCmd(rf, aio))
-	root.AddCommand(newDownloadCmd(rf, aio))
-	root.AddCommand(newTagsCmd(rf, aio))
-	root.AddCommand(newBrowseCmd(rf, aio))
-	registerEntityCmds(root, rf, aio)
-	registerUserCmds(root, rf, aio)
-	root.AddCommand(newRankingsCmd(rf, aio))
-	root.AddCommand(newTop250Cmd(rf, aio))
-	root.AddCommand(newListsCmd(rf, aio))
-	root.AddCommand(newUpdateCmd(rf, aio))
-	root.AddCommand(newVersionCmd())
-	return root
+	// 保持原 root.go 的 AddCommand 顺序，避免 help 与 completion 输出漂移。
+	command.AddCommand(authcmd.New(options, streams))
+	command.AddCommand(configcmd.New(streams))
+	command.AddCommand(searchcmd.New(options, streams))
+	command.AddCommand(detailcmd.New(options, streams))
+	command.AddCommand(commentscmd.New(options, streams))
+	command.AddCommand(magnetscmd.New(options, streams))
+	command.AddCommand(downloadcmd.New(options, streams))
+	command.AddCommand(tagscmd.New(options, streams))
+	command.AddCommand(browsecmd.New(options, streams))
+	command.AddCommand(actorcmd.New(options, streams))
+	command.AddCommand(seriescmd.New(options, streams))
+	command.AddCommand(makercmd.New(options, streams))
+	command.AddCommand(directorcmd.New(options, streams))
+	command.AddCommand(codecmd.New(options, streams))
+	command.AddCommand(listcmd.New(options, streams))
+	command.AddCommand(watchedcmd.New(options, streams))
+	command.AddCommand(wantcmd.New(options, streams))
+	command.AddCommand(recentcmd.New(options, streams))
+	command.AddCommand(collectionscmd.New(options, streams))
+	command.AddCommand(markcmd.New(options, streams))
+	command.AddCommand(unmarkcmd.New(options, streams))
+	command.AddCommand(rankingscmd.New(options, streams))
+	command.AddCommand(top250cmd.New(options, streams))
+	command.AddCommand(listscmd.New(options, streams))
+	command.AddCommand(updatecmd.New(options, streams))
+	command.AddCommand(versioncmd.New())
+	return command
 }
 
-func loadRuntime(rf *rootFlags) (config.Runtime, error) {
-	path, err := config.ConfigPath()
-	if err != nil {
-		return config.Runtime{}, err
+// Run executes the command and preserves the original stderr/exit-code contract.
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if err := process.CleanupPendingWindowsUpdate(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
-	file, err := config.LoadFile(path)
-	if err != nil {
-		return config.Runtime{}, err
+	command := New(stdin, stdout, stderr)
+	command.SetArgs(args)
+	command.SetIn(stdin)
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	if err := command.Execute(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
-	if err := config.ValidateHost(rf.host); err != nil {
-		return config.Runtime{}, err
-	}
-	rt := config.Resolve(file, rf.host, rf.proxy, nil)
-	// device uuid
-	if rt.DeviceUUID == "" {
-		dup, err := config.DeviceUUIDPath()
-		if err == nil {
-			if id, err := javdb.LoadOrCreateDeviceUUID(dup); err == nil {
-				rt.DeviceUUID = id
-			}
-		}
-	}
-	return rt, nil
+	return 0
 }
-
-func openAuth() (*auth.FileStore, *auth.Store, error) {
-	path, err := config.AuthPath()
-	if err != nil {
-		return nil, nil, err
-	}
-	if _, err := config.EnsureDir(); err != nil {
-		return nil, nil, err
-	}
-	return auth.Open(path)
-}
-
-func newClient(rt config.Runtime, token string) (*javdb.Client, error) {
-	return javdb.New(
-		javdb.WithHost(rt.BaseURL),
-		javdb.WithProxy(rt.Proxy),
-		javdb.WithToken(token),
-		javdb.WithDeviceUUID(rt.DeviceUUID),
-		javdb.WithLang(rt.Lang),
-	)
-}
-
-func newAuthCmd(rf *rootFlags, aio *appIO) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "auth",
-		Short: "Account login and multi-account management",
-	}
-	cmd.AddCommand(newAuthLoginCmd(rf, aio))
-	cmd.AddCommand(newAuthListCmd(aio))
-	cmd.AddCommand(newAuthUseCmd(aio))
-	cmd.AddCommand(newAuthRemoveCmd(aio))
-	cmd.AddCommand(newAuthCheckCmd(rf, aio))
-	return cmd
-}
-
-func newAuthLoginCmd(rf *rootFlags, aio *appIO) *cobra.Command {
-	var user, pass string
-	use := true
-	cmd := &cobra.Command{
-		Use:   "login",
-		Short: "Log in with username/password (interactive if flags omitted)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := loadRuntime(rf)
-			if err != nil {
-				return err
-			}
-			if user == "" {
-				user, err = PromptUsername(aio.in, aio.out)
-				if err != nil {
-					return err
-				}
-			}
-			if pass == "" {
-				pass, err = PromptPassword(aio.out)
-				if err != nil {
-					return err
-				}
-			}
-			c, err := newClient(rt, "")
-			if err != nil {
-				return err
-			}
-			ctx := context.Background()
-			token, err := c.Login(ctx, user, pass)
-			if err != nil {
-				return fmt.Errorf("login failed: %w", err)
-			}
-			uid, uname, err := c.ResolveUserID(ctx)
-			if err != nil {
-				return fmt.Errorf("login ok but user id required: %w", err)
-			}
-			if uname == "" {
-				uname = user
-			}
-			fs, store, err := openAuth()
-			if err != nil {
-				return err
-			}
-			store.Upsert(auth.Account{
-				UserID:   uid,
-				Username: uname,
-				Password: pass,
-				Token:    token,
-			}, use)
-			if err := fs.Commit(store); err != nil {
-				return err
-			}
-			fmt.Fprintf(aio.out, "logged in as %s (id=%d)\n", uname, uid)
-			return nil
-		},
-	}
-	cmd.Flags().StringVarP(&user, "username", "u", "", "Username / email")
-	cmd.Flags().StringVarP(&pass, "password", "p", "", "Password")
-	cmd.Flags().BoolVar(&use, "use", true, "Set as default account after login")
-	return cmd
-}
-
-func newAuthListCmd(aio *appIO) *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List saved accounts",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_, store, err := openAuth()
-			if err != nil {
-				return err
-			}
-			if len(store.Accounts) == 0 {
-				fmt.Fprintln(aio.err, "(no accounts)")
-				return nil
-			}
-			for _, a := range store.Accounts {
-				mark := " "
-				if a.UserID == store.DefaultUserID {
-					mark = "*"
-				}
-				fmt.Fprintf(aio.out, "%s\t%d\t%s\thas_token=%v\n", mark, a.UserID, a.Username, a.Token != "")
-			}
-			return nil
-		},
-	}
-}
-
-func newAuthUseCmd(aio *appIO) *cobra.Command {
-	return &cobra.Command{
-		Use:   "use <user_id>",
-		Short: "Set the default account",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			uid, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("user_id must be integer: %w", err)
-			}
-			fs, store, err := openAuth()
-			if err != nil {
-				return err
-			}
-			if err := store.Use(uid); err != nil {
-				return err
-			}
-			if err := fs.Commit(store); err != nil {
-				return err
-			}
-			a, _ := store.Get(uid)
-			fmt.Fprintf(aio.out, "default account → %s (id=%d)\n", a.Username, uid)
-			return nil
-		},
-	}
-}
-
-func newAuthRemoveCmd(aio *appIO) *cobra.Command {
-	return &cobra.Command{
-		Use:   "remove <user_id>",
-		Short: "Remove a saved account",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			uid, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("user_id must be integer: %w", err)
-			}
-			fs, store, err := openAuth()
-			if err != nil {
-				return err
-			}
-			if err := store.Remove(uid); err != nil {
-				return err
-			}
-			if err := fs.Commit(store); err != nil {
-				return err
-			}
-			fmt.Fprintf(aio.out, "removed account id=%d\n", uid)
-			return nil
-		},
-	}
-}
-
-func newAuthCheckCmd(rf *rootFlags, aio *appIO) *cobra.Command {
-	var asJSON bool
-	cmd := &cobra.Command{
-		Use:   "check",
-		Short: "Check default account token (does not print token)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := loadRuntime(rf)
-			if err != nil {
-				return err
-			}
-			_, store, err := openAuth()
-			if err != nil {
-				return err
-			}
-			acc, err := store.Default()
-			if err != nil {
-				return errors.New("no default account; run: javdb auth login")
-			}
-			type out struct {
-				UserID   int64  `json:"user_id"`
-				Username string `json:"username"`
-				HasToken bool   `json:"has_token"`
-				OK       bool   `json:"ok"`
-				Error    string `json:"error,omitempty"`
-			}
-			result := out{UserID: acc.UserID, Username: acc.Username, HasToken: acc.Token != ""}
-			if acc.Token == "" {
-				result.OK = false
-				result.Error = "no token"
-			} else {
-				c, err := newClient(rt, acc.Token)
-				if err != nil {
-					return err
-				}
-				// lightweight: resolve user id again
-				if _, _, err := c.ResolveUserID(context.Background()); err != nil {
-					result.OK = false
-					result.Error = err.Error()
-					var authRequired *javdb.AuthRequired
-					if errors.As(err, &authRequired) {
-						result.Error = "token expired or invalid; run: javdb auth login"
-					}
-				} else {
-					result.OK = true
-				}
-			}
-			if asJSON {
-				enc := json.NewEncoder(aio.out)
-				enc.SetEscapeHTML(false)
-				return enc.Encode(result)
-			}
-			if result.OK {
-				fmt.Fprintf(aio.out, "ok\t%d\t%s\n", result.UserID, result.Username)
-			} else {
-				fmt.Fprintf(aio.out, "fail\t%d\t%s\t%s\n", result.UserID, result.Username, result.Error)
-				return errors.New(result.Error)
-			}
-			return nil
-		},
-	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	return cmd
-}
-
-func newConfigCmd(rf *rootFlags, aio *appIO) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Show or edit config.toml",
-	}
-	cmd.AddCommand(&cobra.Command{
-		Use:   "path",
-		Short: "Print config file path",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			p, err := config.ConfigPath()
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(aio.out, p)
-			return nil
-		},
-	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "get [key]",
-		Short: "Print config (or one key)",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := config.ConfigPath()
-			if err != nil {
-				return err
-			}
-			s, err := config.LoadFile(path)
-			if err != nil {
-				return err
-			}
-			if len(args) == 0 {
-				fmt.Fprintf(aio.out, "host=%s\nhttps_proxy=%s\nauto_relogin=%v\nlang=%s\n",
-					s.Host, s.HTTPSProxy, s.AutoRelogin, s.Lang)
-				return nil
-			}
-			switch args[0] {
-			case "host":
-				fmt.Fprintln(aio.out, s.Host)
-			case "https_proxy", "proxy":
-				fmt.Fprintln(aio.out, s.HTTPSProxy)
-			case "auto_relogin":
-				fmt.Fprintln(aio.out, s.AutoRelogin)
-			case "lang":
-				fmt.Fprintln(aio.out, s.Lang)
-			default:
-				return fmt.Errorf("unknown key %q", args[0])
-			}
-			return nil
-		},
-	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "set <key> <value>",
-		Short: "Set a config key",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := config.ConfigPath()
-			if err != nil {
-				return err
-			}
-			s, err := config.LoadFile(path)
-			if err != nil {
-				return err
-			}
-			switch args[0] {
-			case "host":
-				if err := config.ValidateHost(args[1]); err != nil {
-					return err
-				}
-				s.Host = args[1]
-			case "https_proxy", "proxy":
-				s.HTTPSProxy = args[1]
-			case "auto_relogin":
-				s.AutoRelogin = args[1] == "true" || args[1] == "1" || args[1] == "yes"
-			case "lang":
-				s.Lang = args[1]
-			default:
-				return fmt.Errorf("unknown key %q", args[0])
-			}
-			return config.SaveFile(path, s)
-		},
-	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "unset <key>",
-		Short: "Clear a config key to default",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := config.ConfigPath()
-			if err != nil {
-				return err
-			}
-			s, err := config.LoadFile(path)
-			if err != nil {
-				return err
-			}
-			switch args[0] {
-			case "host":
-				s.Host = config.HostMirror
-			case "https_proxy", "proxy":
-				s.HTTPSProxy = ""
-			case "auto_relogin":
-				s.AutoRelogin = false
-			case "lang":
-				s.Lang = "en"
-			default:
-				return fmt.Errorf("unknown key %q", args[0])
-			}
-			return config.SaveFile(path, s)
-		},
-	})
-	return cmd
-}
-
-// ensure os is used if needed for future
-var _ = os.ErrNotExist
