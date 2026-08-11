@@ -3,6 +3,7 @@ package settings
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 // Host names accepted by --host / config.
 const (
+	HostAuto   = "auto"
 	HostMirror = "mirror"
 	HostMain   = "main"
 )
@@ -35,7 +37,7 @@ type Settings struct {
 // Defaults returns baseline settings.
 func Defaults() Settings {
 	return Settings{
-		Host:        HostMirror,
+		Host:        HostAuto,
 		AutoRelogin: false,
 		Lang:        "en",
 	}
@@ -55,7 +57,7 @@ func LoadFile(path string) (Settings, error) {
 		return s, err
 	}
 	if s.Host == "" {
-		s.Host = HostMirror
+		s.Host = HostAuto
 	}
 	return s, nil
 }
@@ -74,7 +76,7 @@ func SaveFile(path string, s Settings) error {
 
 // Runtime is the resolved config after flag > env > file > default.
 type Runtime struct {
-	Host        string // mirror | main
+	Host        string // auto | mirror | main | URL
 	BaseURL     string
 	Proxy       string
 	AutoRelogin bool
@@ -85,7 +87,7 @@ type Runtime struct {
 // Resolve merges flag/env/file/defaults.
 // flagHost / flagProxy empty means "not set".
 // flagAutoRelogin: nil = not set; non-nil overrides.
-func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) Runtime {
+func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (Runtime, error) {
 	r := Runtime{
 		Host:        file.Host,
 		Proxy:       file.HTTPSProxy,
@@ -94,7 +96,7 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) R
 		DeviceUUID:  file.DeviceUUID,
 	}
 	if r.Host == "" {
-		r.Host = HostMirror
+		r.Host = HostAuto
 	}
 	if r.Lang == "" {
 		r.Lang = "en"
@@ -125,31 +127,44 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) R
 		r.AutoRelogin = *flagAutoRelogin
 	}
 
-	r.Host = strings.ToLower(strings.TrimSpace(r.Host))
-	if url, ok := HostURLs[r.Host]; ok {
-		r.BaseURL = url
-	} else if strings.HasPrefix(r.Host, "http://") || strings.HasPrefix(r.Host, "https://") {
-		r.BaseURL = strings.TrimRight(r.Host, "/")
-	} else {
-		// unknown name → treat as mirror but keep name for error messages
-		r.BaseURL = HostURLs[HostMirror]
+	host, err := NormalizeHost(r.Host)
+	if err != nil {
+		return Runtime{}, err
 	}
-	return r
+	r.Host = host
+	if baseURL, ok := HostURLs[host]; ok {
+		r.BaseURL = baseURL
+	} else if host != HostAuto {
+		r.BaseURL = host
+	}
+	return r, nil
+}
+
+// NormalizeHost 校验并规范逻辑 host 或绝对 HTTP(S) URL。
+func NormalizeHost(host string) (string, error) {
+	h := strings.TrimSpace(host)
+	if h == "" {
+		return "", nil
+	}
+	logical := strings.ToLower(h)
+	if logical == HostAuto {
+		return HostAuto, nil
+	}
+	if _, ok := HostURLs[logical]; ok {
+		return logical, nil
+	}
+	u, err := url.Parse(h)
+	if err == nil && u.IsAbs() && u.Host != "" &&
+		(strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")) {
+		return strings.TrimRight(h, "/"), nil
+	}
+	return "", fmt.Errorf("host must be auto, mirror, main, or an absolute HTTP(S) URL, got %q", host)
 }
 
 // ValidateHost returns error if host is not a known name or absolute URL.
 func ValidateHost(host string) error {
-	h := strings.ToLower(strings.TrimSpace(host))
-	if h == "" {
-		return nil
-	}
-	if _, ok := HostURLs[h]; ok {
-		return nil
-	}
-	if strings.HasPrefix(h, "http://") || strings.HasPrefix(h, "https://") {
-		return nil
-	}
-	return fmt.Errorf("host must be mirror, main, or a URL, got %q", host)
+	_, err := NormalizeHost(host)
+	return err
 }
 
 func firstEnv(keys ...string) string {

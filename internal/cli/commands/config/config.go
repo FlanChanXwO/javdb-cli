@@ -107,7 +107,7 @@ func New(streams *invocation.Streams) *cobra.Command {
 			}
 			switch args[0] {
 			case "host":
-				cfg.Host = settings.HostMirror
+				cfg.Host = settings.HostAuto
 			case "https_proxy", "proxy":
 				cfg.HTTPSProxy = ""
 			case "auto_relogin":

@@ -28,10 +28,10 @@ func resolveRuntime(options *invocation.RootOptions) (settings.Runtime, error) {
 	if err != nil {
 		return settings.Runtime{}, err
 	}
-	if err := settings.ValidateHost(options.Host); err != nil {
+	runtimeConfig, err := settings.Resolve(file, options.Host, options.Proxy, nil)
+	if err != nil {
 		return settings.Runtime{}, err
 	}
-	runtimeConfig := settings.Resolve(file, options.Host, options.Proxy, nil)
 	if runtimeConfig.DeviceUUID == "" {
 		devicePath, err := paths.DeviceUUIDPath()
 		if err == nil {
