@@ -28,7 +28,8 @@ var productionAutoHost = autoHost{
 }
 
 // New 读取配置、校验命令行 host、解析运行时，并在 auto 时先完成线路选择，再构造携带给定
-// token 的公开 SDK client。固定 host 完全绕过 route cache 与 selector。
+// token 的公开 SDK client。固定 host 完全绕过 route cache 与 selector。基线配置在 host
+// 语义校验通过后创建，无效 host 不落盘。
 func New(options *invocation.RootOptions, token string) (*javdb.Client, error) {
 	rt, baseURL, err := resolveClient(options)
 	if err != nil {
@@ -37,11 +38,14 @@ func New(options *invocation.RootOptions, token string) (*javdb.Client, error) {
 	return buildClient(rt, baseURL, token)
 }
 
-// resolveClient 解析运行时并确定 baseURL：auto 走 route cache + 公开 SDK selector，
-// 固定 host 直接使用 runtime 的 BaseURL。
+// resolveClient 解析运行时（校验 host、补齐 device UUID），创建基线配置，并确定 baseURL：
+// auto 走 route cache + 公开 SDK selector，固定 host 直接使用 runtime 的 BaseURL。
 func resolveClient(options *invocation.RootOptions) (settings.Runtime, string, error) {
 	rt, err := resolveRuntime(options)
 	if err != nil {
+		return settings.Runtime{}, "", err
+	}
+	if err := paths.EnsureDefaultConfigFile(); err != nil {
 		return settings.Runtime{}, "", err
 	}
 	baseURL, err := resolveBaseURL(rt, productionAutoHost)

@@ -2,6 +2,7 @@ package route
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -246,11 +247,17 @@ func probeBootstraps(ctx context.Context, probe Probe) (bootstraps []probeResult
 			return bootstraps, nil, probed, failures
 		case r := <-results:
 			received++
-			probed[r.host] = true
 			if r.err != nil {
+				if errors.Is(r.err, context.Canceled) {
+					// 内部取消（已找到动态来源）的探测没有真实结果：不计为 probed，动态阶段
+					// 会重测尚未有成功样本的动态候选；也不计为失败原因。
+					continue
+				}
+				probed[r.host] = true
 				failures = append(failures, fmt.Sprintf("%s: %v", r.host, r.err))
 				continue
 			}
+			probed[r.host] = true
 			bootstraps = append(bootstraps, r)
 			if dynamicData == nil {
 				domains, err := APIHostsFromStartupData(r.data)

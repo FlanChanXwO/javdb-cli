@@ -151,6 +151,43 @@ func TestResolveRejectsInvalidEffectiveHost(t *testing.T) {
 	})
 }
 
+// TestResolveRejectsHostWithQueryOrFragment 覆盖 config(文件)/env/flag 三条入口：绝对 URL
+// 带 query 或 fragment 时，transport 以字符串拼接追加 API path 会把 endpoint 拼进 query
+// 或根本不发给服务器，必须拒绝。
+func TestResolveRejectsHostWithQueryOrFragment(t *testing.T) {
+	for _, bad := range []string{
+		"https://example.invalid?a=1",
+		"https://example.invalid#frag",
+		"https://example.invalid?",
+		"https://example.invalid#",
+	} {
+		t.Run("file "+bad, func(t *testing.T) {
+			t.Setenv("JAVDB_HOST", "")
+			if _, err := Resolve(Settings{Host: bad}, "", "", nil); err == nil {
+				t.Fatalf("Resolve() accepted file host %q", bad)
+			}
+		})
+		t.Run("environment "+bad, func(t *testing.T) {
+			t.Setenv("JAVDB_HOST", bad)
+			if _, err := Resolve(Defaults(), "", "", nil); err == nil {
+				t.Fatalf("Resolve() accepted env host %q", bad)
+			}
+		})
+		t.Run("flag "+bad, func(t *testing.T) {
+			t.Setenv("JAVDB_HOST", "")
+			if _, err := Resolve(Defaults(), bad, "", nil); err == nil {
+				t.Fatalf("Resolve() accepted flag host %q", bad)
+			}
+		})
+	}
+	if err := ValidateHost("https://example.invalid?a=1"); err == nil {
+		t.Fatal("ValidateHost() accepted query host")
+	}
+	if err := ValidateHost("https://example.invalid#frag"); err == nil {
+		t.Fatal("ValidateHost() accepted fragment host")
+	}
+}
+
 func TestResolveValidFlagOverridesInvalidLowerPrecedenceHosts(t *testing.T) {
 	t.Setenv("JAVDB_HOST", "invalid-environment-host")
 	rt, err := Resolve(Settings{Host: "invalid-file-host"}, HostMain, "", nil)

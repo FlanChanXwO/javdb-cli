@@ -116,3 +116,14 @@ func TestConfigSetUnknownKeyErrorsWithoutCreating(t *testing.T) {
 		t.Fatalf("set bogus created config: %v", statErr)
 	}
 }
+
+func TestConfigSetInvalidHostValueErrorsWithoutCreating(t *testing.T) {
+	home := isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "host", "bogus"); err == nil || !strings.Contains(err.Error(), "host must be") {
+		t.Fatalf("set host bogus error = %v, want host validation error", err)
+	}
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("set host bogus created config: %v", statErr)
+	}
+}

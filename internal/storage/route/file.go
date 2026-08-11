@@ -107,7 +107,7 @@ func ValidateHost(host string) error {
 	if !strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https") {
 		return fmt.Errorf("route cache host has unsupported scheme: %q", host)
 	}
-	if u.RawQuery != "" || u.Fragment != "" {
+	if strings.Contains(host, "?") || strings.Contains(host, "#") {
 		return fmt.Errorf("route cache host must not contain query/fragment: %q", host)
 	}
 	return nil

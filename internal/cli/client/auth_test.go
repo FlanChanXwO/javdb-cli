@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
@@ -41,7 +42,7 @@ func TestWithOptionalAuthNoTokenAnonymous(t *testing.T) {
 	var errb bytes.Buffer
 
 	calls := 0
-	err := WithOptionalAuth(&invocation.RootOptions{}, &errb, func(c *javdb.Client) error {
+	err := WithOptionalAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(c *javdb.Client) error {
 		calls++
 		if tok := c.Token(); tok != "" {
 			t.Fatalf("anonymous call should have empty token, got %q", tok)
@@ -62,7 +63,7 @@ func TestWithOptionalAuthFallbackAnonymous(t *testing.T) {
 
 	var errb bytes.Buffer
 	calls := 0
-	err := WithOptionalAuth(&invocation.RootOptions{}, &errb, func(c *javdb.Client) error {
+	err := WithOptionalAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(c *javdb.Client) error {
 		calls++
 		switch calls {
 		case 1:
@@ -95,7 +96,7 @@ func TestWithOptionalAuthNonAuthErrorNoFallback(t *testing.T) {
 
 	var errb bytes.Buffer
 	calls := 0
-	err := WithOptionalAuth(&invocation.RootOptions{}, &errb, func(c *javdb.Client) error {
+	err := WithOptionalAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(c *javdb.Client) error {
 		calls++
 		return &javdb.APIError{Action: "NetworkError", Message: "boom"}
 	})
@@ -110,7 +111,7 @@ func TestWithOptionalAuthNonAuthErrorNoFallback(t *testing.T) {
 func TestWithRequiredAuthNoDefaultAccount(t *testing.T) {
 	isolateHomeForAuth(t)
 	var errb bytes.Buffer
-	err := WithRequiredAuth(&invocation.RootOptions{}, &errb, func(*javdb.Client) error { return nil })
+	err := WithRequiredAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(*javdb.Client) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "no default account; run: javdb auth login") {
 		t.Fatalf("error = %v, want no-default-account", err)
 	}
@@ -120,7 +121,7 @@ func TestWithRequiredAuthEmptyToken(t *testing.T) {
 	isolateHomeForAuth(t)
 	seedAuth(t, auth.Account{UserID: 1, Username: "u", Token: ""})
 	var errb bytes.Buffer
-	err := WithRequiredAuth(&invocation.RootOptions{}, &errb, func(*javdb.Client) error { return nil })
+	err := WithRequiredAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(*javdb.Client) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "default account has no token; run: javdb auth login") {
 		t.Fatalf("error = %v, want empty-token", err)
 	}
@@ -131,7 +132,7 @@ func TestWithRequiredAuthAuthRequiredWithoutAutoRelogin(t *testing.T) {
 	seedAuth(t, auth.Account{UserID: 1, Username: "u", Token: "expired"})
 	var errb bytes.Buffer
 	calls := 0
-	err := WithRequiredAuth(&invocation.RootOptions{}, &errb, func(*javdb.Client) error {
+	err := WithRequiredAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(*javdb.Client) error {
 		calls++
 		return &javdb.AuthRequired{API: javdb.APIError{Action: "JWTVerificationError", Message: "bad"}}
 	})
@@ -148,7 +149,7 @@ func TestWithRequiredAuthNoSavedPassword(t *testing.T) {
 	t.Setenv("JAVDB_AUTO_RELOGIN", "true")
 	seedAuth(t, auth.Account{UserID: 1, Username: "u", Token: "expired"})
 	var errb bytes.Buffer
-	err := WithRequiredAuth(&invocation.RootOptions{}, &errb, func(*javdb.Client) error {
+	err := WithRequiredAuth(&invocation.RootOptions{Host: settings.HostMirror}, &errb, func(*javdb.Client) error {
 		return &javdb.AuthRequired{API: javdb.APIError{Action: "JWTVerificationError", Message: "bad"}}
 	})
 	if err == nil || !strings.Contains(err.Error(), "token expired and no saved password; run: javdb auth login") {

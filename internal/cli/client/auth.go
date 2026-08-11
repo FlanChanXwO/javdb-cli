@@ -8,13 +8,16 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // WithRequiredAuth 使用默认账户 token 执行 fn；按配置决定是否自动重新登录。
-// 错误文本与既有 WithAuthedClient 逐字一致；errOut == nil 时不写提示。
+// 本地账号/token 前置检查先于线路选择：断网或代理不可用时仍先报"请先登录"类错误，
+// 不会因自动选线失败而掩盖认证缺失。错误文本与既有 WithAuthedClient 逐字一致；
+// errOut == nil 时不写提示。
 func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func(*javdb.Client) error) error {
-	rt, baseURL, err := resolveClient(options)
+	rt, err := resolveRuntime(options)
 	if err != nil {
 		return err
 	}
@@ -28,6 +31,14 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 	}
 	if acc.Token == "" {
 		return fmt.Errorf("default account has no token; run: javdb auth login")
+	}
+	// 确认需要远程执行后再创建基线配置并选择线路。
+	if err := paths.EnsureDefaultConfigFile(); err != nil {
+		return err
+	}
+	baseURL, err := resolveBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return err
 	}
 	c, err := buildClient(rt, baseURL, acc.Token)
 	if err != nil {
@@ -71,8 +82,9 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 }
 
 // WithOptionalAuth 在有 token 时携带默认账户，否则匿名执行；认证失败时保留原有匿名重试。
+// 本地 token 读取先于线路选择，避免只读/匿名命令在离线时被选线失败阻断。
 func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func(*javdb.Client) error) error {
-	rt, baseURL, err := resolveClient(options)
+	rt, err := resolveRuntime(options)
 	if err != nil {
 		return err
 	}
@@ -81,6 +93,13 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 		if acc, aerr := store.Default(); aerr == nil {
 			token = acc.Token
 		}
+	}
+	if err := paths.EnsureDefaultConfigFile(); err != nil {
+		return err
+	}
+	baseURL, err := resolveBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return err
 	}
 	c, err := buildClient(rt, baseURL, token)
 	if err != nil {

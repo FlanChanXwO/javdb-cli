@@ -140,7 +140,9 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (
 	return r, nil
 }
 
-// NormalizeHost 校验并规范逻辑 host 或绝对 HTTP(S) URL。
+// NormalizeHost 校验并规范逻辑 host 或绝对 HTTP(S) URL。绝对 URL 必须不含 query 或
+// fragment，否则 transport 以字符串拼接追加 API path 时会把 endpoint 拼进 query 或根本不
+// 发给服务器。
 func NormalizeHost(host string) (string, error) {
 	h := strings.TrimSpace(host)
 	if h == "" {
@@ -155,7 +157,8 @@ func NormalizeHost(host string) (string, error) {
 	}
 	u, err := url.Parse(h)
 	if err == nil && u.IsAbs() && u.Host != "" &&
-		(strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")) {
+		(strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")) &&
+		!strings.Contains(h, "?") && !strings.Contains(h, "#") {
 		return strings.TrimRight(h, "/"), nil
 	}
 	return "", fmt.Errorf("host must be auto, mirror, main, or an absolute HTTP(S) URL, got %q", host)

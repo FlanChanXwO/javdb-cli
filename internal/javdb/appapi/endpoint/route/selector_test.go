@@ -340,6 +340,47 @@ func TestSelectCancelsSlowerBootstrapsAfterDynamicSource(t *testing.T) {
 	}
 }
 
+// TestSelectDynamicCandidateIsUnfinishedBootstrap 验证：动态候选正是尚未完成（被内部取消）
+// 的 bootstrap 时，会被重新测量；若其请求耗时更短则胜出，而不是被取消排除后错误选择较慢
+// 的动态来源。
+func TestSelectDynamicCandidateIsUnfinishedBootstrap(t *testing.T) {
+	const mirror = "https://jdforrepam.com"
+	const apidd = "https://apidd.spthgb.com"
+	var mu sync.Mutex
+	calls := map[string]int{}
+	probe := func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
+		mu.Lock()
+		calls[host]++
+		n := calls[host]
+		mu.Unlock()
+		switch host {
+		case mirror:
+			// 动态来源：返回 [apidd]，请求耗时 200ms。
+			return 200 * time.Millisecond, startupWithDomains(apidd), nil
+		case apidd:
+			if n == 1 {
+				// bootstrap 探测阻塞，等待内部取消；没有真实结果。
+				select {
+				case <-ctx.Done():
+					return 0, nil, ctx.Err()
+				case <-time.After(time.Hour):
+				}
+			}
+			// 动态阶段重测：请求耗时远短于 mirror。
+			return 5 * time.Millisecond, map[string]any{}, nil
+		default:
+			return 0, nil, errors.New("offline " + host)
+		}
+	}
+	result, err := Select(context.Background(), SelectorOptions{}, probe)
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if result.Host != apidd {
+		t.Fatalf("result host = %s, want %s (cancelled bootstrap must be re-measured)", result.Host, apidd)
+	}
+}
+
 // TestStartupProbeLatencyExcludesTransportConstruction 验证测速 latency 只统计单次 /startup
 // 请求耗时，不包含 transport 构造（TLS client/cookie jar/proxy 初始化）。
 func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {

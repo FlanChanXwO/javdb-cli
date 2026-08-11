@@ -343,7 +343,7 @@ func TestConfigCreationTriggerMatrix(t *testing.T) {
 		{"config path creates", []string{"config", "path"}, true},
 		{"config get creates", []string{"config", "get"}, true},
 		{"config set creates", []string{"config", "set", "host", "main"}, true},
-		{"normal command creates", []string{"auth", "list"}, true},
+		{"normal command creates", []string{"search", "test", "--host", "http://127.0.0.1:1"}, true},
 		{"help flag no create", []string{"--help"}, false},
 		{"help command no create", []string{"help"}, false},
 		{"help command target no create", []string{"help", "search"}, false},
@@ -359,6 +359,8 @@ func TestConfigCreationTriggerMatrix(t *testing.T) {
 		{"invalid host scheme no create", []string{"search", "test", "--host", "ftp://x.example"}, false},
 		{"illegal flag combo no create", []string{"update", "--json"}, false},
 		{"invalid config key no create", []string{"config", "get", "bogus"}, false},
+		{"invalid config value no create", []string{"config", "set", "host", "bogus"}, false},
+		{"download without output flag no create", []string{"download", "ABC-123"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

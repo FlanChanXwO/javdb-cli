@@ -91,6 +91,12 @@ func New(streams *invocation.Streams) *cobra.Command {
 			if !knownConfigKey(args[0]) {
 				return fmt.Errorf("unknown key %q", args[0])
 			}
+			// host 值语义校验必须先于创建，避免无效命令落盘基线配置。
+			if args[0] == "host" {
+				if err := settings.ValidateHost(args[1]); err != nil {
+					return err
+				}
+			}
 			if err := paths.EnsureDefaultConfigFile(); err != nil {
 				return err
 			}
@@ -104,9 +110,6 @@ func New(streams *invocation.Streams) *cobra.Command {
 			}
 			switch args[0] {
 			case "host":
-				if err := settings.ValidateHost(args[1]); err != nil {
-					return err
-				}
 				cfg.Host = args[1]
 			case "https_proxy", "proxy":
 				cfg.HTTPSProxy = args[1]
