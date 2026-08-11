@@ -82,7 +82,10 @@ var (
 // preferred 成功时复用并透传 latency。
 func TestSelectAutoHostWithInjectedProbe(t *testing.T) {
 	const preferred = "https://apidd.spthgb.com"
-	probe := AutoHostProbe(func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
+	probe := AutoHostProbe(func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
+		if onRequestStart != nil {
+			onRequestStart()
+		}
 		return 12 * time.Millisecond, map[string]any{"ok": true}, nil
 	})
 	result, err := SelectAutoHost(context.Background(), AutoHostOptions{PreferredHost: preferred}, probe)

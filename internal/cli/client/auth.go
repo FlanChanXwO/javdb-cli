@@ -32,16 +32,16 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 	if acc.Token == "" {
 		return fmt.Errorf("default account has no token; run: javdb auth login")
 	}
-	// 确认需要远程执行后再创建基线配置并选择线路。
-	if err := paths.EnsureDefaultConfigFile(); err != nil {
-		return err
-	}
 	baseURL, err := resolveBaseURL(rt, productionAutoHost)
 	if err != nil {
 		return err
 	}
 	c, err := buildClient(rt, baseURL, acc.Token)
 	if err != nil {
+		return err
+	}
+	// 本地检查与 transport 校验都通过后再创建基线配置。
+	if err := paths.EnsureDefaultConfigFile(); err != nil {
 		return err
 	}
 	err = fn(c)
@@ -94,15 +94,15 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 			token = acc.Token
 		}
 	}
-	if err := paths.EnsureDefaultConfigFile(); err != nil {
-		return err
-	}
 	baseURL, err := resolveBaseURL(rt, productionAutoHost)
 	if err != nil {
 		return err
 	}
 	c, err := buildClient(rt, baseURL, token)
 	if err != nil {
+		return err
+	}
+	if err := paths.EnsureDefaultConfigFile(); err != nil {
 		return err
 	}
 	err = fn(c)

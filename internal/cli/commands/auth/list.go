@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,10 @@ func NewList(streams *invocation.Streams) *cobra.Command {
 		Use:   "list",
 		Short: "List saved accounts",
 		RunE: func(command *cobra.Command, args []string) error {
+			// 本地命令也按"第一个真实命令创建配置"契约触发首次创建。
+			if err := paths.EnsureDefaultConfigFile(); err != nil {
+				return err
+			}
 			_, store, err := authstore.Open()
 			if err != nil {
 				return err

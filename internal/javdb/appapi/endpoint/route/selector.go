@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,9 +39,10 @@ type Result struct {
 	ReusedPreferred bool
 }
 
-// Probe 对单个 host 发起一次 /startup 请求并返回单次耗时与 startup data。
-// selector 通过该函数隔离真实 transport，测试可注入可控 probe。
-type Probe func(ctx context.Context, host string) (latency time.Duration, data map[string]any, err error)
+// Probe 对单个 host 发起一次 /startup 请求并返回单次耗时与 startup data。onRequestStart 在
+// 请求开始（transport 构造完成后）时调用，selector 据此判断仍在请求中且已不可能更快的探测
+// 并取消。测试可注入可控 probe。
+type Probe func(ctx context.Context, host string, onRequestStart func()) (latency time.Duration, data map[string]any, err error)
 
 // probeResult 是一次探测的原始结果。
 type probeResult struct {
@@ -71,7 +73,7 @@ func newStartupProbe(opts SelectorOptions, factory probeTransport) (Probe, error
 		deviceUUID = id.String()
 	}
 	zero := 0
-	return func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
+	return func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
 		t, err := factory(client.Options{
 			Host:       host,
 			Proxy:      opts.Proxy,
@@ -82,6 +84,9 @@ func newStartupProbe(opts SelectorOptions, factory probeTransport) (Probe, error
 		})
 		if err != nil {
 			return 0, nil, err
+		}
+		if onRequestStart != nil {
+			onRequestStart()
 		}
 		// Latency 只统计单次 /startup 请求耗时，不含 transport 构造（TLS/cookie jar/proxy）。
 		start := time.Now()
@@ -95,11 +100,12 @@ func newStartupProbe(opts SelectorOptions, factory probeTransport) (Probe, error
 
 // Select 执行并发动态线路选择。
 //
-// 顺序：preferred 严格校验并单次探测，成功立即复用；否则并发探测固定 bootstrap，首个
-// 解出非空完整合法 apiDomains 的响应成为动态候选来源，取消仍未完成且已不可能更快的
-// bootstrap；对动态候选完整读取、规范化、去重并并发测速，已探测 URL 复用结果；在所有
-// 成功候选中选单次耗时最短者，相同耗时按动态响应顺序、再按固定 bootstrap 顺序稳定决胜。
-// context 取消立即返回取消错误；全部候选失败才返回包含逐 host 原因的聚合错误。
+// 顺序：preferred 严格校验并单次探测，成功立即复用；否则并发探测固定 bootstrap，首个解出
+// 非空完整合法 apiDomains 的响应成为动态候选来源；bootstrap 只在其请求已进行至少等于当前
+// 最优单次耗时（不可能再更快）时才被取消，绝不因构造较慢而永久排除；对动态候选完整读取、
+// 规范化、去重并并发测速，已探测 URL 复用结果；在所有成功候选中选单次耗时最短者，相同耗时
+// 按动态响应顺序、再按固定 bootstrap 顺序稳定决胜。context 取消立即返回取消错误；全部候选
+// 失败才返回包含逐 host 原因的聚合错误。
 func Select(ctx context.Context, opts SelectorOptions, probe Probe) (Result, error) {
 	var failures []string
 
@@ -108,7 +114,7 @@ func Select(ctx context.Context, opts SelectorOptions, probe Probe) (Result, err
 		if err != nil {
 			return Result{}, fmt.Errorf("preferred host: %w", err)
 		}
-		latency, _, err := probe(ctx, normalized)
+		latency, _, err := probe(ctx, normalized, nil)
 		if err == nil {
 			if ctx.Err() != nil {
 				return Result{}, ctx.Err()
@@ -137,7 +143,7 @@ func Select(ctx context.Context, opts SelectorOptions, probe Probe) (Result, err
 		knownLatency[b.host] = b.latency
 	}
 
-	// 并发探测尚未探测过的动态候选（bootstrap 阶段已探测的 URL 复用其结果）。
+	// 并发探测尚未探测过的动态候选（bootstrap 阶段已探测或已证明不可能更快的 URL 复用结果）。
 	var toProbe []string
 	for _, host := range dynamicCandidates {
 		if !probedHosts[host] {
@@ -148,7 +154,7 @@ func Select(ctx context.Context, opts SelectorOptions, probe Probe) (Result, err
 		candResults := make(chan probeResult, len(toProbe))
 		for _, host := range toProbe {
 			go func(host string) {
-				latency, _, err := probe(ctx, host)
+				latency, _, err := probe(ctx, host, nil)
 				candResults <- probeResult{host: host, latency: latency, err: err}
 			}(host)
 		}
@@ -225,32 +231,65 @@ func Select(ctx context.Context, opts SelectorOptions, probe Probe) (Result, err
 	return Result{Host: winner.host, Latency: winner.latency}, nil
 }
 
+// probeState 跟踪一个 bootstrap 的请求开始时间与取消函数。
+type probeState struct {
+	requestStart time.Time
+	cancel       context.CancelFunc
+}
+
 // probeBootstraps 并发探测固定 bootstrap，返回成功者、首个合法 apiDomains 来源、全部已探测
-// host 与失败原因。找到动态来源后取消仍未完成且不可能更快的其余 bootstrap 请求，但仍收集
-// 已返回的成功者与失败原因。
+// host 与失败原因。bootstrap 只在请求已进行至少当前最优单次耗时（不可能再更快）时被取消；
+// 构造较慢但请求较快的探测不会被永久排除。
 func probeBootstraps(ctx context.Context, probe Probe) (bootstraps []probeResult, dynamicData map[string]any, probed map[string]bool, failures []string) {
-	bootstrapCtx, cancelBootstrap := context.WithCancel(ctx)
-	defer cancelBootstrap()
+	var stateMu sync.Mutex
+	states := make(map[string]*probeState, len(bootstrapHosts))
+
 	results := make(chan probeResult, len(bootstrapHosts))
 	for _, host := range bootstrapHosts {
-		go func(host string) {
-			latency, data, err := probe(bootstrapCtx, host)
+		hctx, hcancel := context.WithCancel(ctx)
+		st := &probeState{cancel: hcancel}
+		stateMu.Lock()
+		states[host] = st
+		stateMu.Unlock()
+		go func(host string, st *probeState) {
+			latency, data, err := probe(hctx, host, func() {
+				stateMu.Lock()
+				if st.requestStart.IsZero() {
+					st.requestStart = time.Now()
+				}
+				stateMu.Unlock()
+			})
 			results <- probeResult{host: host, latency: latency, data: data, err: err}
-		}(host)
+		}(host, st)
 	}
+	// 结束前取消所有仍在进行的 bootstrap，避免 goroutine 悬挂。
+	defer func() {
+		stateMu.Lock()
+		for _, st := range states {
+			st.cancel()
+		}
+		stateMu.Unlock()
+	}()
 
 	probed = make(map[string]bool, len(bootstrapHosts))
+	var bestLatency time.Duration
 	received := 0
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
 	for received < len(bootstrapHosts) {
 		select {
 		case <-ctx.Done():
 			return bootstraps, nil, probed, failures
 		case r := <-results:
 			received++
+			stateMu.Lock()
+			delete(states, r.host)
+			stateMu.Unlock()
 			if r.err != nil {
 				if errors.Is(r.err, context.Canceled) {
-					// 内部取消（已找到动态来源）的探测没有真实结果：不计为 probed，动态阶段
-					// 会重测尚未有成功样本的动态候选；也不计为失败原因。
+					// 已被证明不可能更快的探测没有真实结果：标记 probed 排除，避免动态阶段
+					// 重测；不计为失败原因。
+					probed[r.host] = true
 					continue
 				}
 				probed[r.host] = true
@@ -263,13 +302,33 @@ func probeBootstraps(ctx context.Context, probe Probe) (bootstraps []probeResult
 				domains, err := APIHostsFromStartupData(r.data)
 				if err == nil && len(domains) > 0 {
 					dynamicData = r.data
-					// 已找到动态来源；其余仍未完成且已不可能更快的 bootstrap 请求取消。
-					cancelBootstrap()
 				}
 			}
+			if bestLatency == 0 || r.latency < bestLatency {
+				bestLatency = r.latency
+			}
+		case <-ticker.C:
+			cancelProvablySlower(states, &stateMu, bestLatency)
 		}
 	}
 	return bootstraps, dynamicData, probed, failures
+}
+
+// cancelProvablySlower 取消请求已进行至少 bestLatency 的 bootstrap：即使现在完成，其请求
+// 耗时也 >= bestLatency，不可能成为最短候选。requestStart 尚未设置的探测（仍在构造）绝不
+// 取消，避免把构造慢但请求快的候选永久排除。
+func cancelProvablySlower(states map[string]*probeState, mu *sync.Mutex, bestLatency time.Duration) {
+	if bestLatency <= 0 {
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	now := time.Now()
+	for _, st := range states {
+		if !st.requestStart.IsZero() && now.Sub(st.requestStart) > bestLatency {
+			st.cancel()
+		}
+	}
 }
 
 // rankLess 实现 tie-break：动态响应顺序优先，非动态候选排在所有动态候选之后，

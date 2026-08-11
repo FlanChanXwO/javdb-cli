@@ -54,9 +54,10 @@ func (r *recorder) count(host string) int {
 	return n
 }
 
-// fakeProbe 构造记录调用、按配置返回的可控 probe。
+// fakeProbe 构造记录调用、按配置返回的可控 probe。onRequestStart 立即触发（测试默认假定
+// 请求紧接构造开始），可被探测体覆盖以模拟慢构造。
 func fakeProbe(specs map[string]probeSpec, rec *recorder) Probe {
-	return func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
+	return func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
 		rec.add(host)
 		spec, ok := specs[host]
 		if !ok {
@@ -67,6 +68,11 @@ func fakeProbe(specs map[string]probeSpec, rec *recorder) Probe {
 			case <-ctx.Done():
 				return 0, nil, ctx.Err()
 			case <-time.After(spec.delay):
+			}
+		}
+		if onRequestStart != nil {
+			if onRequestStart != nil {
+				onRequestStart()
 			}
 		}
 		if spec.err != nil {
@@ -310,19 +316,38 @@ func TestSelectCancelledDuringCandidateProbe(t *testing.T) {
 	}
 }
 
-// TestSelectCancelsSlowerBootstrapsAfterDynamicSource 验证找到动态来源后，仍未完成且
-// 不可能更快的 bootstrap 请求会被取消：慢 bootstrap 不会阻塞选线，也不会被当作成功候选。
-func TestSelectCancelsSlowerBootstrapsAfterDynamicSource(t *testing.T) {
+// TestSelectCancelsProvablySlowerBootstrap 验证只有请求已进行至少当前最优单次耗时
+// （不可能再更快）的 bootstrap 才会被取消，且取消后不阻塞选线。
+func TestSelectCancelsProvablySlowerBootstrap(t *testing.T) {
 	const slow = "https://apidd.spthgb.com"
 	dyn := "https://dyn.example"
-	rec := &recorder{}
-	probe := fakeProbe(map[string]probeSpec{
-		model.HostMirror:            {latency: 50 * time.Millisecond, data: startupWithDomains(dyn)},
-		slow:                        {delay: time.Hour, latency: 999 * time.Millisecond},
-		"https://apidd.czssdgz.com": {delay: time.Hour, latency: 998 * time.Millisecond},
-		model.HostMain:              {delay: time.Hour, latency: 997 * time.Millisecond},
-		dyn:                         {latency: 5 * time.Millisecond, data: map[string]any{}},
-	}, rec)
+	probe := func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
+		switch host {
+		case model.HostMirror:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 10 * time.Millisecond, startupWithDomains(dyn), nil
+		case slow:
+			onRequestStart() // 请求开始，随后极慢
+			select {
+			case <-ctx.Done():
+				return 0, nil, ctx.Err()
+			case <-time.After(time.Hour):
+				return 0, nil, errors.New("slow bootstrap unexpectedly completed")
+			}
+		case dyn:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 5 * time.Millisecond, map[string]any{}, nil
+		default:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 0, nil, errors.New("offline " + host)
+		}
+	}
 	start := time.Now()
 	result, err := Select(context.Background(), SelectorOptions{}, probe)
 	elapsed := time.Since(start)
@@ -333,40 +358,28 @@ func TestSelectCancelsSlowerBootstrapsAfterDynamicSource(t *testing.T) {
 		t.Fatalf("result host = %s, want %s", result.Host, dyn)
 	}
 	if elapsed > time.Second {
-		t.Fatalf("selection took %v; slower bootstraps were not cancelled", elapsed)
-	}
-	if rec.count(slow) != 1 {
-		t.Fatalf("slow bootstrap probed %d times, want 1", rec.count(slow))
+		t.Fatalf("selection took %v; provably slower bootstrap was not cancelled", elapsed)
 	}
 }
 
-// TestSelectDynamicCandidateIsUnfinishedBootstrap 验证：动态候选正是尚未完成（被内部取消）
-// 的 bootstrap 时，会被重新测量；若其请求耗时更短则胜出，而不是被取消排除后错误选择较慢
-// 的动态来源。
-func TestSelectDynamicCandidateIsUnfinishedBootstrap(t *testing.T) {
+// TestSelectKeepsSlowConstructionFastRequestBootstrap 验证：动态候选正是构造慢但请求快的
+// bootstrap 时，不会被取消（requestStart 尚未设置，绝不取消），其 5ms 请求胜出，而不是被
+// 永久排除后错误选择较慢的动态来源。
+func TestSelectKeepsSlowConstructionFastRequestBootstrap(t *testing.T) {
 	const mirror = "https://jdforrepam.com"
 	const apidd = "https://apidd.spthgb.com"
-	var mu sync.Mutex
-	calls := map[string]int{}
-	probe := func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
-		mu.Lock()
-		calls[host]++
-		n := calls[host]
-		mu.Unlock()
+	probe := func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
 		switch host {
 		case mirror:
-			// 动态来源：返回 [apidd]，请求耗时 200ms。
+			if onRequestStart != nil {
+				onRequestStart()
+			}
 			return 200 * time.Millisecond, startupWithDomains(apidd), nil
 		case apidd:
-			if n == 1 {
-				// bootstrap 探测阻塞，等待内部取消；没有真实结果。
-				select {
-				case <-ctx.Done():
-					return 0, nil, ctx.Err()
-				case <-time.After(time.Hour):
-				}
+			time.Sleep(100 * time.Millisecond) // 慢构造
+			if onRequestStart != nil {
+				onRequestStart()
 			}
-			// 动态阶段重测：请求耗时远短于 mirror。
 			return 5 * time.Millisecond, map[string]any{}, nil
 		default:
 			return 0, nil, errors.New("offline " + host)
@@ -377,7 +390,43 @@ func TestSelectDynamicCandidateIsUnfinishedBootstrap(t *testing.T) {
 		t.Fatalf("Select() error = %v", err)
 	}
 	if result.Host != apidd {
-		t.Fatalf("result host = %s, want %s (cancelled bootstrap must be re-measured)", result.Host, apidd)
+		t.Fatalf("result host = %s, want %s (slow-construction fast-request candidate must win)", result.Host, apidd)
+	}
+}
+
+// TestSelectKeepsSlowConstructionFastRequestNonDynamicBootstrap 验证：构造慢、请求快且不在
+// 动态列表中的 bootstrap 也不会被取消而永久排除，其更短请求耗时仍会胜出。
+func TestSelectKeepsSlowConstructionFastRequestNonDynamicBootstrap(t *testing.T) {
+	dyn := "https://dyn.example"
+	fast := "https://apidd.spthgb.com"
+	probe := func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
+		switch host {
+		case model.HostMirror:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 200 * time.Millisecond, startupWithDomains(dyn), nil
+		case fast:
+			time.Sleep(100 * time.Millisecond) // 慢构造
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 5 * time.Millisecond, map[string]any{}, nil
+		case dyn:
+			if onRequestStart != nil {
+				onRequestStart()
+			}
+			return 150 * time.Millisecond, map[string]any{}, nil
+		default:
+			return 0, nil, errors.New("offline " + host)
+		}
+	}
+	result, err := Select(context.Background(), SelectorOptions{}, probe)
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if result.Host != fast {
+		t.Fatalf("result host = %s, want %s (non-dynamic slow-construction fast-request bootstrap must win)", result.Host, fast)
 	}
 }
 
@@ -400,7 +449,7 @@ func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {
 		t.Fatalf("newStartupProbe() error = %v", err)
 	}
 	start := time.Now()
-	latency, _, err := probe(context.Background(), server.URL)
+	latency, _, err := probe(context.Background(), server.URL, nil)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("probe error = %v", err)
