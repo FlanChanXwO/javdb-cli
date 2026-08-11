@@ -5,11 +5,14 @@ import (
 	"crypto/aes"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/model"
 )
 
@@ -334,5 +337,37 @@ func TestSelectCancelsSlowerBootstrapsAfterDynamicSource(t *testing.T) {
 	}
 	if rec.count(slow) != 1 {
 		t.Fatalf("slow bootstrap probed %d times, want 1", rec.count(slow))
+	}
+}
+
+// TestStartupProbeLatencyExcludesTransportConstruction 验证测速 latency 只统计单次 /startup
+// 请求耗时，不包含 transport 构造（TLS client/cookie jar/proxy 初始化）。
+func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"settings":"x"}}`))
+	}))
+	defer server.Close()
+
+	const constructionDelay = 200 * time.Millisecond
+	factory := func(opts client.Options) (*client.Client, error) {
+		time.Sleep(constructionDelay) // 模拟慢 transport 构造
+		return client.New(opts)
+	}
+	probe, err := newStartupProbe(SelectorOptions{}, factory)
+	if err != nil {
+		t.Fatalf("newStartupProbe() error = %v", err)
+	}
+	start := time.Now()
+	latency, _, err := probe(context.Background(), server.URL)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("probe error = %v", err)
+	}
+	if latency >= constructionDelay/2 {
+		t.Fatalf("latency = %v, includes transport construction", latency)
+	}
+	if elapsed < constructionDelay {
+		t.Fatalf("elapsed = %v, want >= %v (construction delay was not exercised)", elapsed, constructionDelay)
 	}
 }

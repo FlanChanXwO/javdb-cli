@@ -355,6 +355,10 @@ func TestConfigCreationTriggerMatrix(t *testing.T) {
 		{"arg validation failure no create", []string{"search"}, false},
 		{"unknown command no create", []string{"frobnicate"}, false},
 		{"config unset missing no create", []string{"config", "unset", "host"}, false},
+		{"invalid host no create", []string{"search", "test", "--host", "bogus"}, false},
+		{"invalid host scheme no create", []string{"search", "test", "--host", "ftp://x.example"}, false},
+		{"illegal flag combo no create", []string{"update", "--json"}, false},
+		{"invalid config key no create", []string{"config", "get", "bogus"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

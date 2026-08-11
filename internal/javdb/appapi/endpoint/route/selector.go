@@ -52,6 +52,14 @@ type probeResult struct {
 // NewStartupProbe 构造零重试的 /startup 探测函数。所有 probe 共享同一 effective 网络选项
 // 与稳定 device UUID，不携带 bearer token。
 func NewStartupProbe(opts SelectorOptions) (Probe, error) {
+	return newStartupProbe(opts, client.New)
+}
+
+// probeTransport 构造零重试签名 transport 的可注入依赖，便于测试区分构造耗时与请求耗时。
+type probeTransport func(opts client.Options) (*client.Client, error)
+
+// newStartupProbe 是 NewStartupProbe 的可注入核心。
+func newStartupProbe(opts SelectorOptions, factory probeTransport) (Probe, error) {
 	deviceUUID := opts.DeviceUUID
 	if deviceUUID == "" {
 		// 本次选线共享一个稳定 UUID，避免每个 probe 各自生成不同随机 UUID。
@@ -63,8 +71,7 @@ func NewStartupProbe(opts SelectorOptions) (Probe, error) {
 	}
 	zero := 0
 	return func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
-		start := time.Now()
-		t, err := client.New(client.Options{
+		t, err := factory(client.Options{
 			Host:       host,
 			Proxy:      opts.Proxy,
 			Timeout:    opts.Timeout,
@@ -75,6 +82,8 @@ func NewStartupProbe(opts SelectorOptions) (Probe, error) {
 		if err != nil {
 			return 0, nil, err
 		}
+		// Latency 只统计单次 /startup 请求耗时，不含 transport 构造（TLS/cookie jar/proxy）。
+		start := time.Now()
 		var data map[string]any
 		if err := t.GetJSONContext(ctx, "/api/v1/startup", nil, &data); err != nil {
 			return 0, nil, err

@@ -66,12 +66,17 @@ func resolveRuntime(options *invocation.RootOptions) (settings.Runtime, error) {
 		return settings.Runtime{}, err
 	}
 	if runtimeConfig.DeviceUUID == "" {
+		// device_uuid 读取/创建失败必须显式返回，否则 auto probe 与业务 client 会各自生成
+		// 不同随机 UUID，破坏"同一 effective device UUID"契约。
 		devicePath, err := paths.DeviceUUIDPath()
-		if err == nil {
-			if id, err := javdb.LoadOrCreateDeviceUUID(devicePath); err == nil {
-				runtimeConfig.DeviceUUID = id
-			}
+		if err != nil {
+			return settings.Runtime{}, err
 		}
+		id, err := javdb.LoadOrCreateDeviceUUID(devicePath)
+		if err != nil {
+			return settings.Runtime{}, err
+		}
+		runtimeConfig.DeviceUUID = id
 	}
 	return runtimeConfig, nil
 }

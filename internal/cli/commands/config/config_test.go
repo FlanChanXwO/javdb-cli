@@ -83,3 +83,36 @@ func TestConfigSetCreatesPrivateFile(t *testing.T) {
 		t.Fatalf("lang after set = %q, want %q", got, "zh")
 	}
 }
+
+func TestConfigUnsetUnknownKeyErrorsOnMissingConfig(t *testing.T) {
+	home := isolateHome(t)
+	if _, _, err := executeConfig(t, "unset", "bogus"); err == nil || !strings.Contains(err.Error(), "unknown key") {
+		t.Fatalf("unset bogus error = %v, want unknown key", err)
+	}
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("unset bogus created config: %v", statErr)
+	}
+}
+
+func TestConfigGetUnknownKeyErrorsWithoutCreating(t *testing.T) {
+	home := isolateHome(t)
+	if _, _, err := executeConfig(t, "get", "bogus"); err == nil || !strings.Contains(err.Error(), "unknown key") {
+		t.Fatalf("get bogus error = %v, want unknown key", err)
+	}
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("get bogus created config: %v", statErr)
+	}
+}
+
+func TestConfigSetUnknownKeyErrorsWithoutCreating(t *testing.T) {
+	home := isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "bogus", "x"); err == nil || !strings.Contains(err.Error(), "unknown key") {
+		t.Fatalf("set bogus error = %v, want unknown key", err)
+	}
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("set bogus created config: %v", statErr)
+	}
+}

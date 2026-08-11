@@ -261,3 +261,20 @@ func TestResolveBaseURLAutoSaveFailureErrors(t *testing.T) {
 		t.Fatalf("error = %v, want save route cache failure", err)
 	}
 }
+
+// TestResolveRuntimeReturnsDeviceUUIDError 验证 device_uuid 路径/读写错误显式返回，
+// 不会被吞掉导致 auto probe 与业务 client 使用不同随机 UUID。
+func TestResolveRuntimeReturnsDeviceUUIDError(t *testing.T) {
+	home := isolateHome(t)
+	dir := filepath.Join(home, ".javdb-cli")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	// 用目录占位 device_uuid，使 LoadOrCreateDeviceUUID 的写入失败。
+	if err := os.MkdirAll(filepath.Join(dir, "device_uuid"), 0o700); err != nil {
+		t.Fatalf("MkdirAll(device_uuid) error = %v", err)
+	}
+	if _, err := resolveRuntime(&invocation.RootOptions{Host: settings.HostMirror}); err == nil {
+		t.Fatal("resolveRuntime swallowed device uuid creation error")
+	}
+}
