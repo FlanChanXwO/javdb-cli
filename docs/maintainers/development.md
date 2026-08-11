@@ -13,12 +13,21 @@
 go test ./...
 go test -race ./...
 go vet ./...
+go test ./scripts/...
 sh scripts/build.sh
+sh scripts/test-releasenotes.sh
 sh scripts/test-package-release.sh
 sh scripts/test-homebrew-formula.sh
 sh scripts/test-workflows.sh
 sh scripts/test-documentation.sh
 sh scripts/test-architecture.sh
+```
+
+`gopls check ./...` 在部分 gopls 版本会把 `./...` 当作文件路径；若命令行版本不接受
+该参数，使用等价的全仓文件诊断：
+
+```bash
+rg --files -g '*.go' -0 | xargs -0 gopls check
 ```
 
 若本机安装了 `pre-commit`，在交付前运行：
@@ -33,18 +42,34 @@ pre-commit run --all-files
 ## 目录地图
 
 ```text
-cmd/javdb/                         # 二进制入口 → cli.Run
-sdk/                               # 公开 Go SDK facade（package javdb）
-internal/cli/                      # Cobra、交互和输出 adapter
-internal/javdb/appapi/             # JavDB App JSON API adapter
-internal/javdb/protocol/httpx/     # TLS 指纹 HTTP transport
-internal/javdb/protocol/signature/ # 请求签名协议
-internal/config/                   # 配置路径、文件和运行时合并
-internal/storage/auth/             # 多账号 auth.json
-internal/storage/tags/             # 公开标签目录缓存
-internal/buildinfo/                # linker 注入版本信息
-internal/update/                   # 显式更新、Release 校验与替换
-scripts/                           # 构建、打包和静态检查
+cmd/javdb/                              # 二进制入口 → cli.Run
+sdk/                                    # 公开 Go SDK（package javdb）
+internal/cli/root.go                    # 真实根命令、persistent flags、注册顺序与 Run
+internal/cli/app/                       # IO/runtime/client/auth/update 依赖组装
+internal/cli/{movie,magnet,entity}/     # 影片/磁力纯投影与实体用例
+internal/common/{jsonx,scalar}/         # 纯 JSON 与标量转换（根目录无包）
+internal/cli/commands/{auth,config}/    # 认证与配置命令域
+internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 影片目录命令域
+internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
+internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
+internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）
+internal/cli/commands/{lists,update,version}/ # 列表、更新和版本命令域
+internal/javdb/appapi/                  # 真实 Client 组合层（client.go）
+internal/javdb/appapi/{client,model}/   # transport 与 wire/domain model
+internal/javdb/appapi/endpoint/*        # auth/browse/entity/lists/magnets/movie/rankings/search/user
+internal/javdb/appapi/{codec,media}/    # 解码与媒体传输
+internal/javdb/protocol/httpx/          # TLS 指纹 HTTP transport
+internal/javdb/protocol/signature/      # 请求签名协议
+internal/config/{paths,settings}/       # 路径与配置 schema（根目录无包）
+internal/storage/auth/                  # 多账号 auth.json（model/store/file/resolve）
+internal/storage/tags/                  # 公开标签目录缓存（model/file/resolve）
+internal/buildinfo/                     # linker 注入版本信息
+internal/update/                        # Coordinator 与最小依赖接口（coordinator.go/interfaces.go）
+internal/update/{model,archive}/        # 更新模型与归档校验/安装
+internal/update/{release,source,process}/ # Release、来源和进程/平台边界
+scripts/releasenotes/                   # release-note command 入口（仅分派）
+scripts/internal/releasenotes/{model,github,audit,document,prepare,history}/ # release-note 领域实现
+scripts/                                # 构建、打包和静态检查
 skills/javdb-cli/                  # 面向产品使用者的 agent skill
 .agents/skills/                    # 仓库 review/docs/commit/release skills
 changelog/                         # 双语版本化发布说明与 release-prep plans
@@ -54,6 +79,14 @@ docs/maintainers/                  # 维护者架构、流程、ADR 与协作规
 
 完整边界见 [架构说明](architecture.md)。新目录应按真实职责加入，不为与
 pixiv-cli 对称而创建空 application、bootstrap、MCP 或下载层。
+
+CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/app` 可直接组装本机
+`config/{paths,settings}`、`storage/auth` 和显式 `update` 依赖。App API endpoint 只依赖自己的
+`client/model/codec/media`、必要的其他 endpoint capability 与 storage taxonomy，协议 `httpx/signature`
+不得被 CLI 命令包直接导入。`internal/cli`、`internal/javdb/appapi`、`internal/config`、
+`internal/update` 的根文件不再保留兼容 facade/alias/forwarder；新增实现应放入
+真实职责子包，并以聚焦测试覆盖原有契约。`Client.API()` 与 taxonomy `*tags.Doc`
+返回类型是公开 SDK 的冻结兼容例外，新能力不得扩大。
 
 ## 本机状态与在线验证
 
@@ -66,6 +99,20 @@ pixiv-cli 对称而创建空 application、bootstrap、MCP 或下载层。
 
 真实 API 抽查会使用本机账号且可能改变 token、写入 tag cache 或访问远程状态；它不是默认回归。
 仅在用户明确授权、凭据来源清楚且不会输出 secret 时再运行。
+
+## Release-note 工具
+
+`scripts/releasenotes` 的入口保留 `validate`、`audit`、`prepare`、`render`、`pr-validate`
+和 `sync-history` 六个子命令；业务实现按 `scripts/internal/releasenotes/` 下的
+`model`、`github`、`audit`、`document`、`prepare`、`history` 分域。脚本的专门行为门禁为：
+
+```bash
+sh scripts/test-releasenotes.sh
+```
+
+`validate`、`render`、`audit` 和不带 `--apply` 的 `prepare`/`sync-history` 可以离线
+检查或 dry-run；`prepare --apply` 会写入本地 changelog，`sync-history --apply` 会修改
+GitHub Release 正文。后两者不是默认回归，不得在测试中使用真实仓库凭据或隐式写入。
 
 ## 构建、打包与平台
 

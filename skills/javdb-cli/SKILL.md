@@ -75,7 +75,7 @@ javdb tags --zone censored
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb actor "山手梨愛" --main m --has-magnets --json
 javdb series SERIES_ID --page 1 --limit 20 --json
-javdb rankings movies --period week
+javdb rankings movies --type fc2 --period week
 javdb top250 --limit 20
 
 javdb lists search "关键词" --zone all --json
@@ -101,6 +101,7 @@ URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `conf
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
 9. `download NUMBER` 也默认解析番号。`--thumbnail` 保存缩略图；`--preview-image` 只取 `preview_images[0]`，不会选择后续图片；`--preview-video` 需要已结束的单媒体 HLS 预览流。下载失败时如实报告，不能把已包装的图片字节或不完整视频当作成功结果。
+10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。
 
 ## 路由
 

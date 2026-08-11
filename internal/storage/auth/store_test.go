@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -48,5 +49,29 @@ func TestUpsertUseRemove(t *testing.T) {
 	}
 	if loaded.DefaultUserID != 1 {
 		t.Fatalf("after remove default=%d", loaded.DefaultUserID)
+	}
+}
+
+func TestResolveAndLoadErrors(t *testing.T) {
+	single := &Store{Accounts: []Account{{UserID: 7, Username: "single"}}}
+	account, err := single.Default()
+	if err != nil || account.UserID != 7 {
+		t.Fatalf("single default = %+v, %v", account, err)
+	}
+	if _, err := single.Get(9); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing account error = %v", err)
+	}
+
+	dir := t.TempDir()
+	missing, err := Load(filepath.Join(dir, "missing.json"))
+	if err != nil || missing == nil || len(missing.Accounts) != 0 {
+		t.Fatalf("missing store = %+v, %v", missing, err)
+	}
+	invalidPath := filepath.Join(dir, "invalid.json")
+	if err := os.WriteFile(invalidPath, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(invalidPath); err == nil {
+		t.Fatal("invalid auth JSON unexpectedly loaded")
 	}
 }

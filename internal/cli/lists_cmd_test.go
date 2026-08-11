@@ -20,14 +20,3 @@ func TestListsHelp(t *testing.T) {
 		}
 	}
 }
-
-func TestPrintLists(t *testing.T) {
-	var out, errb bytes.Buffer
-	PrintLists(&out, &errb, []map[string]any{
-		{"id": "x", "name": "N", "movies_count": float64(3), "privacy": "open", "views_count": float64(9)},
-	})
-	s := out.String()
-	if !strings.Contains(s, "x") || !strings.Contains(s, "N") {
-		t.Fatal(s)
-	}
-}

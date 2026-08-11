@@ -19,7 +19,7 @@ func (c *Client) RankingsMovies(ctx context.Context, type_, period string) (Sear
 	return c.api.RankingsMovies(type_, period)
 }
 
-// RankingsActors fetches actor rankings (period already daily/weekly/monthly or use RankingPeriod).
+// RankingsActors fetches actor rankings; period accepts day|week|month or daily|weekly|monthly.
 func (c *Client) RankingsActors(ctx context.Context, period string) (SearchResult, error) {
 	_ = ctx
 	return c.api.RankingsActors(period)

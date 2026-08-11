@@ -5,14 +5,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/config"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 )
 
 // Host constants.
 const (
-	HostMirror = config.HostMirror
-	HostMain   = config.HostMain
+	HostMirror = settings.HostMirror
+	HostMain   = settings.HostMain
 )
 
 // Client is a concrete app-API client.
@@ -73,7 +73,7 @@ func New(opts ...Option) (*Client, error) {
 		fn(&o)
 	}
 	base := o.host
-	if u, ok := config.HostURLs[o.host]; ok {
+	if u, ok := settings.HostURLs[o.host]; ok {
 		base = u
 	}
 	api, err := appapi.New(appapi.Options{

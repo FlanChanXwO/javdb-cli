@@ -121,6 +121,11 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
+`rankings movies --type` 与 `rankings playback --filter-by` 可用
+`censored`、`uncensored`、`western` 或 `fc2`。CLI 将这些名称交给 SDK，由 SDK
+映射为 App API 的数字排行分区值。三个排行命令的周期均使用 `day`、`week` 或 `month`，
+内部会完成周期归一化。
+
 `magnets` 无需登录即可使用，token 失效时自动回退匿名请求。`top250` 需要登录。
 `--best` 只从服务端返回的磁力集中选择，不会下载。
 `mark`/`unmark` 会改写远程的看过/想看状态；`mark` 必须且只能传入

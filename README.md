@@ -143,10 +143,13 @@ Use tabular output interactively and `--json` when a command exposes it and an
 agent or script needs stable fields:
 
 ```bash
-javdb rankings movies --period week
+javdb rankings movies --type fc2 --period week
 javdb actor 山手梨愛 --main m --has-magnets --json
 javdb lists search 巨乳 --zone all --json
 ```
+
+Movie and playback rankings accept `censored`, `uncensored`, `western`, or
+`fc2` as their zone selector; ranking periods use `day`, `week`, or `month`.
 
 The global `--proxy URL` and `--host mirror|main` flags affect only that command.
 Use `javdb config get` before relying on persisted settings.

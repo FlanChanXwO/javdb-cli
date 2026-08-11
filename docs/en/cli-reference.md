@@ -138,6 +138,12 @@ javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
 
+`rankings movies --type` and `rankings playback --filter-by` accept
+`censored`, `uncensored`, `western`, or `fc2`. The CLI sends these names through
+the SDK, which maps them to the App API's numeric ranking-zone values. All three
+ranking commands accept `day`, `week`, or `month`; period normalization is
+handled internally.
+
 `magnets` works without login and falls back to anonymous when a saved token is
 rejected. `top250` needs authentication. `--best` chooses from the returned
 magnet set; it does not download anything. `mark` and `unmark` change remote

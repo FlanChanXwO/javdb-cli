@@ -9,16 +9,17 @@ import (
 	"os"
 	"strings"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 func main() {
 	user := strings.TrimSpace(string(mustRead("/tmp/javdb_probe_user")))
 	pass := strings.TrimSpace(string(mustRead("/tmp/javdb_probe_pass")))
-	c, err := appapi.New(appapi.Options{Host: appapi.HostMirror})
+	client, err := javdb.New(javdb.WithHost(javdb.HostMirror))
 	if err != nil {
 		panic(err)
 	}
+	c := client.API()
 	tok, err := c.Login(user, pass)
 	if err != nil {
 		fmt.Println("LOGIN_ERR", err)

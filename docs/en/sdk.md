@@ -70,6 +70,13 @@ log, panic, error wrapper, or test fixture.
 | Lists | `MyLists`, `ListInfo`, `RelatedLists` |
 | Tag taxonomy | `RefreshTagTaxonomy`, `LoadOrRefreshTaxonomy` |
 
+`RankingsMovies` and `RankingsPlayback` accept the zone names `censored`,
+`uncensored`, `western`, and `fc2`, as well as an already numeric string. Known
+names are normalized before the request. All three ranking methods accept
+`day`, `week`, or `month`, as well as the API forms `daily`, `weekly`, or
+`monthly`. `RankingPeriod` exposes the short-to-API mapping; `ActorPeriod`
+remains as a deprecated compatibility alias.
+
 Many list operations return `SearchResult`, with helpers for the response
 dimension:
 

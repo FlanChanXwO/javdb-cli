@@ -1,0 +1,98 @@
+package search
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+)
+
+func TestNewHelpListsExpectedFlags(t *testing.T) {
+	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&app.Flags{}, aio)
+	var out, errb bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{"--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("help error = %v", err)
+	}
+	for _, want := range []string{"--zone", "--sort", "--filter-by", "--type", "--has-magnets", "--json", "--page", "--limit"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("help missing %s:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestNewRequiresKeyword(t *testing.T) {
+	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&app.Flags{}, aio)
+	var out, errb bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "accepts 1 arg(s), received 0") {
+		t.Fatalf("expected arg error, got %v", err)
+	}
+}
+
+func TestSearchTypeKey(t *testing.T) {
+	if searchTypeKey("actor") != "actors" || searchTypeKey("list") != "lists" || searchTypeKey("") != "movies" {
+		t.Fatal("search type key mapping changed")
+	}
+}
+
+// TestExecuteMoviesJSONHasMagnetsFilter 覆盖 movie 分支 JSON + has-magnets 过滤。
+func TestExecuteMoviesJSONHasMagnetsFilter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"movies":[
+			{"number":"SSIS-589","id":"x","title":"T","magnets_count":2},
+			{"number":"ZERO","id":"y","title":"Z","magnets_count":0}
+		]}}`))
+	}))
+	defer server.Close()
+
+	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&app.Flags{Host: server.URL}, aio)
+	cmd.SetArgs([]string{"kw", "--json", "--has-magnets"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(aio.Out.(*bytes.Buffer).Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	arr, _ := got["movies"].([]any)
+	if len(arr) != 1 || arr[0].(map[string]any)["number"] != "SSIS-589" {
+		t.Fatalf("has-magnets filter result = %v", got)
+	}
+}
+
+// TestExecuteNamedText 覆盖 --type actor 命名分支文本输出。
+func TestExecuteNamedText(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"actors":[
+			{"id":"9Dqpw","name":"山手梨愛","videos_count":10}
+		]}}`))
+	}))
+	defer server.Close()
+
+	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&app.Flags{Host: server.URL}, aio)
+	cmd.SetArgs([]string{"kw", "--type", "actor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	s := aio.Out.(*bytes.Buffer).String()
+	if !strings.Contains(s, "9Dqpw") || !strings.Contains(s, "山手梨愛") {
+		t.Fatalf("named output = %q", s)
+	}
+}

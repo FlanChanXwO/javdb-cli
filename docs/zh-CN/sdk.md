@@ -66,6 +66,11 @@ userID, username, err := client.ResolveUserID(ctx)
 | 合集 | `MyLists`、`ListInfo`、`RelatedLists` |
 | 标签目录 | `RefreshTagTaxonomy`、`LoadOrRefreshTaxonomy` |
 
+`RankingsMovies` 与 `RankingsPlayback` 接受 `censored`、`uncensored`、`western`、
+`fc2` 等分区名称，也接受已转换的数字字符串；已知名称会在请求前归一化。三个排行方法均接受
+`day`、`week`、`month`，也接受 API 形式的 `daily`、`weekly`、`monthly`。
+`RankingPeriod` 提供短周期到 API 周期的映射；`ActorPeriod` 作为废弃兼容别名继续保留。
+
 许多列表操作返回 `SearchResult`，可按响应维度取值：
 
 ```go
