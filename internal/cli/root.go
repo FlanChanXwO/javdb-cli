@@ -4,8 +4,11 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 
 	actorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/actor"
 	authcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/auth"
@@ -46,9 +49,15 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		Short:         "JavDB app API command-line client",
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if !shouldInitializeConfigForCommand(cmd) {
+				return nil
+			}
+			return paths.EnsureDefaultConfigFile()
+		},
 	}
 	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
-	command.PersistentFlags().StringVar(&options.Host, "host", "", "mirror|main (default: config or mirror)")
+	command.PersistentFlags().StringVar(&options.Host, "host", "", "auto|mirror|main|URL (default: config or auto)")
 
 	// 保持原 root.go 的 AddCommand 顺序，避免 help 与 completion 输出漂移。
 	command.AddCommand(authcmd.New(options, streams))
@@ -96,4 +105,27 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// shouldInitializeConfigForCommand 只让真正执行的普通命令与 config path/get/set 触发首次配置创建。
+// 裸命令、help、version、completion 与参数校验失败在 Cobra 层已先于 PersistentPreRunE 返回；
+// 这里显式列出仍会走到 PreRun 的路径，防御性跳过，避免只读/无实际执行路径落盘。
+func shouldInitializeConfigForCommand(cmd *cobra.Command) bool {
+	path := cmd.CommandPath()
+	switch {
+	case path == "javdb":
+		// 裸命令不可运行，Cobra 直接返回 help；保留该分支防止未来为根命令加 RunE。
+		return false
+	case path == "javdb version":
+		return false
+	case path == "javdb config unset":
+		// 缺失配置上的 unset 是 no-op，不创建基线文件。
+		return false
+	case strings.HasPrefix(path, "javdb help"):
+		return false
+	case strings.HasPrefix(path, "javdb completion"), strings.HasPrefix(path, "javdb __complete"):
+		return false
+	default:
+		return true
+	}
 }

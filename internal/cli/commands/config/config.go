@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -99,6 +101,13 @@ func New(streams *invocation.Streams) *cobra.Command {
 		RunE: func(command *cobra.Command, args []string) error {
 			path, err := paths.ConfigPath()
 			if err != nil {
+				return err
+			}
+			// 缺失配置上的 unset 是 no-op：默认值已经生效，不创建文件。
+			if _, err := os.Stat(path); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
 				return err
 			}
 			cfg, err := settings.LoadFile(path)
