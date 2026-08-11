@@ -2,20 +2,53 @@
 package client
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
+	storageroute "github.com/FlanChanXwO/javdb-cli/internal/storage/route"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// New 读取配置、校验命令行 host、解析运行时，并构造携带给定 token 的公开 SDK client。
-// 在缺失 device UUID 时沿用 LoadOrCreateDeviceUUID 的路径与错误处理。
+// autoHost 是自动选线的可注入依赖集合，便于测试注入 fake cache/selector；不引入可变的
+// 全局替换，生产依赖只读。
+type autoHost struct {
+	loadCache  func(path string) (storageroute.Document, bool, error)
+	saveCache  func(path string, doc storageroute.Document) error
+	selectHost func(ctx context.Context, options javdb.AutoHostOptions) (javdb.AutoHostResult, error)
+}
+
+// productionAutoHost 是生产依赖：真实 route cache 与公开 SDK selector。
+var productionAutoHost = autoHost{
+	loadCache:  storageroute.Load,
+	saveCache:  storageroute.Save,
+	selectHost: javdb.SelectAutoHost,
+}
+
+// New 读取配置、校验命令行 host、解析运行时，并在 auto 时先完成线路选择，再构造携带给定
+// token 的公开 SDK client。固定 host 完全绕过 route cache 与 selector。
 func New(options *invocation.RootOptions, token string) (*javdb.Client, error) {
-	rt, err := resolveRuntime(options)
+	rt, baseURL, err := resolveClient(options)
 	if err != nil {
 		return nil, err
 	}
-	return buildClient(rt, token)
+	return buildClient(rt, baseURL, token)
+}
+
+// resolveClient 解析运行时并确定 baseURL：auto 走 route cache + 公开 SDK selector，
+// 固定 host 直接使用 runtime 的 BaseURL。
+func resolveClient(options *invocation.RootOptions) (settings.Runtime, string, error) {
+	rt, err := resolveRuntime(options)
+	if err != nil {
+		return settings.Runtime{}, "", err
+	}
+	baseURL, err := resolveBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return settings.Runtime{}, "", err
+	}
+	return rt, baseURL, nil
 }
 
 // resolveRuntime 解析配置文件、环境变量和根 flags，并补齐 device UUID。
@@ -43,10 +76,44 @@ func resolveRuntime(options *invocation.RootOptions) (settings.Runtime, error) {
 	return runtimeConfig, nil
 }
 
-// buildClient 根据已解析的 runtime 构造公开 SDK client。
-func buildClient(rt settings.Runtime, token string) (*javdb.Client, error) {
+// resolveBaseURL 对固定 host（mirror/main/URL）直接返回 runtime 的 BaseURL；对 auto 读取
+// route cache，用公开 SDK selector 验证缓存或重测线路，必要时在构造业务 client 前持久化
+// 选中 URL。cache/selector/save 错误原样返回，不伪装为 miss。
+func resolveBaseURL(rt settings.Runtime, ah autoHost) (string, error) {
+	if rt.Host != settings.HostAuto {
+		return rt.BaseURL, nil
+	}
+	path, err := paths.RouteCachePath()
+	if err != nil {
+		return "", err
+	}
+	preferred := ""
+	if cached, ok, err := ah.loadCache(path); err != nil {
+		return "", fmt.Errorf("load route cache: %w", err)
+	} else if ok {
+		preferred = cached.Host
+	}
+	result, err := ah.selectHost(context.Background(), javdb.AutoHostOptions{
+		PreferredHost: preferred,
+		Proxy:         rt.Proxy,
+		DeviceUUID:    rt.DeviceUUID,
+		Lang:          rt.Lang,
+	})
+	if err != nil {
+		return "", fmt.Errorf("auto select host: %w", err)
+	}
+	if !result.ReusedPreferred {
+		if err := ah.saveCache(path, storageroute.Document{Host: result.Host}); err != nil {
+			return "", fmt.Errorf("save route cache: %w", err)
+		}
+	}
+	return result.Host, nil
+}
+
+// buildClient 根据已解析的 runtime 与选定 baseURL 构造公开 SDK client。
+func buildClient(rt settings.Runtime, baseURL, token string) (*javdb.Client, error) {
 	return javdb.New(
-		javdb.WithHost(rt.BaseURL),
+		javdb.WithHost(baseURL),
 		javdb.WithProxy(rt.Proxy),
 		javdb.WithToken(token),
 		javdb.WithDeviceUUID(rt.DeviceUUID),
