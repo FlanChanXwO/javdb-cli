@@ -89,10 +89,7 @@ func getDecryptString(input, encoded string) (string, error) {
 	}
 	chars := make([]byte, len(plain))
 	for i, p := range plain {
-		idx := i
-		if idx > 31 {
-			idx = 31
-		}
+		idx := min(i, 31)
 		chars[i] = byte(p - int(keyHex[idx]))
 	}
 	result, err := base64.StdEncoding.DecodeString(string(chars))
