@@ -8,9 +8,10 @@ for required_dir in \
 	sdk \
 	internal/common/jsonx \
 	internal/common/scalar \
-	internal/cli/app \
-	internal/cli/movie \
-	internal/cli/magnet \
+	internal/cli/invocation \
+	internal/cli/client \
+	internal/cli/authstore \
+	internal/cli/result \
 	internal/cli/entity \
 	internal/cli/commands/auth \
 	internal/cli/commands/config \
@@ -89,15 +90,27 @@ if [ ! -f "$repo_root/scripts/releasenotes/main.go" ]; then
 	exit 1
 fi
 
-# CLI 根包只保留 root.go 与根契约测试；facade/input/output 与旧分组命令已删除。
+# CLI 根包只保留 root.go 与 root_test.go；facade/input/output/app/movie/magnet 与旧分组命令已删除。
 if [ ! -f "$repo_root/internal/cli/root.go" ]; then
 	printf '%s\n' 'missing real CLI root: internal/cli/root.go' >&2
+	exit 1
+fi
+if [ ! -f "$repo_root/internal/cli/root_test.go" ]; then
+	printf '%s\n' 'missing CLI root contract test: internal/cli/root_test.go' >&2
+	exit 1
+fi
+# 根目录除 root.go/root_test.go 外不得有其他 Go 文件。
+if find "$repo_root/internal/cli" -maxdepth 1 -name '*.go' | rg -v '/(root\.go|root_test\.go)$' | rg -q .; then
+	printf '%s\n' 'internal/cli root contains Go files other than root.go/root_test.go' >&2
 	exit 1
 fi
 test ! -e "$repo_root/internal/cli/facade.go"
 test ! -e "$repo_root/internal/cli/root"
 test ! -e "$repo_root/internal/cli/input"
 test ! -e "$repo_root/internal/cli/output"
+test ! -e "$repo_root/internal/cli/app"
+test ! -e "$repo_root/internal/cli/movie"
+test ! -e "$repo_root/internal/cli/magnet"
 test ! -e "$repo_root/internal/cli/commands/account"
 test ! -e "$repo_root/internal/cli/commands/catalog"
 test ! -e "$repo_root/internal/cli/commands/user"
@@ -158,6 +171,20 @@ fi
 if rg -n 'github.com/FlanChanXwO/javdb-cli/(internal/cli|sdk|internal/javdb|internal/config|internal/update)' \
 	"$repo_root/internal/common" -g '*.go'; then
 	printf '%s\n' 'internal/common imports an upper-layer package' >&2
+	exit 1
+fi
+
+# result 是纯投影层，只允许 stdlib 与 internal/common/scalar。
+if rg -n 'github.com/FlanChanXwO/javdb-cli/(internal/cli/(commands|client|authstore|entity|invocation)|sdk|internal/javdb|internal/config|internal/storage|internal/update)' \
+	"$repo_root/internal/cli/result" -g '*.go'; then
+	printf '%s\n' 'internal/cli/result imports an upper-layer package' >&2
+	exit 1
+fi
+
+# invocation 只依赖 stdlib IO。
+if rg -n 'github.com/FlanChanXwO/javdb-cli/' \
+	"$repo_root/internal/cli/invocation" -g '*.go'; then
+	printf '%s\n' 'internal/cli/invocation imports a repository package' >&2
 	exit 1
 fi
 

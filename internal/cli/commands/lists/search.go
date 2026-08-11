@@ -6,12 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // NewSearch builds the lists search command.
-func NewSearch(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var page, limit int
 	var zone string
 	var asJSON bool
@@ -20,11 +21,7 @@ func NewSearch(flags *app.Flags, aio *app.IO) *cobra.Command {
 		Short: "Search public 合集",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -36,9 +33,9 @@ func NewSearch(flags *app.Flags, aio *app.IO) *cobra.Command {
 			}
 			items := res.Named("lists")
 			if asJSON {
-				return writeJSON(aio.Out, map[string]any{"lists": items})
+				return writeJSON(streams.Out, map[string]any{"lists": items})
 			}
-			return writeListRows(aio.Out, aio.Err, items)
+			return writeListRows(streams.Out, streams.Err, items)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page")

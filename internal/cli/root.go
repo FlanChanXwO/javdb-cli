@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 	actorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/actor"
 	authcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/auth"
 	browsecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/browse"
@@ -34,48 +33,49 @@ import (
 	versioncmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/version"
 	wantcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/want"
 	watchedcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/watched"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/process"
 )
 
 // New builds the root command with the original persistent flags and command order.
 func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
-	flags := &app.Flags{}
-	aio := app.NewIO(stdin, stdout, stderr)
+	options := &invocation.RootOptions{}
+	streams := invocation.NewStreams(stdin, stdout, stderr)
 	command := &cobra.Command{
 		Use:           "javdb",
 		Short:         "JavDB app API command-line client",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	command.PersistentFlags().StringVar(&flags.Proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
-	command.PersistentFlags().StringVar(&flags.Host, "host", "", "mirror|main (default: config or mirror)")
+	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
+	command.PersistentFlags().StringVar(&options.Host, "host", "", "mirror|main (default: config or mirror)")
 
 	// 保持原 root.go 的 AddCommand 顺序，避免 help 与 completion 输出漂移。
-	command.AddCommand(authcmd.New(flags, aio))
-	command.AddCommand(configcmd.New(aio))
-	command.AddCommand(searchcmd.New(flags, aio))
-	command.AddCommand(detailcmd.New(flags, aio))
-	command.AddCommand(commentscmd.New(flags, aio))
-	command.AddCommand(magnetscmd.New(flags, aio))
-	command.AddCommand(downloadcmd.New(flags, aio))
-	command.AddCommand(tagscmd.New(flags, aio))
-	command.AddCommand(browsecmd.New(flags, aio))
-	command.AddCommand(actorcmd.New(flags, aio))
-	command.AddCommand(seriescmd.New(flags, aio))
-	command.AddCommand(makercmd.New(flags, aio))
-	command.AddCommand(directorcmd.New(flags, aio))
-	command.AddCommand(codecmd.New(flags, aio))
-	command.AddCommand(listcmd.New(flags, aio))
-	command.AddCommand(watchedcmd.New(flags, aio))
-	command.AddCommand(wantcmd.New(flags, aio))
-	command.AddCommand(recentcmd.New(flags, aio))
-	command.AddCommand(collectionscmd.New(flags, aio))
-	command.AddCommand(markcmd.New(flags, aio))
-	command.AddCommand(unmarkcmd.New(flags, aio))
-	command.AddCommand(rankingscmd.New(flags, aio))
-	command.AddCommand(top250cmd.New(flags, aio))
-	command.AddCommand(listscmd.New(flags, aio))
-	command.AddCommand(updatecmd.New(flags, aio))
+	command.AddCommand(authcmd.New(options, streams))
+	command.AddCommand(configcmd.New(streams))
+	command.AddCommand(searchcmd.New(options, streams))
+	command.AddCommand(detailcmd.New(options, streams))
+	command.AddCommand(commentscmd.New(options, streams))
+	command.AddCommand(magnetscmd.New(options, streams))
+	command.AddCommand(downloadcmd.New(options, streams))
+	command.AddCommand(tagscmd.New(options, streams))
+	command.AddCommand(browsecmd.New(options, streams))
+	command.AddCommand(actorcmd.New(options, streams))
+	command.AddCommand(seriescmd.New(options, streams))
+	command.AddCommand(makercmd.New(options, streams))
+	command.AddCommand(directorcmd.New(options, streams))
+	command.AddCommand(codecmd.New(options, streams))
+	command.AddCommand(listcmd.New(options, streams))
+	command.AddCommand(watchedcmd.New(options, streams))
+	command.AddCommand(wantcmd.New(options, streams))
+	command.AddCommand(recentcmd.New(options, streams))
+	command.AddCommand(collectionscmd.New(options, streams))
+	command.AddCommand(markcmd.New(options, streams))
+	command.AddCommand(unmarkcmd.New(options, streams))
+	command.AddCommand(rankingscmd.New(options, streams))
+	command.AddCommand(top250cmd.New(options, streams))
+	command.AddCommand(listscmd.New(options, streams))
+	command.AddCommand(updatecmd.New(options, streams))
 	command.AddCommand(versioncmd.New())
 	return command
 }

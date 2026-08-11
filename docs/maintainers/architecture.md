@@ -5,24 +5,29 @@
 `cmd/javdb/main.go` 是唯一官方二进制入口，只负责把进程参数和标准流交给
 `internal/cli.Run` 并返回退出码。`internal/cli` 的根包（`root.go`）直接组装最终
 Cobra 命令树并实现 `Run`；命令域位于 `internal/cli/commands/*`（每个真实命令一个
-同名目录），共享投影由 `cli/{movie,magnet,entity}` 提供，IO/运行时/SDK client/认证/
-update 依赖组装由 `cli/app` 提供。远程 JavDB 操作只能通过公开 `sdk/`（声明为
+同名目录），调用期数据由 `cli/invocation` 提供，配置/SDK client/认证生命周期由
+`cli/client` 提供，认证文件由 `cli/authstore` 提供，纯结果投影由 `cli/result` 提供，
+六实体查询用例由 `cli/entity` 提供。远程 JavDB 操作只能通过公开 `sdk/`（声明为
 `package javdb`）调用；`sdk` 再组合 `internal/javdb/appapi` 的真实 Client 组合层与
 协议实现。
 
 ```text
 cmd/javdb → internal/cli (root.go → commands/*) → sdk (public; package javdb)
-                         ├── cli/app → internal/config, internal/storage/auth, internal/update
-                         ├── cli/movie | cli/magnet | cli/entity   （纯投影）
-                         └── internal/common/{jsonx,scalar}       （纯 JSON/标量）
+                         ├── cli/invocation              （RootOptions + Streams）
+                         ├── cli/client → config/{paths,settings} + sdk
+                         ├── cli/authstore → storage/auth
+                         ├── cli/result                   （movie/magnet/named 纯投影）
+                         ├── cli/entity                   （六实体查询用例）
+                         └── internal/common/{jsonx,scalar}（纯 JSON/标量）
 sdk → internal/javdb/appapi (真实 Client 组合 → client/model/codec/media/endpoint/*)
                               └── internal/javdb/protocol/{httpx,signature}
 internal/javdb/appapi → internal/storage/tags (taxonomy cache)
 ```
 
 `config`、`storage` 与 `update` 负责本机状态或显式更新，而不是终端输出或远程协议。
-CLI 可以通过 `cli/app` 和对应命令域使用它们完成账号、配置和 update 命令；CLI 命令包
-不应直接导入 `internal/javdb/appapi` 或 `internal/javdb/protocol/*`。
+CLI 可以通过 `cli/client`、`cli/authstore` 和对应命令域使用它们完成账号、配置和
+update 命令；CLI 命令包不应直接导入 `internal/javdb/appapi` 或
+`internal/javdb/protocol/*`。
 
 ## 包职责
 
@@ -37,14 +42,24 @@ CLI 可以通过 `cli/app` 和对应命令域使用它们完成账号、配置�
 HTTP、签名或上游响应解码。目录职责如下：
 
 - `cli/root.go`：persistent flags、根命令、26 个命令的注册顺序和 `Run` 入口（含
-  Windows 待清理更新）；`internal/cli` 根包不再有渲染/输入 wrapper。
-- `cli/app`：IO、配置 runtime、SDK client、认证 store 和 update coordinator 的依赖组装。
+  Windows 待清理更新）；`internal/cli` 根包只保留 `root.go` 与 `root_test.go`，
+  没有渲染/输入 wrapper 或命令专属测试。
+- `cli/invocation`：`RootOptions`（persistent flags 目标）与 `Streams`（调用方提供的
+  标准流），只保存调用期数据，不含服务方法。
+- `cli/client`：统一配置解析（config path/file/host 校验/runtime 解析/device UUID）、
+  SDK client 创建，以及 `WithRequiredAuth`/`WithOptionalAuth` 的认证生命周期（自动
+  重登、匿名重试、token 持久化）。
+- `cli/authstore`：只负责默认认证文件的路径、目录与 store 打开（`Open`）。
+- `cli/result`：纯结果投影与过滤，按领域分文件（`movie.go`/`magnet.go`/`named.go`），
+  类型与函数使用领域前缀（`MovieRow`/`ProjectMovie`/`FilterMoviesWithMagnets`、
+  `MagnetRow`/`ProjectMagnet`、`NamedRow`/`ProjectNamed`）。
+- `cli/entity`：只保留六类实体命令共享的查询用例 `Execute`；命名实体投影位于
+  `cli/result`。
 - `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update,version}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
-- `cli/movie`：影片记录纯投影（`Row`/`Project`/`ProjectAll`/`FilterHasMagnets`）。
-- `cli/magnet`：磁力记录纯投影（`Row`/`Project`/`ProjectAll`/`FormatSize`）。
-- `cli/entity`：实体用例 `Execute` 与命名实体投影（`NamedRow`/`ProjectNamed`）。
+  `commands/update` 同时拥有 proxy 解析、production coordinator 组装与 build info
+  获取（未导出 helper）。
 
 ### `sdk/`（`package javdb`）
 

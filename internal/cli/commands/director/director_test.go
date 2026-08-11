@@ -2,15 +2,14 @@ package director
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewBuildsDirectorCommand(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	if cmd.Name() != "director" || cmd.Use != "director REF" {
 		t.Fatalf("name=%q use=%q", cmd.Name(), cmd.Use)
 	}
@@ -22,8 +21,8 @@ func TestNewBuildsDirectorCommand(t *testing.T) {
 }
 
 func TestNewRequiresRef(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{})

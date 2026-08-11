@@ -1,4 +1,4 @@
-package cli
+package version
 
 import (
 	"bytes"
@@ -15,7 +15,11 @@ func TestVersionTextAndJSON(t *testing.T) {
 	buildinfo.BuildDate = "2026-07-18T00:00:00Z"
 
 	var out, errb bytes.Buffer
-	if code := Run([]string{"version"}, strings.NewReader(""), &out, &errb); code != 0 {
+	cmd := New()
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err != nil {
 		t.Fatalf("text: %s", errb.String())
 	}
 	if !strings.Contains(out.String(), "javdb v0.1.0") {
@@ -24,7 +28,11 @@ func TestVersionTextAndJSON(t *testing.T) {
 
 	out.Reset()
 	errb.Reset()
-	if code := Run([]string{"version", "--json"}, strings.NewReader(""), &out, &errb); code != 0 {
+	cmd = New()
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.Execute(); err != nil {
 		t.Fatalf("json: %s", errb.String())
 	}
 	var got map[string]string
@@ -36,5 +44,19 @@ func TestVersionTextAndJSON(t *testing.T) {
 	}
 	if got["commit"] != "deadbeef" {
 		t.Fatalf("%v", got)
+	}
+}
+
+func TestVersionHelp(t *testing.T) {
+	var out, errb bytes.Buffer
+	cmd := New()
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{"--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("help error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Print version") {
+		t.Fatalf("version help = %q", out.String())
 	}
 }

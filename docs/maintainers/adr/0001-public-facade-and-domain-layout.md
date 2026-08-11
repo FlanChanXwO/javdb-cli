@@ -16,7 +16,7 @@ SDK、终端适配和协议实现的边界不清晰，与 pixiv-cli 的开发者
 
 - 保留顶层 `sdk/`（`package javdb`）作为唯一公开 Go SDK；不存在另一个顶层 `javdb/` SDK 目录。
 - 将 JavDB 专属实现收拢到 `internal/javdb/appapi` 与 `internal/javdb/protocol/*`，其中 App API 按 `client`、`model`、`codec`、`media`、`endpoint/*` 分域；**根包是真实 Client 组合层**（`client.go`），通过未导出指针别名嵌入 capability 并用 method promotion 提供扁平方法集，不保留手写 forwarder。
-- CLI 通过公开 SDK 调用远程能力；`internal/cli` 根包只保留 `root.go`（`New`/`Run`），命令域按 `commands/*` 的真实命令/命令组同名目录分域，共享投影由 `cli/{movie,magnet,entity}` 提供，`cli/app` 负责依赖组装；不再有 `root/`、`input/`、`output/` 或根 facade。
+- CLI 通过公开 SDK 调用远程能力；`internal/cli` 根包只保留 `root.go`/`root_test.go`（`New`/`Run` 与 CLI-wide 契约测试），命令域按 `commands/*` 的真实命令/命令组同名目录分域，调用期数据由 `cli/invocation`（`RootOptions`+`Streams`）提供，配置/SDK client/认证生命周期由 `cli/client` 提供，认证文件由 `cli/authstore` 提供，纯结果投影由 `cli/result`（movie/magnet/named 分文件、领域前缀类型）提供，六实体查询用例由 `cli/entity` 提供；不再有 `app`、`movie`、`magnet` 或根 facade。
 - 本机配置、账号存储和显式更新分别由 `internal/config/{paths,settings}`、`internal/storage/{auth,tags}` 和 `internal/update/{model,archive,release,source,process}` 管理，根目录不保留 facade/alias/forwarder；`internal/config` 根目录不建立 Go package，`internal/update` 根包只保留 `Coordinator` 与其最小依赖接口。
 - 纯 JSON/标量转换由 `internal/common/{jsonx,scalar}` 提供（根目录无包）；`internal/shared/values` 已删除。
 - release-note command 保留 `scripts/releasenotes` 入口（仅分派），核心逻辑按 `scripts/internal/releasenotes/{model,github,audit,document,prepare,history}` 分域；`changescope` 和 `login_probe.go` 保持单一职责。
@@ -37,6 +37,7 @@ SDK、终端适配和协议实现的边界不清晰，与 pixiv-cli 的开发者
 
 - `cmd/javdb` 只调用 `internal/cli.Run`。
 - CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作，不直接导入 `internal/javdb/appapi` 或 `internal/javdb/protocol/*`。
+- `internal/cli` 根包只保留 `root.go`/`root_test.go`；`cli/client` 统一配置解析与 SDK client/认证生命周期，`cli/authstore` 打开认证 store，`cli/result` 只依赖 stdlib 与 `internal/common/scalar`，`cli/invocation` 只依赖 stdlib IO；不建立通用 service-locator 或 output 大包。
 - App API 根 Client 只构造一次 transport 并按固定顺序组装 capability；endpoint 不得反向导入根包、SDK 或 CLI。
 - `internal/javdb/protocol/httpx` 与 `signature` 只服务 App API；`internal/common/{jsonx,scalar}` 只提供底层转换，不能成为 UI/网络/错误处理 god package，也不得反向依赖 CLI/SDK/App API/config/update。
 - `scripts/releasenotes` 只负责命令入口分派，领域逻辑由 `scripts/internal/releasenotes/*` 提供；这些脚本包不得反向依赖 CLI 或 SDK。

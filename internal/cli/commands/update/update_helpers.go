@@ -1,10 +1,11 @@
-package app
+package update
 
 import (
 	"fmt"
 	"io"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 	"github.com/FlanChanXwO/javdb-cli/internal/update"
@@ -14,8 +15,8 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/update/source"
 )
 
-// ResolveUpdateProxy resolves only the proxy used by the GitHub release flow.
-func ResolveUpdateProxy(flags *Flags) (string, error) {
+// resolveProxy 只解析 GitHub Release 流程使用的 proxy（与 JavDB host 无关）。
+func resolveProxy(options *invocation.RootOptions) (string, error) {
 	path, err := paths.ConfigPath()
 	if err != nil {
 		return "", fmt.Errorf("resolve update configuration path: %w", err)
@@ -25,11 +26,11 @@ func ResolveUpdateProxy(flags *Flags) (string, error) {
 		return "", fmt.Errorf("load update configuration: %w", err)
 	}
 	// update 访问 GitHub Releases，与 JavDB host 无关；沿用同一 proxy 优先级。
-	return settings.Resolve(cfg, "", flags.Proxy, nil).Proxy, nil
+	return settings.Resolve(cfg, "", options.Proxy, nil).Proxy, nil
 }
 
-// NewProductionUpdateCoordinator assembles the explicit offline-testable update dependencies.
-func NewProductionUpdateCoordinator(proxy string, stdout, stderr io.Writer) (*update.Coordinator, error) {
+// newProductionCoordinator 组装显式、可离线测试的 update 依赖。
+func newProductionCoordinator(proxy string, stdout, stderr io.Writer) (*update.Coordinator, error) {
 	httpClient, err := release.NewReleaseHTTPClient(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("create update HTTP client: %w", err)
@@ -46,5 +47,5 @@ func NewProductionUpdateCoordinator(proxy string, stdout, stderr io.Writer) (*up
 	})
 }
 
-// BuildInfo returns the current build metadata for update commands.
-func BuildInfo() buildinfo.Info { return buildinfo.Current() }
+// buildInfo 返回 update 命令使用的当前构建元数据。
+func buildInfo() buildinfo.Info { return buildinfo.Current() }

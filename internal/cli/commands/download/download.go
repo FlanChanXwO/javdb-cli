@@ -8,12 +8,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the media download command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var thumbnailPath, previewImagePath, previewVideoPath string
 	var isID bool
 	cmd := &cobra.Command{
@@ -25,7 +26,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if strings.TrimSpace(thumbnailPath) == "" && strings.TrimSpace(previewImagePath) == "" && strings.TrimSpace(previewVideoPath) == "" {
 				return fmt.Errorf("set at least one of --thumbnail, --preview-image, or --preview-video")
 			}
-			return app.WithOptionalAuthClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				ctx := context.Background()
 				movieID := args[0]
 				var err error
@@ -44,13 +45,13 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 					return err
 				}
 				if result.ThumbnailPath != "" {
-					fmt.Fprintf(aio.Out, "thumbnail\t%s\t%d bytes\n", result.ThumbnailPath, result.ThumbnailBytes)
+					fmt.Fprintf(streams.Out, "thumbnail\t%s\t%d bytes\n", result.ThumbnailPath, result.ThumbnailBytes)
 				}
 				if result.PreviewImagePath != "" {
-					fmt.Fprintf(aio.Out, "preview-image\t%s\t%d bytes\n", result.PreviewImagePath, result.PreviewImageBytes)
+					fmt.Fprintf(streams.Out, "preview-image\t%s\t%d bytes\n", result.PreviewImagePath, result.PreviewImageBytes)
 				}
 				if result.PreviewVideoPath != "" {
-					fmt.Fprintf(aio.Out, "preview-video\t%s\t%d bytes\n", result.PreviewVideoPath, result.PreviewVideoBytes)
+					fmt.Fprintf(streams.Out, "preview-video\t%s\t%d bytes\n", result.PreviewVideoPath, result.PreviewVideoBytes)
 				}
 				return nil
 			})

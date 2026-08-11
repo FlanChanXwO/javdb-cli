@@ -8,14 +8,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/entity"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/movie"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 )
 
 // New builds the code prefix filmography command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
 		zone, sort, order string
 		page, limit       int
@@ -29,11 +30,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 		Short: "List movies for a code/prefix e.g. SSIS",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -45,11 +42,11 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return writeJSON(aio.Out, map[string]any{
+				return writeJSON(streams.Out, map[string]any{
 					"entity": result.Entity, "entity_id": result.EntityID, "movies": result.Movies,
 				})
 			}
-			return writeMovieRows(aio.Out, aio.Err, result.Movies)
+			return writeMovieRows(streams.Out, streams.Err, result.Movies)
 		},
 	}
 	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
@@ -71,7 +68,7 @@ func writeMovieRows(w, errW io.Writer, movies []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range movie.ProjectAll(movies) {
+	for _, row := range result.ProjectMovies(movies) {
 		if _, err := fmt.Fprintln(w, row.Line()); err != nil {
 			return err
 		}

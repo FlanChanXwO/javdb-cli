@@ -8,23 +8,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
 )
 
 // NewShow builds the lists show command.
-func NewShow(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "show REF",
 		Short: "Show 合集 meta (movies: use list <id>)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -38,7 +35,7 @@ func NewShow(flags *app.Flags, aio *app.IO) *cobra.Command {
 				return fmt.Errorf("lists show failed: %w", err)
 			}
 			if asJSON {
-				return writeJSON(aio.Out, data)
+				return writeJSON(streams.Out, data)
 			}
 			meta, _ := data["list"].(map[string]any)
 			if meta == nil {
@@ -50,19 +47,19 @@ func NewShow(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if meta == nil {
 				meta = data
 			}
-			fmt.Fprintf(aio.Out, "id\t%s\n", coalesce(display(meta["id"]), eid))
-			fmt.Fprintf(aio.Out, "name\t%s\n", display(meta["name"]))
+			fmt.Fprintf(streams.Out, "id\t%s\n", coalesce(display(meta["id"]), eid))
+			fmt.Fprintf(streams.Out, "name\t%s\n", display(meta["name"]))
 			if d := display(meta["description"]); d != "" {
-				fmt.Fprintf(aio.Out, "desc\t%s\n", d)
+				fmt.Fprintf(streams.Out, "desc\t%s\n", d)
 			}
-			fmt.Fprintf(aio.Out, "movies\t%s\n", display(meta["movies_count"]))
-			fmt.Fprintf(aio.Out, "views\t%s\n", display(meta["views_count"]))
-			fmt.Fprintf(aio.Out, "collects\t%s\n", display(meta["collections_count"]))
+			fmt.Fprintf(streams.Out, "movies\t%s\n", display(meta["movies_count"]))
+			fmt.Fprintf(streams.Out, "views\t%s\n", display(meta["views_count"]))
+			fmt.Fprintf(streams.Out, "collects\t%s\n", display(meta["collections_count"]))
 			if s := display(meta["share_info"]); s != "" {
-				fmt.Fprintf(aio.Out, "share\t%s\n", s)
+				fmt.Fprintf(streams.Out, "share\t%s\n", s)
 			}
-			fmt.Fprintf(aio.Out, "is_creator\t%v\n", data["is_creator"])
-			fmt.Fprintf(aio.Out, "has_collected\t%v\n", data["has_collected"])
+			fmt.Fprintf(streams.Out, "is_creator\t%v\n", data["is_creator"])
+			fmt.Fprintf(streams.Out, "has_collected\t%v\n", data["has_collected"])
 			return nil
 		},
 	}

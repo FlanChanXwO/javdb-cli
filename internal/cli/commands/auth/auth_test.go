@@ -2,17 +2,16 @@ package auth
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 // TestNewBuildsAuthCommandTree 锁定 auth 命令组：顶层 auth + login/list/use/remove/check。
 // cobra 的 Command() 返回排序后的子命令，AddCommand 顺序由 root help 契约测试锁定。
 func TestNewBuildsAuthCommandTree(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	command := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	command := New(&invocation.RootOptions{}, streams)
 	if command.Name() != "auth" {
 		t.Fatalf("command name = %q", command.Name())
 	}
@@ -28,8 +27,8 @@ func TestNewBuildsAuthCommandTree(t *testing.T) {
 }
 
 func TestNewLoginHasExpectedFlags(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	command := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	command := New(&invocation.RootOptions{}, streams)
 	login, _, err := command.Find([]string{"login"})
 	if err != nil || login == nil {
 		t.Fatalf("find login: %v", err)

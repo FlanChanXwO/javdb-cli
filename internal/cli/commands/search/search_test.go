@@ -3,17 +3,16 @@ package search
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewHelpListsExpectedFlags(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
@@ -29,8 +28,8 @@ func TestNewHelpListsExpectedFlags(t *testing.T) {
 }
 
 func TestNewRequiresKeyword(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
@@ -58,14 +57,14 @@ func TestExecuteMoviesJSONHasMagnetsFilter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{Host: server.URL}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"kw", "--json", "--has-magnets"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
 	var got map[string]any
-	if err := json.Unmarshal(aio.Out.(*bytes.Buffer).Bytes(), &got); err != nil {
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	arr, _ := got["movies"].([]any)
@@ -85,13 +84,13 @@ func TestExecuteNamedText(t *testing.T) {
 	}))
 	defer server.Close()
 
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{Host: server.URL}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"kw", "--type", "actor"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
-	s := aio.Out.(*bytes.Buffer).String()
+	s := streams.Out.(*bytes.Buffer).String()
 	if !strings.Contains(s, "9Dqpw") || !strings.Contains(s, "山手梨愛") {
 		t.Fatalf("named output = %q", s)
 	}

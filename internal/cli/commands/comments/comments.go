@@ -7,13 +7,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the one-page movie review command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var page, limit int
 	var isID, asJSON bool
 	cmd := &cobra.Command{
@@ -28,7 +29,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if limit < 1 {
 				return fmt.Errorf("--limit must be positive")
 			}
-			return app.WithOptionalAuthClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				ctx := context.Background()
 				movieID := args[0]
 				var err error
@@ -52,10 +53,10 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					_, err = aio.Out.Write(b)
+					_, err = streams.Out.Write(b)
 					return err
 				}
-				return writeComments(aio.Out, aio.Err, reviews)
+				return writeComments(streams.Out, streams.Err, reviews)
 			})
 		},
 	}

@@ -2,15 +2,14 @@ package magnets
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewHelpListsFlags(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)

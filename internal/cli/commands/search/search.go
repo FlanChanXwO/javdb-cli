@@ -8,15 +8,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/entity"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/movie"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the movie and dimension search command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
 		page, limit   int
 		zone, sort    string
@@ -29,11 +29,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 		Short: "Search movies (or other dimensions with --type)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -52,19 +48,19 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if typ == "" || typ == "movie" {
 				movies := res.Movies()
 				if hasMagnets {
-					movies = movie.FilterHasMagnets(movies)
+					movies = result.FilterMoviesWithMagnets(movies)
 				}
 				if asJSON {
-					return writeJSON(aio.Out, map[string]any{"movies": movies})
+					return writeJSON(streams.Out, map[string]any{"movies": movies})
 				}
-				return writeMovieRows(aio.Out, aio.Err, movies)
+				return writeMovieRows(streams.Out, streams.Err, movies)
 			}
 			key := searchTypeKey(typ)
 			items := res.Named(key)
 			if asJSON {
-				return writeJSON(aio.Out, map[string]any{key: items})
+				return writeJSON(streams.Out, map[string]any{key: items})
 			}
-			return writeNamedRows(aio.Out, aio.Err, items)
+			return writeNamedRows(streams.Out, streams.Err, items)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page number")
@@ -106,7 +102,7 @@ func writeMovieRows(w, errW io.Writer, movies []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range movie.ProjectAll(movies) {
+	for _, row := range result.ProjectMovies(movies) {
 		if _, err := fmt.Fprintln(w, row.Line()); err != nil {
 			return err
 		}
@@ -120,7 +116,7 @@ func writeNamedRows(w, errW io.Writer, items []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range entity.ProjectNamedAll(items) {
+	for _, row := range result.ProjectNamedAll(items) {
 		if _, err := fmt.Fprintln(w, row.Line()); err != nil {
 			return err
 		}

@@ -1,8 +1,8 @@
-// Package movie 提供影片记录的纯投影与 has-magnets 过滤。
+// Package result 提供 CLI 纯结果投影与过滤，按领域分文件（movie.go、magnet.go、named.go）。
 //
-// 只处理影片记录字段投影与过滤；不执行 IO、不创建 Cobra command、不调用 SDK、不含 JSON 编码、
-// 排行、磁力、详情或空列表文案。
-package movie
+// 类型与函数使用领域前缀避免含糊命名。包不接收 io.Writer、不含空列表文案、不编码 JSON、
+// 不创建 Cobra command、不调用 SDK；只依赖 stdlib 与 internal/common/scalar。
+package result
 
 import (
 	"strconv"
@@ -10,8 +10,8 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
 )
 
-// Row 是影片列表单行的结构化投影。
-type Row struct {
+// MovieRow 是影片列表单行的结构化投影。
+type MovieRow struct {
 	Number      string
 	ID          string
 	Title       string
@@ -19,8 +19,7 @@ type Row struct {
 }
 
 // Line 返回影片行文本 `number\tid\ttitle[\trelease_date]`（不含尾随换行）。
-// 纯字符串投影，不执行 IO；空列表文案由命令负责。
-func (r Row) Line() string {
+func (r MovieRow) Line() string {
 	line := r.Number + "\t" + r.ID + "\t" + r.Title
 	if r.ReleaseDate != "" {
 		line += "\t" + r.ReleaseDate
@@ -28,10 +27,9 @@ func (r Row) Line() string {
 	return line
 }
 
-// Project 将影片记录投影为 Row。
-// display 保留 CLI 的数值 ID 展示约定（float64 ID 截断为整数），确保输出与旧行为逐字一致。
-func Project(item map[string]any) Row {
-	return Row{
+// ProjectMovie 将影片记录投影为 MovieRow；保留 float64 ID 截断展示约定。
+func ProjectMovie(item map[string]any) MovieRow {
+	return MovieRow{
 		Number:      display(item["number"]),
 		ID:          display(item["id"]),
 		Title:       display(item["title"]),
@@ -39,17 +37,17 @@ func Project(item map[string]any) Row {
 	}
 }
 
-// ProjectAll 将影片记录列表投影为 Row 列表。
-func ProjectAll(items []map[string]any) []Row {
-	out := make([]Row, 0, len(items))
+// ProjectMovies 将影片记录列表投影为 MovieRow 列表，保持输入顺序。
+func ProjectMovies(items []map[string]any) []MovieRow {
+	out := make([]MovieRow, 0, len(items))
 	for _, item := range items {
-		out = append(out, Project(item))
+		out = append(out, ProjectMovie(item))
 	}
 	return out
 }
 
-// FilterHasMagnets 丢弃 magnets_count == 0 的行；缺失该字段的行保留。
-func FilterHasMagnets(items []map[string]any) []map[string]any {
+// FilterMoviesWithMagnets 丢弃 magnets_count == 0 的行；缺失该字段的行保留。
+func FilterMoviesWithMagnets(items []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		if v, ok := item["magnets_count"]; ok {
@@ -63,7 +61,7 @@ func FilterHasMagnets(items []map[string]any) []map[string]any {
 	return out
 }
 
-// display 是 CLI 影片领域的字符串展示约定：浮点 ID 截断为整数，其余委托 scalar。
+// display 是 CLI 结果的字符串展示约定：浮点值截断为整数，其余委托 scalar。
 func display(v any) string {
 	if v == nil {
 		return ""
@@ -78,7 +76,7 @@ func display(v any) string {
 	}
 }
 
-// intValue 是 has-magnets 过滤的整数转换，保持旧 CLI 的浮点截断语义。
+// intValue 是过滤与大小格式化的整数转换，保持浮点截断语义。
 func intValue(v any) int {
 	switch t := v.(type) {
 	case float64:

@@ -2,19 +2,18 @@
 package rankings
 
 import (
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/spf13/cobra"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 // New builds the movie, actor and playback rankings command group.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rankings",
 		Short: "Movie/actor rankings (no login needed)",
 	}
-	cmd.AddCommand(NewMovies(flags, aio))
-	cmd.AddCommand(NewActors(flags, aio))
-	cmd.AddCommand(NewPlayback(flags, aio))
+	cmd.AddCommand(NewMovies(options, streams))
+	cmd.AddCommand(NewActors(options, streams))
+	cmd.AddCommand(NewPlayback(options, streams))
 	return cmd
 }

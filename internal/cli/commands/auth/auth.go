@@ -2,21 +2,20 @@
 package auth
 
 import (
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/spf13/cobra"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 // New builds the auth login/list/use/remove/check command tree.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "auth",
 		Short: "Account login and multi-account management",
 	}
-	command.AddCommand(NewLogin(flags, aio))
-	command.AddCommand(NewList(aio))
-	command.AddCommand(NewUse(aio))
-	command.AddCommand(NewRemove(aio))
-	command.AddCommand(NewCheck(flags, aio))
+	command.AddCommand(NewLogin(options, streams))
+	command.AddCommand(NewList(streams))
+	command.AddCommand(NewUse(streams))
+	command.AddCommand(NewRemove(streams))
+	command.AddCommand(NewCheck(options, streams))
 	return command
 }

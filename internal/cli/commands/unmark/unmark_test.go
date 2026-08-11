@@ -2,15 +2,14 @@ package unmark
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewBuildsUnmarkCommand(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	if cmd.Name() != "unmark" || cmd.Use != "unmark NUMBER" {
 		t.Fatalf("name=%q use=%q", cmd.Name(), cmd.Use)
 	}
@@ -20,8 +19,8 @@ func TestNewBuildsUnmarkCommand(t *testing.T) {
 }
 
 func TestNewRequiresNumber(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{})

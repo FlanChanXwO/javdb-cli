@@ -2,15 +2,14 @@ package top250
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewBuildsTop250Command(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	if cmd.Name() != "top250" || cmd.Use != "top250" {
 		t.Fatalf("name=%q use=%q", cmd.Name(), cmd.Use)
 	}
@@ -25,8 +24,8 @@ func TestNewBuildsTop250Command(t *testing.T) {
 }
 
 func TestNewHelp(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)

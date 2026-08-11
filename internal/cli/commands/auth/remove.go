@@ -2,15 +2,15 @@ package auth
 
 import (
 	"fmt"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strconv"
 
 	"github.com/spf13/cobra"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 // NewRemove builds the auth remove command.
-func NewRemove(aio *app.IO) *cobra.Command {
+func NewRemove(streams *invocation.Streams) *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <user_id>",
 		Short: "Remove a saved account",
@@ -20,7 +20,7 @@ func NewRemove(aio *app.IO) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("user_id must be integer: %w", err)
 			}
-			fileStore, store, err := app.OpenAuth()
+			fileStore, store, err := authstore.Open()
 			if err != nil {
 				return err
 			}
@@ -30,7 +30,7 @@ func NewRemove(aio *app.IO) *cobra.Command {
 			if err := fileStore.Commit(store); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(aio.Out, "removed account id=%d\n", userID)
+			_, err = fmt.Fprintf(streams.Out, "removed account id=%d\n", userID)
 			return err
 		},
 	}

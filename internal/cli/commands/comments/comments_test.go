@@ -2,15 +2,14 @@ package comments
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewHelpListsFlags(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
@@ -18,7 +17,7 @@ func TestNewHelpListsFlags(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("help error = %v", err)
 	}
-	for _, want := range []string{"--id", "--json", "--page", "--limit"} {
+	for _, want := range []string{"--id", "--json", "--page", "--limit", "never fetches later pages"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help missing %s:\n%s", want, out.String())
 		}
@@ -26,8 +25,8 @@ func TestNewHelpListsFlags(t *testing.T) {
 }
 
 func TestNewValidatesPageBeforeNetwork(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)

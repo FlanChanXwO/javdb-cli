@@ -7,19 +7,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the unmark command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var isID bool
 	cmd := &cobra.Command{
 		Use:   "unmark NUMBER",
 		Short: "Remove watched/want mark for a movie",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.WithAuthedClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
 				ctx := context.Background()
 				mid := args[0]
 				var err error
@@ -34,9 +35,9 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 					return fmt.Errorf("unmark failed: %w", err)
 				}
 				if ok {
-					fmt.Fprintf(aio.Out, "已取消标记 %s (%s)\n", args[0], mid)
+					fmt.Fprintf(streams.Out, "已取消标记 %s (%s)\n", args[0], mid)
 				} else {
-					fmt.Fprintf(aio.Out, "无标记可取消 %s (%s)\n", args[0], mid)
+					fmt.Fprintf(streams.Out, "无标记可取消 %s (%s)\n", args[0], mid)
 				}
 				return nil
 			})

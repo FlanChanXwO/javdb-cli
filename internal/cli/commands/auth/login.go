@@ -6,51 +6,49 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
 )
 
 // NewLogin builds the auth login command.
-func NewLogin(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewLogin(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var username, password string
 	use := true
 	command := &cobra.Command{
 		Use:   "login",
 		Short: "Log in with username/password (interactive if flags omitted)",
 		RunE: func(command *cobra.Command, args []string) error {
-			runtimeConfig, err := app.LoadRuntime(flags)
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
 			if username == "" {
-				username, err = PromptUsername(aio.In, aio.Out)
+				username, err = PromptUsername(streams.In, streams.Out)
 				if err != nil {
 					return err
 				}
 			}
 			if password == "" {
-				password, err = PromptPassword(aio.Out)
+				password, err = PromptPassword(streams.Out)
 				if err != nil {
 					return err
 				}
 			}
-			client, err := app.NewClient(runtimeConfig, "")
-			if err != nil {
-				return err
-			}
 			ctx := context.Background()
-			token, err := client.Login(ctx, username, password)
+			token, err := c.Login(ctx, username, password)
 			if err != nil {
 				return fmt.Errorf("login failed: %w", err)
 			}
-			userID, resolvedName, err := client.ResolveUserID(ctx)
+			userID, resolvedName, err := c.ResolveUserID(ctx)
 			if err != nil {
 				return fmt.Errorf("login ok but user id required: %w", err)
 			}
 			if resolvedName == "" {
 				resolvedName = username
 			}
-			fileStore, store, err := app.OpenAuth()
+			fileStore, store, err := authstore.Open()
 			if err != nil {
 				return err
 			}
@@ -63,7 +61,7 @@ func NewLogin(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if err := fileStore.Commit(store); err != nil {
 				return err
 			}
-			fmt.Fprintf(aio.Out, "logged in as %s (id=%d)\n", resolvedName, userID)
+			fmt.Fprintf(streams.Out, "logged in as %s (id=%d)\n", resolvedName, userID)
 			return nil
 		},
 	}

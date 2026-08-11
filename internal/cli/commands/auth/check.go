@@ -7,23 +7,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // NewCheck builds the auth check command (does not print the token).
-func NewCheck(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewCheck(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var asJSON bool
 	command := &cobra.Command{
 		Use:   "check",
 		Short: "Check default account token (does not print token)",
 		RunE: func(command *cobra.Command, args []string) error {
-			runtimeConfig, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			_, store, err := app.OpenAuth()
+			_, store, err := authstore.Open()
 			if err != nil {
 				return err
 			}
@@ -42,11 +40,11 @@ func NewCheck(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if account.Token == "" {
 				status.Error = "no token"
 			} else {
-				client, err := app.NewClient(runtimeConfig, account.Token)
+				c, err := client.New(options, account.Token)
 				if err != nil {
 					return err
 				}
-				if _, _, err := client.ResolveUserID(context.Background()); err != nil {
+				if _, _, err := c.ResolveUserID(context.Background()); err != nil {
 					status.Error = err.Error()
 					var authRequired *javdb.AuthRequired
 					if errors.As(err, &authRequired) {
@@ -61,13 +59,13 @@ func NewCheck(flags *app.Flags, aio *app.IO) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				_, err = aio.Out.Write(b)
+				_, err = streams.Out.Write(b)
 				return err
 			}
 			if status.OK {
-				fmt.Fprintf(aio.Out, "ok\t%d\t%s\n", status.UserID, status.Username)
+				fmt.Fprintf(streams.Out, "ok\t%d\t%s\n", status.UserID, status.Username)
 			} else {
-				fmt.Fprintf(aio.Out, "fail\t%d\t%s\t%s\n", status.UserID, status.Username, status.Error)
+				fmt.Fprintf(streams.Out, "fail\t%d\t%s\t%s\n", status.UserID, status.Username, status.Error)
 				return errors.New(status.Error)
 			}
 			return nil

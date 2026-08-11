@@ -7,23 +7,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/movie"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 )
 
 // NewMovies builds the movie rankings command.
-func NewMovies(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewMovies(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var type_, period string
 	var hasMagnets bool
 	cmd := &cobra.Command{
 		Use:   "movies",
 		Short: "Movie rankings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -33,9 +30,9 @@ func NewMovies(flags *app.Flags, aio *app.IO) *cobra.Command {
 			}
 			movies := res.Movies()
 			if hasMagnets {
-				movies = movie.FilterHasMagnets(movies)
+				movies = result.FilterMoviesWithMagnets(movies)
 			}
-			return writeMovies(aio.Out, aio.Err, movies)
+			return writeMovies(streams.Out, streams.Err, movies)
 		},
 	}
 	cmd.Flags().StringVar(&type_, "type", "censored", "censored|uncensored|western|fc2")
@@ -49,7 +46,7 @@ func writeMovies(w, errW io.Writer, movies []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range movie.ProjectAll(movies) {
+	for _, row := range result.ProjectMovies(movies) {
 		if _, err := fmt.Fprintln(w, row.Line()); err != nil {
 			return err
 		}

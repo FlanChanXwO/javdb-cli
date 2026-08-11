@@ -1,23 +1,24 @@
-package app
+package client
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// withAuthedClient runs fn with a client carrying the default account token.
-// On AuthRequired: if runtime.AutoRelogin, re-login with saved password once and retry;
-// otherwise return a clear error.
-// WithAuthedClient 使用默认账户 token 执行 fn；按配置决定是否自动重新登录。
-func WithAuthedClient(flags *Flags, aio *IO, fn func(*javdb.Client) error) error {
-	rt, err := LoadRuntime(flags)
+// WithRequiredAuth 使用默认账户 token 执行 fn；按配置决定是否自动重新登录。
+// 错误文本与既有 WithAuthedClient 逐字一致；errOut == nil 时不写提示。
+func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func(*javdb.Client) error) error {
+	rt, err := resolveRuntime(options)
 	if err != nil {
 		return err
 	}
-	fs, store, err := OpenAuth()
+	fs, store, err := authstore.Open()
 	if err != nil {
 		return err
 	}
@@ -28,7 +29,7 @@ func WithAuthedClient(flags *Flags, aio *IO, fn func(*javdb.Client) error) error
 	if acc.Token == "" {
 		return fmt.Errorf("default account has no token; run: javdb auth login")
 	}
-	c, err := NewClient(rt, acc.Token)
+	c, err := buildClient(rt, acc.Token)
 	if err != nil {
 		return err
 	}
@@ -46,11 +47,11 @@ func WithAuthedClient(flags *Flags, aio *IO, fn func(*javdb.Client) error) error
 	if acc.Password == "" {
 		return fmt.Errorf("token expired and no saved password; run: javdb auth login")
 	}
-	if aio != nil && aio.Err != nil {
-		fmt.Fprintln(aio.Err, "缓存 token 已失效，重新登录…")
+	if errOut != nil {
+		fmt.Fprintln(errOut, "缓存 token 已失效，重新登录…")
 	}
 	// re-login
-	c2, err := NewClient(rt, "")
+	c2, err := buildClient(rt, "")
 	if err != nil {
 		return err
 	}
@@ -69,23 +70,19 @@ func WithAuthedClient(flags *Flags, aio *IO, fn func(*javdb.Client) error) error
 	return fn(c2)
 }
 
-// withOptionalAuthClient runs fn with the default account token when one is
-// saved, otherwise anonymously. It never fails upfront for missing auth.
-// If the server rejects the token (AuthRequired), it retries fn once with an
-// anonymous client so read-only discovery still works.
-// WithOptionalAuthClient 在有 token 时携带默认账户，否则匿名执行；认证失败时保留原有匿名重试。
-func WithOptionalAuthClient(flags *Flags, aio *IO, fn func(*javdb.Client) error) error {
-	rt, err := LoadRuntime(flags)
+// WithOptionalAuth 在有 token 时携带默认账户，否则匿名执行；认证失败时保留原有匿名重试。
+func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func(*javdb.Client) error) error {
+	rt, err := resolveRuntime(options)
 	if err != nil {
 		return err
 	}
 	token := ""
-	if _, store, err := OpenAuth(); err == nil {
+	if _, store, err := authstore.Open(); err == nil {
 		if acc, aerr := store.Default(); aerr == nil {
 			token = acc.Token
 		}
 	}
-	c, err := NewClient(rt, token)
+	c, err := buildClient(rt, token)
 	if err != nil {
 		return err
 	}
@@ -97,10 +94,10 @@ func WithOptionalAuthClient(flags *Flags, aio *IO, fn func(*javdb.Client) error)
 	if token == "" || !errors.As(err, &authRequired) {
 		return err
 	}
-	if aio != nil && aio.Err != nil {
-		fmt.Fprintln(aio.Err, "token 无效，改用匿名请求…")
+	if errOut != nil {
+		fmt.Fprintln(errOut, "token 无效，改用匿名请求…")
 	}
-	c2, err := NewClient(rt, "")
+	c2, err := buildClient(rt, "")
 	if err != nil {
 		return err
 	}

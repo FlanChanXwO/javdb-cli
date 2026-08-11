@@ -8,13 +8,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the personal and public list command tree.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var page, limit int
 	var sortBy string
 	var asJSON bool
@@ -22,19 +23,19 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 		Use:   "lists",
 		Short: "My 合集; subcommands: show/search/related",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.WithAuthedClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
 				res, err := c.MyLists(context.Background(), page, limit, sortBy)
 				if err != nil {
 					return fmt.Errorf("lists failed: %w", err)
 				}
 				items := res.Named("lists")
 				if asJSON {
-					return writeJSON(aio.Out, map[string]any{
+					return writeJSON(streams.Out, map[string]any{
 						"lists":        items,
 						"current_page": jsonx.RawString(res["current_page"]),
 					})
 				}
-				return writeListRows(aio.Out, aio.Err, items)
+				return writeListRows(streams.Out, streams.Err, items)
 			})
 		},
 	}
@@ -43,9 +44,9 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 	cmd.Flags().StringVar(&sortBy, "sort-by", "created", "created|name|movies_count|views_count|updated|default")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 
-	cmd.AddCommand(NewShow(flags, aio))
-	cmd.AddCommand(NewSearch(flags, aio))
-	cmd.AddCommand(NewRelated(flags, aio))
+	cmd.AddCommand(NewShow(options, streams))
+	cmd.AddCommand(NewSearch(options, streams))
+	cmd.AddCommand(NewRelated(options, streams))
 	return cmd
 }
 

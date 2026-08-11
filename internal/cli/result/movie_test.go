@@ -1,36 +1,41 @@
-package movie
+package result
 
 import (
 	"encoding/json"
 	"testing"
 )
 
-func TestProjectFields(t *testing.T) {
-	row := Project(map[string]any{
+func TestProjectMovieFields(t *testing.T) {
+	row := ProjectMovie(map[string]any{
 		"number": "SSIS-001", "id": "x1", "title": "A", "release_date": "2026-01-02",
 	})
 	if row.Number != "SSIS-001" || row.ID != "x1" || row.Title != "A" || row.ReleaseDate != "2026-01-02" {
 		t.Fatalf("row = %+v", row)
 	}
-}
-
-func TestProjectMissingReleaseDate(t *testing.T) {
-	row := Project(map[string]any{"number": "ABC-9", "id": "x2", "title": "B"})
-	if row.ReleaseDate != "" {
-		t.Fatalf("release date = %q, want empty", row.ReleaseDate)
+	if got := row.Line(); got != "SSIS-001\tx1\tA\t2026-01-02" {
+		t.Fatalf("Line = %q", got)
 	}
 }
 
-func TestProjectFloatIDTruncation(t *testing.T) {
-	// 数值 ID 按 CLI 展示约定截断为整数，保持与旧输出逐字一致。
-	row := Project(map[string]any{"number": "N", "id": float64(123.9), "title": "T"})
+func TestProjectMovieMissingReleaseDate(t *testing.T) {
+	row := ProjectMovie(map[string]any{"number": "ABC-9", "id": "x2", "title": "B"})
+	if row.ReleaseDate != "" {
+		t.Fatalf("release date = %q, want empty", row.ReleaseDate)
+	}
+	if got := row.Line(); got != "ABC-9\tx2\tB" {
+		t.Fatalf("Line = %q", got)
+	}
+}
+
+func TestProjectMovieFloatIDTruncation(t *testing.T) {
+	row := ProjectMovie(map[string]any{"number": "N", "id": float64(123.9), "title": "T"})
 	if row.ID != "123" {
 		t.Fatalf("float id = %q, want 123", row.ID)
 	}
 }
 
-func TestProjectAll(t *testing.T) {
-	rows := ProjectAll([]map[string]any{
+func TestProjectMovies(t *testing.T) {
+	rows := ProjectMovies([]map[string]any{
 		{"number": "A", "id": "a", "title": "T1", "release_date": "2026-01-01"},
 		{"number": "B", "id": "b", "title": "T2"},
 	})
@@ -39,13 +44,13 @@ func TestProjectAll(t *testing.T) {
 	}
 }
 
-func TestFilterHasMagnetsPreservesMissingField(t *testing.T) {
+func TestFilterMoviesWithMagnetsPreservesMissingField(t *testing.T) {
 	in := []map[string]any{
 		{"number": "A", "magnets_count": float64(3)},
 		{"number": "B", "magnets_count": float64(0)},
 		{"number": "C"},
 	}
-	out := FilterHasMagnets(in)
+	out := FilterMoviesWithMagnets(in)
 	want := []map[string]any{
 		{"number": "A", "magnets_count": float64(3)},
 		{"number": "C"},
@@ -60,13 +65,13 @@ func TestFilterHasMagnetsPreservesMissingField(t *testing.T) {
 	}
 }
 
-func TestFilterHasMagnetsNumericVariants(t *testing.T) {
+func TestFilterMoviesWithMagnetsNumericVariants(t *testing.T) {
 	in := []map[string]any{
 		{"number": "A", "magnets_count": int64(2)},
 		{"number": "B", "magnets_count": "0"},
 		{"number": "C", "magnets_count": json.Number("3")},
 	}
-	out := FilterHasMagnets(in)
+	out := FilterMoviesWithMagnets(in)
 	if len(out) != 2 || out[0]["number"] != "A" || out[1]["number"] != "C" {
 		t.Fatalf("out = %v", out)
 	}

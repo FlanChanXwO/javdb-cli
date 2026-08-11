@@ -7,22 +7,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/entity"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 )
 
 // NewActors builds the actor rankings command.
-func NewActors(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var period string
 	cmd := &cobra.Command{
 		Use:   "actors",
 		Short: "Actor rankings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -30,7 +27,7 @@ func NewActors(flags *app.Flags, aio *app.IO) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("rankings failed: %w", err)
 			}
-			return writeNamedNoCount(aio.Out, aio.Err, res.Named("actors"))
+			return writeNamedNoCount(streams.Out, streams.Err, res.Named("actors"))
 		},
 	}
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
@@ -43,7 +40,7 @@ func writeNamedNoCount(w, errW io.Writer, items []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range entity.ProjectNamedAll(items) {
+	for _, row := range result.ProjectNamedAll(items) {
 		if _, err := fmt.Fprintf(w, "%s\t%s\n", row.ID, row.Name); err != nil {
 			return err
 		}

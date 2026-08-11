@@ -6,23 +6,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/movie"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 )
 
 // NewPlayback builds the playback rankings command.
-func NewPlayback(flags *app.Flags, aio *app.IO) *cobra.Command {
+func NewPlayback(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var filterBy, period string
 	var hasMagnets bool
 	cmd := &cobra.Command{
 		Use:   "playback",
 		Short: "Playback rankings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := app.LoadRuntime(flags)
-			if err != nil {
-				return err
-			}
-			c, err := app.NewClient(rt, "")
+			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
@@ -32,9 +29,9 @@ func NewPlayback(flags *app.Flags, aio *app.IO) *cobra.Command {
 			}
 			movies := res.Movies()
 			if hasMagnets {
-				movies = movie.FilterHasMagnets(movies)
+				movies = result.FilterMoviesWithMagnets(movies)
 			}
-			return writeMovies(aio.Out, aio.Err, movies)
+			return writeMovies(streams.Out, streams.Err, movies)
 		},
 	}
 	cmd.Flags().StringVar(&filterBy, "filter-by", "censored", "censored|uncensored|western|fc2")

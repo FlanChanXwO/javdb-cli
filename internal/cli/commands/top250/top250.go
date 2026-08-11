@@ -8,14 +8,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/movie"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the authenticated TOP250 command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var zone, year string
 	var startRank, page, limit int
 	var ignoreWatched, hasMagnets bool
@@ -23,19 +24,19 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 		Use:   "top250",
 		Short: "TOP250 list (needs login)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.WithAuthedClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
 				res, err := c.Top250(context.Background(), zone, year, startRank, page, limit, ignoreWatched)
 				if err != nil {
 					return fmt.Errorf("top250 failed: %w", err)
 				}
 				if gen := jsonx.RawString(res["generated_at"]); gen != "" {
-					fmt.Fprintf(aio.Err, "# generated_at=%s\n", gen)
+					fmt.Fprintf(streams.Err, "# generated_at=%s\n", gen)
 				}
 				movies := res.Movies()
 				if hasMagnets {
-					movies = movie.FilterHasMagnets(movies)
+					movies = result.FilterMoviesWithMagnets(movies)
 				}
-				return writeRanked(aio.Out, aio.Err, movies)
+				return writeRanked(streams.Out, streams.Err, movies)
 			})
 		},
 	}
@@ -56,7 +57,7 @@ func writeRanked(w, errW io.Writer, movies []map[string]any) error {
 		return err
 	}
 	for _, m := range movies {
-		row := movie.Project(m)
+		row := result.ProjectMovie(m)
 		rank := movieDisplay(m["ranking"])
 		line := "#" + rank + "\t" + row.Line()
 		if _, err := fmt.Fprintln(w, line); err != nil {

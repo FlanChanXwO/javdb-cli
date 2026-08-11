@@ -9,37 +9,6 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-func TestProjectNamedPrefersChineseName(t *testing.T) {
-	row := ProjectNamed(map[string]any{"id": "9D", "name_zht": "山手", "name": "Yam", "videos_count": float64(10)})
-	if row.ID != "9D" || row.Name != "山手" || !row.HasCount || row.Count != float64(10) {
-		t.Fatalf("row = %+v", row)
-	}
-}
-
-func TestProjectNamedFallsBackToNameAndMoviesCount(t *testing.T) {
-	row := ProjectNamed(map[string]any{"id": "B", "name": "N", "movies_count": float64(3)})
-	if row.Name != "N" || !row.HasCount || row.Count != float64(3) {
-		t.Fatalf("row = %+v", row)
-	}
-}
-
-func TestProjectNamedNoCount(t *testing.T) {
-	row := ProjectNamed(map[string]any{"id": "A", "name": "X"})
-	if row.HasCount || row.Count != nil {
-		t.Fatalf("row = %+v", row)
-	}
-}
-
-func TestProjectNamedAll(t *testing.T) {
-	rows := ProjectNamedAll([]map[string]any{
-		{"id": "A", "name_zht": "中文", "videos_count": float64(2)},
-		{"id": "B", "name": "Plain"},
-	})
-	if len(rows) != 2 || rows[0].Name != "中文" || rows[1].HasCount {
-		t.Fatalf("rows = %+v", rows)
-	}
-}
-
 // TestExecuteResolvesQueriesAndMeta 用本地 httptest 覆盖 Execute 的解析、查询与 metadata 主路径。
 func TestExecuteResolvesQueriesAndMeta(t *testing.T) {
 	var moviesPath, detailPath, resolvePath string

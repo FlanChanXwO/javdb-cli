@@ -5,13 +5,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 )
 
 // New builds config path/get/set/unset commands.
-func New(aio *app.IO) *cobra.Command {
+func New(streams *invocation.Streams) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Show or edit config.toml",
@@ -24,7 +24,7 @@ func New(aio *app.IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(aio.Out, path)
+			fmt.Fprintln(streams.Out, path)
 			return nil
 		},
 	})
@@ -42,19 +42,19 @@ func New(aio *app.IO) *cobra.Command {
 				return err
 			}
 			if len(args) == 0 {
-				fmt.Fprintf(aio.Out, "host=%s\nhttps_proxy=%s\nauto_relogin=%v\nlang=%s\n",
+				fmt.Fprintf(streams.Out, "host=%s\nhttps_proxy=%s\nauto_relogin=%v\nlang=%s\n",
 					cfg.Host, cfg.HTTPSProxy, cfg.AutoRelogin, cfg.Lang)
 				return nil
 			}
 			switch args[0] {
 			case "host":
-				fmt.Fprintln(aio.Out, cfg.Host)
+				fmt.Fprintln(streams.Out, cfg.Host)
 			case "https_proxy", "proxy":
-				fmt.Fprintln(aio.Out, cfg.HTTPSProxy)
+				fmt.Fprintln(streams.Out, cfg.HTTPSProxy)
 			case "auto_relogin":
-				fmt.Fprintln(aio.Out, cfg.AutoRelogin)
+				fmt.Fprintln(streams.Out, cfg.AutoRelogin)
 			case "lang":
-				fmt.Fprintln(aio.Out, cfg.Lang)
+				fmt.Fprintln(streams.Out, cfg.Lang)
 			default:
 				return fmt.Errorf("unknown key %q", args[0])
 			}

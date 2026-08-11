@@ -45,15 +45,19 @@ pre-commit run --all-files
 cmd/javdb/                              # 二进制入口 → cli.Run
 sdk/                                    # 公开 Go SDK（package javdb）
 internal/cli/root.go                    # 真实根命令、persistent flags、注册顺序与 Run
-internal/cli/app/                       # IO/runtime/client/auth/update 依赖组装
-internal/cli/{movie,magnet,entity}/     # 影片/磁力纯投影与实体用例
+internal/cli/root_test.go               # 根目录唯一测试文件（CLI-wide 契约）
+internal/cli/invocation/                # RootOptions + Streams（调用期数据，仅 stdlib）
+internal/cli/client/                    # 配置解析、SDK client、required/optional 认证生命周期
+internal/cli/authstore/                 # 默认认证文件路径/目录/store 打开
+internal/cli/result/                    # 纯结果投影与过滤（movie/magnet/named 分文件）
+internal/cli/entity/                    # 六实体查询用例 Execute
 internal/common/{jsonx,scalar}/         # 纯 JSON 与标量转换（根目录无包）
 internal/cli/commands/{auth,config}/    # 认证与配置命令域
 internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 影片目录命令域
 internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
 internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
 internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）
-internal/cli/commands/{lists,update,version}/ # 列表、更新和版本命令域
+internal/cli/commands/{lists,update,version}/ # 列表、更新和版本命令域（update 拥有 proxy/coordinator/buildinfo）
 internal/javdb/appapi/                  # 真实 Client 组合层（client.go）
 internal/javdb/appapi/{client,model}/   # transport 与 wire/domain model
 internal/javdb/appapi/endpoint/*        # auth/browse/entity/lists/magnets/movie/rankings/search/user
@@ -80,13 +84,14 @@ docs/maintainers/                  # 维护者架构、流程、ADR 与协作规
 完整边界见 [架构说明](architecture.md)。新目录应按真实职责加入，不为与
 pixiv-cli 对称而创建空 application、bootstrap、MCP 或下载层。
 
-CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/app` 可直接组装本机
-`config/{paths,settings}`、`storage/auth` 和显式 `update` 依赖。App API endpoint 只依赖自己的
+CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配置解析与 SDK client
+创建，`cli/authstore` 打开默认认证 store，`cli/result` 提供纯结果投影，显式 `update`
+依赖由 `commands/update` 组装。App API endpoint 只依赖自己的
 `client/model/codec/media`、必要的其他 endpoint capability 与 storage taxonomy，协议 `httpx/signature`
 不得被 CLI 命令包直接导入。`internal/cli`、`internal/javdb/appapi`、`internal/config`、
-`internal/update` 的根文件不再保留兼容 facade/alias/forwarder；新增实现应放入
-真实职责子包，并以聚焦测试覆盖原有契约。`Client.API()` 与 taxonomy `*tags.Doc`
-返回类型是公开 SDK 的冻结兼容例外，新能力不得扩大。
+`internal/update` 的根文件不再保留兼容 facade/alias/forwarder；`internal/cli` 根包只保留
+`root.go`/`root_test.go`。新增实现应放入真实职责子包，并以聚焦测试覆盖原有契约。
+`Client.API()` 与 taxonomy `*tags.Doc` 返回类型是公开 SDK 的冻结兼容例外，新能力不得扩大。
 
 ## 本机状态与在线验证
 

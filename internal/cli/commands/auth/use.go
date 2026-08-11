@@ -2,15 +2,15 @@ package auth
 
 import (
 	"fmt"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strconv"
 
 	"github.com/spf13/cobra"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 // NewUse builds the auth use command.
-func NewUse(aio *app.IO) *cobra.Command {
+func NewUse(streams *invocation.Streams) *cobra.Command {
 	return &cobra.Command{
 		Use:   "use <user_id>",
 		Short: "Set the default account",
@@ -20,7 +20,7 @@ func NewUse(aio *app.IO) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("user_id must be integer: %w", err)
 			}
-			fileStore, store, err := app.OpenAuth()
+			fileStore, store, err := authstore.Open()
 			if err != nil {
 				return err
 			}
@@ -31,7 +31,7 @@ func NewUse(aio *app.IO) *cobra.Command {
 				return err
 			}
 			account, _ := store.Get(userID)
-			_, err = fmt.Fprintf(aio.Out, "default account → %s (id=%d)\n", account.Username, userID)
+			_, err = fmt.Fprintf(streams.Out, "default account → %s (id=%d)\n", account.Username, userID)
 			return err
 		},
 	}

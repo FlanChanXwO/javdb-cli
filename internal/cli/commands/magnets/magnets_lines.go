@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/magnet"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 )
 
@@ -14,7 +14,7 @@ func writeMagnets(w, errW io.Writer, items []map[string]any) {
 		fmt.Fprintln(errW, "(无磁力链)")
 		return
 	}
-	for _, row := range magnet.ProjectAll(items) {
+	for _, row := range result.ProjectMagnets(items) {
 		fmt.Fprintln(w, row.Line())
 		fmt.Fprintln(w, row.HashLine())
 	}

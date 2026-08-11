@@ -8,27 +8,28 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/movie"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the recently viewed movies command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var hasMagnets bool
 	cmd := &cobra.Command{
 		Use:   "recent",
 		Short: "List recently viewed (最近浏览) movies",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.WithAuthedClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
 				movies, err := c.RecentViewed(context.Background())
 				if err != nil {
 					return err
 				}
 				if hasMagnets {
-					movies = movie.FilterHasMagnets(movies)
+					movies = result.FilterMoviesWithMagnets(movies)
 				}
-				return writeMovies(aio.Out, aio.Err, movies)
+				return writeMovies(streams.Out, streams.Err, movies)
 			})
 		},
 	}
@@ -41,7 +42,7 @@ func writeMovies(w, errW io.Writer, movies []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range movie.ProjectAll(movies) {
+	for _, row := range result.ProjectMovies(movies) {
 		if _, err := fmt.Fprintln(w, row.Line()); err != nil {
 			return err
 		}

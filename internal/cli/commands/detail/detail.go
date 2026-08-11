@@ -7,20 +7,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the movie detail command (graph ids for agent navigation).
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var isID, withMagnets, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "detail NUMBER",
 		Short: "Show movie detail (graph ids for agent navigation)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.WithOptionalAuthClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				var err error
 				ctx := context.Background()
 				mid := args[0]
@@ -53,12 +54,12 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					_, err = aio.Out.Write(b)
+					_, err = streams.Out.Write(b)
 					return err
 				}
-				renderDetail(aio.Out, movie)
+				renderDetail(streams.Out, movie)
 				if withMagnets {
-					renderMagnets(aio.Out, aio.Err, mags)
+					renderMagnets(streams.Out, streams.Err, mags)
 				}
 				return nil
 			})

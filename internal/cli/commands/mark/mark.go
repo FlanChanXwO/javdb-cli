@@ -8,13 +8,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the mark command (watched or want).
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var watched, want, isID bool
 	var score int
 	var content string
@@ -32,7 +33,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 				status = "watched"
 				label = "看過"
 			}
-			return app.WithAuthedClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
 				ctx := context.Background()
 				mid := args[0]
 				var err error
@@ -46,7 +47,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("mark failed: %w", err)
 				}
-				_, err = fmt.Fprintf(aio.Out, "已标记 %s (%s) → %s\treview_id=%s\n",
+				_, err = fmt.Fprintf(streams.Out, "已标记 %s (%s) → %s\treview_id=%s\n",
 					args[0], mid, label, display(rev["id"]))
 				return err
 			})

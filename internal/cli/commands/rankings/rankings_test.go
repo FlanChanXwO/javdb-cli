@@ -2,15 +2,14 @@ package rankings
 
 import (
 	"bytes"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
 )
 
 func TestNewBuildsRankingsGroup(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
 	if cmd.Name() != "rankings" {
 		t.Fatalf("name=%q", cmd.Name())
 	}
@@ -26,8 +25,8 @@ func TestNewBuildsRankingsGroup(t *testing.T) {
 }
 
 func TestNewMoviesHasNoJSONFlag(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := NewMovies(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := NewMovies(&invocation.RootOptions{}, streams)
 	for _, flag := range []string{"type", "period", "has-magnets"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Fatalf("movies missing --%s", flag)
@@ -39,8 +38,8 @@ func TestNewMoviesHasNoJSONFlag(t *testing.T) {
 }
 
 func TestNewActorsFlags(t *testing.T) {
-	aio := app.NewIO(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := NewActors(&app.Flags{}, aio)
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := NewActors(&invocation.RootOptions{}, streams)
 	if cmd.Flags().Lookup("period") == nil {
 		t.Fatal("actors missing --period")
 	}

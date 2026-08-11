@@ -6,10 +6,12 @@ import (
 	"testing"
 )
 
-// CLI 根契约测试（package cli，经 Run/newRoot 组装真实命令树）。
+// CLI 根契约测试（package cli，经 New/Run 组装最终命令树）。
 //
-// 这些字面断言锁定本仓库 CLI 的稳定对外行为：根 help、命令集合与显示顺序、persistent
-// flags、关键子命令 help，以及无网络前置参数错误。任何目录重整都不得改变这些输出。
+// 这是根目录唯一的测试文件，锁定 CLI 稳定的对外行为：根 help 全量字面、命令集合与显示
+// 顺序、persistent flags、关键命令组在最终树中的完整 help 字面，以及无网络前置参数错误
+// （stderr 文本、stdout 空值、退出码）。命令专属的 flag/前置校验由各 commands/* owner
+// 测试拥有，不在此重复。
 
 const rootHelpLiteral = `JavDB app API command-line client
 

@@ -9,13 +9,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/app"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the magnet listing and best-magnet selection command.
-func New(flags *app.Flags, aio *app.IO) *cobra.Command {
+func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
 		cnsub, hd, best, isID, asJSON bool
 		minSize                       string
@@ -25,7 +26,7 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 		Short: "List magnet links for a movie",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.WithOptionalAuthClient(flags, aio, func(c *javdb.Client) error {
+			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				var err error
 				ctx := context.Background()
 				mid := args[0]
@@ -60,23 +61,23 @@ func New(flags *app.Flags, aio *app.IO) *cobra.Command {
 				if best {
 					b := javdb.PickBestMagnet(items)
 					if asJSON {
-						return writeJSON(aio.Out, map[string]any{
+						return writeJSON(streams.Out, map[string]any{
 							"movie_id":   mid,
 							"best":       b,
 							"magnet_uri": javdb.MagnetURI(b),
 						})
 					}
 					if b == nil {
-						fmt.Fprintln(aio.Err, "(无磁力链)")
+						fmt.Fprintln(streams.Err, "(无磁力链)")
 						return nil
 					}
-					writeMagnets(aio.Out, aio.Err, []map[string]any{b})
+					writeMagnets(streams.Out, streams.Err, []map[string]any{b})
 					return nil
 				}
 				if asJSON {
-					return writeJSON(aio.Out, map[string]any{"movie_id": mid, "magnets": items})
+					return writeJSON(streams.Out, map[string]any{"movie_id": mid, "magnets": items})
 				}
-				writeMagnets(aio.Out, aio.Err, items)
+				writeMagnets(streams.Out, streams.Err, items)
 				return nil
 			})
 		},
