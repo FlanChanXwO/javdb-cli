@@ -6,6 +6,8 @@
 package appapi
 
 import (
+	"context"
+
 	transport "github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/auth"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/browse"
@@ -14,6 +16,7 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/magnets"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/movie"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/rankings"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/route"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/search"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/user"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/media"
@@ -45,6 +48,13 @@ type (
 	AuthRequired        = model.AuthRequired
 )
 
+// 自动选线类型是 route capability 的 alias，供公开 SDK facade 在只导入根 appapi 的前提下使用。
+type (
+	AutoHostOptions = route.SelectorOptions
+	AutoHostResult  = route.Result
+	AutoHostProbe   = route.Probe
+)
+
 // 这些变量保留原根包入口，并与 model/endpoint 使用同一底层 map。
 var (
 	Zones           = model.Zones
@@ -66,6 +76,7 @@ type (
 	searchClient    = *search.SearchEndpoint
 	userClient      = *user.UserEndpoint
 	mediaClient     = *media.MediaEndpoint
+	routeClient     = *route.RouteEndpoint
 )
 
 // Client 是真实组合层，嵌入 transport 与各 capability，仅构造一次 transport。
@@ -80,6 +91,7 @@ type Client struct {
 	searchClient
 	userClient
 	mediaClient
+	routeClient
 }
 
 // New 按固定顺序构造 transport 与各 endpoint capability 并组合成根 Client。
@@ -97,6 +109,7 @@ func New(opts Options) (*Client, error) {
 	e := entity.NewEntity(t, b, s)
 	u := user.NewUser(t, m)
 	md := media.NewMedia(t.FetchMedia)
+	rt := route.NewRoute()
 	return &Client{
 		transportClient: t,
 		authClient:      a,
@@ -108,6 +121,7 @@ func New(opts Options) (*Client, error) {
 		searchClient:    s,
 		userClient:      u,
 		mediaClient:     md,
+		routeClient:     rt,
 	}, nil
 }
 
@@ -166,4 +180,16 @@ func MagnetURI(item map[string]any) string { return magnets.MagnetURI(item) }
 // LoadOrCreateDeviceUUID 读取或创建稳定 device UUID。
 func LoadOrCreateDeviceUUID(path string) (string, error) {
 	return transport.LoadOrCreateDeviceUUID(path)
+}
+
+// NewAutoHostProbe 构造零重试的 /startup 自动选线探测函数。probe 共享同一 effective
+// 网络选项与稳定 device UUID，不携带 bearer token。
+func NewAutoHostProbe(opts AutoHostOptions) (AutoHostProbe, error) {
+	return route.NewStartupProbe(opts)
+}
+
+// SelectAutoHost 执行并发动态线路选择，供公开 SDK facade 调用。probe 由调用方经
+// NewAutoHostProbe 构造，便于注入可控探测。
+func SelectAutoHost(ctx context.Context, opts AutoHostOptions, probe AutoHostProbe) (AutoHostResult, error) {
+	return route.Select(ctx, opts, probe)
 }

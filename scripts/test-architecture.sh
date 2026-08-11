@@ -51,6 +51,7 @@ for required_dir in \
 	internal/javdb/appapi/endpoint/magnets \
 	internal/javdb/appapi/endpoint/movie \
 	internal/javdb/appapi/endpoint/rankings \
+	internal/javdb/appapi/endpoint/route \
 	internal/javdb/appapi/endpoint/search \
 	internal/javdb/appapi/endpoint/user \
 	internal/javdb/protocol/httpx \

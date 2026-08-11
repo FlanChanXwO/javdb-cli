@@ -1,10 +1,12 @@
 package appapi
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/model"
 	"github.com/FlanChanXwO/javdb-cli/internal/storage/tags"
@@ -67,7 +69,33 @@ var (
 	_ func(*Client, string) ([]map[string]any, error)                                   = (*Client).Collected
 	_ func(*Client) ([]map[string]any, error)                                           = (*Client).RecentViewed
 	_ func(*Client, string, int) ([]map[string]any, error)                              = (*Client).CollectedPage
+
+	// route capability 经 promotion 提供的方法。
+	_ func(*Client, context.Context, AutoHostOptions, AutoHostProbe) (AutoHostResult, error) = (*Client).Select
+
+	// 自动选线根入口（供公开 SDK facade 调用）。
+	_ func(AutoHostOptions) (AutoHostProbe, error)                                  = NewAutoHostProbe
+	_ func(context.Context, AutoHostOptions, AutoHostProbe) (AutoHostResult, error) = SelectAutoHost
 )
+
+// TestSelectAutoHostWithInjectedProbe 验证 appapi 组合层用注入 probe 完成自动选线，
+// preferred 成功时复用并透传 latency。
+func TestSelectAutoHostWithInjectedProbe(t *testing.T) {
+	const preferred = "https://apidd.spthgb.com"
+	probe := AutoHostProbe(func(ctx context.Context, host string) (time.Duration, map[string]any, error) {
+		return 12 * time.Millisecond, map[string]any{"ok": true}, nil
+	})
+	result, err := SelectAutoHost(context.Background(), AutoHostOptions{PreferredHost: preferred}, probe)
+	if err != nil {
+		t.Fatalf("SelectAutoHost() error = %v", err)
+	}
+	if result.Host != preferred || !result.ReusedPreferred {
+		t.Fatalf("result = %+v, want host %s reused", result, preferred)
+	}
+	if result.Latency != 12*time.Millisecond {
+		t.Fatalf("result latency = %v, want 12ms", result.Latency)
+	}
+}
 
 // TestNewConstructsComposedClient 验证 New 无网络构造真实 Client，并保持 transport 状态可经 promotion 访问。
 func TestNewConstructsComposedClient(t *testing.T) {
