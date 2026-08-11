@@ -38,6 +38,32 @@ if err != nil {
 若需要跨进程稳定 device identity，可使用 `javdb.LoadOrCreateDeviceUUID(path)`，再把返回值传给
 `WithDeviceUUID`。
 
+## 显式自动选线
+
+`SelectAutoHost` 显式探测 App API 并返回最快主机 URL；`javdb.New` 自身从不选线，
+`javdb.New(javdb.WithHost("auto"))` 不会自动联网。选线后再用具体主机构造 client：
+
+```go
+result, err := javdb.SelectAutoHost(ctx, javdb.AutoHostOptions{
+    PreferredHost: cachedHost, // 可选；上次已验证、可复用的主机
+    Proxy:         proxy,
+    DeviceUUID:    deviceUUID,
+    Lang:          "en",
+})
+if err != nil {
+    return err
+}
+client, err := javdb.New(javdb.WithHost(result.Host), javdb.WithToken(token))
+if err != nil {
+    return err
+}
+```
+
+`AutoHostOptions.PreferredHost` 是可选的首验候选，SDK 不负责持久化。当
+`result.ReusedPreferred` 为 true 时 preferred 主机仍有效，调用方无需重写自己的线路缓存。
+`Latency` 是赢家主机单次 `/startup` 请求耗时。选线探测使用零重试，延迟样本不会被重试
+污染；context 取消会立即中止选线。
+
 ## 登录
 
 ```go

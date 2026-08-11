@@ -137,8 +137,9 @@ javdb lists search 巨乳 --zone all --json
 影片榜与播放榜的分区参数可用 `censored`、`uncensored`、`western` 或 `fc2`；
 排行周期使用 `day`、`week` 或 `month`。
 
-全局 `--proxy URL` 与 `--host mirror|main` 仅影响本次命令。依赖持久化设置前先执行
-`javdb config get` 查看有效配置。
+全局 `--proxy URL` 与 `--host auto|mirror|main|URL` 仅影响本次命令。默认 `auto` 主机会先验证
+缓存线路，再从 startup 配置中重选最快的 App API 主机；固定主机则完全跳过线路发现。
+依赖持久化设置前先执行 `javdb config get` 查看有效配置。
 
 ### Go SDK
 

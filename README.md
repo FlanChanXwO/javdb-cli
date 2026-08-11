@@ -152,7 +152,9 @@ javdb lists search 巨乳 --zone all --json
 Movie and playback rankings accept `censored`, `uncensored`, `western`, or
 `fc2` as their zone selector; ranking periods use `day`, `week`, or `month`.
 
-The global `--proxy URL` and `--host mirror|main` flags affect only that command.
+The global `--proxy URL` and `--host auto|mirror|main|URL` flags affect only that command.
+The default `auto` host verifies the cached route and re-selects the fastest App API
+host from the startup configuration; a fixed host skips route discovery entirely.
 Use `javdb config get` before relying on persisted settings.
 
 ### Go SDK

@@ -98,7 +98,8 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 | 路径 | 内容 |
 | --- | --- |
 | `~/.javdb-cli/auth.json` | 账号、密码和 JWT；支持 POSIX 权限的平台为 `0600`。 |
-| `~/.javdb-cli/config.toml` | host、proxy、auto_relogin、lang。 |
+| `~/.javdb-cli/config.toml` | host、proxy、auto_relogin、lang；缺失时由首个真实命令独占创建。 |
+| `~/.javdb-cli/route.json` | auto 选线缓存，只保存已验证的 host URL（`0600`）。 |
 | `~/.javdb-cli/device_uuid` | 稳定的公开 device UUID。 |
 | `~/.javdb-cli/tags-*.json` | 公开标签目录缓存，不含密钥。 |
 

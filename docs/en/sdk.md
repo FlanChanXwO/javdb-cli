@@ -41,6 +41,35 @@ Use `HostMain` or an explicit base URL only when the caller intends that route.
 processes, a caller may use `javdb.LoadOrCreateDeviceUUID(path)` and pass the
 returned value through `WithDeviceUUID`.
 
+## Explicit auto host selection
+
+`SelectAutoHost` explicitly probes the App API and returns the fastest host URL;
+`javdb.New` never selects a host by itself, and `javdb.New(javdb.WithHost("auto"))`
+does not go online. After a selection, construct the client with the concrete host:
+
+```go
+result, err := javdb.SelectAutoHost(ctx, javdb.AutoHostOptions{
+    PreferredHost: cachedHost, // optional; the last verified host to reuse
+    Proxy:         proxy,
+    DeviceUUID:    deviceUUID,
+    Lang:          "en",
+})
+if err != nil {
+    return err
+}
+client, err := javdb.New(javdb.WithHost(result.Host), javdb.WithToken(token))
+if err != nil {
+    return err
+}
+```
+
+`AutoHostOptions.PreferredHost` is an optional candidate verified first; the SDK
+does not persist it. When `result.ReusedPreferred` is true the preferred host is
+still valid, so a caller does not need to rewrite its own route cache. `Latency`
+is the winning host's single `/startup` request duration. Selection probes use
+zero retries so latency samples are never polluted by retries, and a cancelled
+context aborts selection immediately.
+
 ## Authentication
 
 ```go

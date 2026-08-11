@@ -14,7 +14,7 @@ Cobra 命令树并实现 `Run`；命令域位于 `internal/cli/commands/*`（每
 ```text
 cmd/javdb → internal/cli (root.go → commands/*) → sdk (public; package javdb)
                          ├── cli/invocation              （RootOptions + Streams）
-                         ├── cli/client → config/{paths,settings} + sdk
+                         ├── cli/client → config/{paths,settings} + storage/route + sdk
                          ├── cli/authstore → storage/auth
                          ├── cli/result                   （movie/magnet/named 纯投影）
                          ├── cli/entity                   （六实体查询用例）
@@ -48,7 +48,9 @@ HTTP、签名或上游响应解码。目录职责如下：
   标准流），只保存调用期数据，不含服务方法。
 - `cli/client`：统一配置解析（config path/file/host 校验/runtime 解析/device UUID）、
   SDK client 创建，以及 `WithRequiredAuth`/`WithOptionalAuth` 的认证生命周期（自动
-  重登、匿名重试、token 持久化）。
+  重登、匿名重试、token 持久化）。对默认 `auto` host，构造业务 client 前先读
+  `storage/route` cache，用公开 SDK `SelectAutoHost` 验证/重选线路，必要时持久化新主机；
+  固定 host 完全绕过 cache 与 selector。
 - `cli/authstore`：只负责默认认证文件的路径、目录与 store 打开（`Open`）。
 - `cli/result`：纯结果投影与过滤，按领域分文件（`movie.go`/`magnet.go`/`named.go`），
   类型与函数使用领域前缀（`MovieRow`/`ProjectMovie`/`FilterMoviesWithMagnets`、
@@ -65,10 +67,12 @@ HTTP、签名或上游响应解码。目录职责如下：
 
 公开 Go SDK，导入路径为 `github.com/FlanChanXwO/javdb-cli/sdk`，声明为
 `package javdb`。它提供 client options、稳定的操作方法、公开的请求/错误别名、本机
-device UUID helper、排行参数 helper，以及影片单页评论和选定媒体下载的请求类型。
-CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部集成 API。
-排行 zone 与 period 的协议归一化由 `internal/javdb/appapi` 负责；`sdk` 暴露通用
-`RankingPeriod`，并保留 `ActorPeriod` 废弃别名以兼容既有调用方，CLI 不预先复制这套映射。
+device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`，以及影片单页评论和
+选定媒体下载的请求类型。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
+集成 API。`SelectAutoHost` 显式联网选线并返回具体 URL，`javdb.New(WithHost("auto"))`
+不会自动联网。排行 zone 与 period 的协议归一化由 `internal/javdb/appapi` 负责；`sdk`
+暴露通用 `RankingPeriod`，并保留 `ActorPeriod` 废弃别名以兼容既有调用方，CLI 不预先复制
+这套映射。
 
 ### `internal/javdb/appapi`
 
@@ -79,7 +83,7 @@ CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是�
 
 - `appapi/client`：HTTP、签名 header、公共参数、token/device/lang、envelope、状态码和认证错误映射；它是唯一持有协议 transport 的 App API 子包。
 - `appapi/model`：Options、SearchResult、错误类型及 wire/domain model。
-- `appapi/endpoint/{auth,browse,entity,lists,magnets,movie,rankings,search,user}`：有状态 capability service；`endpoint/magnets` 保持纯 helper。
+- `appapi/endpoint/{auth,browse,entity,lists,magnets,movie,rankings,route,search,user}`：有状态 capability service；`endpoint/magnets` 保持纯 helper，`endpoint/route` 是自动选线 capability（startup 域名解密、并发探测与确定性选择），经根 Client 组合。
 - `appapi/codec`：App JSON、JWT、用户 ID 和响应数组解析。
 - `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理和独占文件写入，通过 fetch callback 接入 client。
 
@@ -94,9 +98,10 @@ App API 不解析终端参数，也不格式化面向用户的输出。
 
 ### `internal/config`
 
-根目录不建立 Go package；`config/paths` 负责配置目录、文件和 device/tag 路径，
-`config/settings` 负责 TOML schema、默认值、环境变量和运行时合并。调用方直接依赖
-两个子包。配置优先级必须维持为命令行 flag > 环境变量 > 文件 > 默认值。
+根目录不建立 Go package；`config/paths` 负责配置目录、config/route/device/tag 路径，
+并以 `O_CREATE|O_EXCL`、私有权限和失败清理安全创建首次基线配置（不覆盖已有文件），
+`config/settings` 负责 TOML schema、默认值（`host` 缺省为 `auto`）、环境变量和运行时
+合并。调用方直接依赖两个子包。配置优先级必须维持为命令行 flag > 环境变量 > 文件 > 默认值。
 
 ### `internal/common/jsonx` 与 `internal/common/scalar`
 
@@ -107,11 +112,13 @@ App API 不解析终端参数，也不格式化面向用户的输出。
 App API 前缀数字解析、各领域 truthy 规则、CLI 文案、密码输入、HLS、分页和错误降级
 必须留在对应领域，不在此目录继续堆叠通用 helper。
 
-### `internal/storage/auth` 与 `internal/storage/tags`
+### `internal/storage/auth`、`internal/storage/tags` 与 `internal/storage/route`
 
-分别保存多账号认证状态与公开标签目录缓存。`auth` 按 model/store/file/resolve
-拆分，负责 JSON、临时文件替换、权限和默认账户；`tags` 按 model/file/resolve
-拆分，负责 taxonomy 格式、缓存路径、权限和自由格式 tag 解析。认证数据包含密码和
+分别保存多账号认证状态、公开标签目录缓存与自动选线路由缓存。`auth` 按 model/store/
+file/resolve 拆分，负责 JSON、临时文件替换、权限和默认账户；`tags` 按 model/file/resolve
+拆分，负责 taxonomy 格式、缓存路径、权限和自由格式 tag 解析；`storage/route` 负责
+`route.json` 的严格 JSON load、URL 校验与同目录临时文件 + Sync + 原子替换写入（`0600`），
+只保存已验证的 host URL，不保存 proxy/token/时间戳/测速历史。认证数据包含密码和
 JWT，任何调用路径都不得将其输出到日志、错误、JSON 或文档示例中。
 
 ### `internal/buildinfo`

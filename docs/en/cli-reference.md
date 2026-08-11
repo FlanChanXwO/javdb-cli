@@ -13,7 +13,7 @@ Every remote command accepts these persistent options:
 | Option | Meaning |
 | --- | --- |
 | `--proxy URL` | HTTP(S) proxy for this invocation. |
-| `--host mirror\|main` | Select the App API host for this invocation. |
+| `--host auto\|mirror\|main\|URL` | Select the App API host for this invocation; `auto` (the default) verifies the cached route and re-selects the fastest host from the startup configuration. |
 
 Configuration precedence is command-line options, then environment, then
 `~/.javdb-cli/config.toml`, then built-in defaults. The configuration commands
@@ -30,6 +30,17 @@ Supported keys are `host`, `https_proxy` (or `proxy`), `auto_relogin`, and
 `lang`. `auto_relogin` is disabled by default. When explicitly enabled, an
 expired JWT can trigger one re-login using the password already stored for the
 default account.
+
+The first real command on a fresh machine creates `~/.javdb-cli/config.toml`
+with only the common keys shown above; help, bare/parent commands, `version`,
+completion, argument-validation failures, and `config unset` on a missing file
+never create or overwrite it. The default `host` is `auto`: before each real
+command the CLI verifies the cached route with one signed `/startup` request
+and only re-runs full discovery when that fails, persisting the new host to
+`~/.javdb-cli/route.json` (mode `0600`, storing only the verified host URL).
+A corrupt cache, a failed re-selection, or a failed write is an explicit error,
+never a silent fallback. Fix the host to `mirror`, `main`, or an absolute URL
+to bypass route discovery.
 
 ## Authentication and local state
 

@@ -12,7 +12,7 @@
 | 参数 | 说明 |
 | --- | --- |
 | `--proxy URL` | 仅本次调用使用的 HTTP(S) 代理。 |
-| `--host mirror\|main` | 仅本次调用选择的 App API 主机。 |
+| `--host auto\|mirror\|main\|URL` | 仅本次调用选择的 App API 主机；`auto`（默认）验证缓存线路并从 startup 配置重选最快主机。 |
 
 配置优先级依次为命令行参数、环境变量、`~/.javdb-cli/config.toml`、内置默认值。以下
 命令会修改本机配置，应明确执行：
@@ -26,6 +26,13 @@ javdb config unset KEY
 
 支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`。默认关闭
 `auto_relogin`；显式开启后，过期 JWT 才可能使用默认账号已保存的密码重登一次。
+
+全新机器上第一个真实命令会创建 `~/.javdb-cli/config.toml`，只包含上述常用键；help、
+裸/父命令、`version`、completion、参数校验失败以及缺失配置上的 `config unset` 都不会创建
+或覆盖它。默认 `host` 为 `auto`：每个真实命令前 CLI 先用一次签名 `/startup` 请求验证缓存
+线路，仅在验证失败时才重跑全量发现，并把新主机持久化到 `~/.javdb-cli/route.json`（mode
+`0600`，只保存已验证的 host URL）。损坏缓存、重选失败或写入失败都是显式错误，绝不静默回退。
+固定为 `mirror`、`main` 或绝对 URL 即可完全绕过线路发现。
 
 ## 登录与本机状态
 
