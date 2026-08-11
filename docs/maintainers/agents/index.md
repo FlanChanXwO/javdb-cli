@@ -6,7 +6,7 @@
 ## 文档地图
 
 - [Review checklist](review-checklist.md)：代码、接口、文档和发布变更的审查清单。
-- [Documentation guidelines](documentation-guidelines.md)：README、locale、维护者文档、ADR、skills 与 changelog 的边界。
+- [Documentation guidelines](documentation-guidelines.md)：README、locale、维护者文档、skills 与 changelog 的边界。
 
 ## 使用原则
 

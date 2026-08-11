@@ -13,7 +13,6 @@ for document in \
 	"$repo_root/docs/maintainers/architecture.md" \
 	"$repo_root/docs/maintainers/development.md" \
 	"$repo_root/docs/maintainers/agents/index.md" \
-	"$repo_root/docs/maintainers/adr/0001-public-facade-and-domain-layout.md" \
 	"$repo_root/AGENTS.md" \
 	"$repo_root/CLAUDE.md" \
 	"$repo_root/.github/copilot-instructions.md"; do

@@ -22,7 +22,6 @@ word-for-word copies.
 - [Architecture](maintainers/architecture.md): package boundaries, runtime flow, and ownership.
 - [Development](maintainers/development.md): environment, tests, builds, and releases.
 - [AI collaboration](maintainers/agents/index.md): repository instructions, review, and documentation policy.
-- [Architecture decisions](maintainers/adr/): decisions that affect long-lived project boundaries.
 - [Changelog](../CHANGELOG.md): user-visible changes.
 
 Maintainer documents are currently canonical in Simplified Chinese. Add a

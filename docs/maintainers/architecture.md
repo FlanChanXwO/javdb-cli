@@ -163,4 +163,4 @@ render/pr-validate/sync-history）；核心实现位于
 - 改公开 SDK：同步更新两个 locale 的 SDK 文档与架构说明。
 - 改 API adapter 或协议行为：补充聚焦测试，并检查根 Client/`sdk` 是否需要暴露相应契约。
 - 改构建、资产、Homebrew 或 Release：同步更新开发指南、workflow 测试和 README 安装说明。
-- 改 CLI/common/App API/update/config/storage/release-note 的目录边界：同步本页、`development.md`、相关 ADR（若有）和 `scripts/test-architecture.sh`；只有用户可见契约改变时才更新 public docs、README 或 changelog。
+- 改 CLI/common/App API/update/config/storage/release-note 的目录边界：同步本页、`development.md` 和 `scripts/test-architecture.sh`；只有用户可见契约改变时才更新 public docs、README 或 changelog。
