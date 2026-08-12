@@ -281,53 +281,63 @@ func checksumForArchive(checksums []byte, archiveName string) (string, error) {
 	return expected, nil
 }
 
-func extractReleaseBinary(archive []byte, archiveName, destination, binaryName string) error {
+// ExtractBinaryBytes 从发布归档中提取唯一预期二进制并返回其字节。
+// 归档内存在重复、非普通文件或缺失该二进制都会显式报错。
+func ExtractBinaryBytes(archive []byte, archiveName, binaryName string) ([]byte, error) {
 	if strings.HasSuffix(archiveName, ".tar.gz") {
-		return extractTarGzBinary(archive, destination, binaryName)
+		return extractTarGzBinaryBytes(archive, binaryName)
 	}
 	if strings.HasSuffix(archiveName, ".zip") {
-		return extractZIPBinary(archive, destination, binaryName)
+		return extractZIPBinaryBytes(archive, binaryName)
 	}
-	return fmt.Errorf("unsupported release archive %q", archiveName)
+	return nil, fmt.Errorf("unsupported release archive %q", archiveName)
 }
 
-func extractTarGzBinary(archive []byte, destination, binaryName string) error {
+func extractReleaseBinary(archive []byte, archiveName, destination, binaryName string) error {
+	content, err := ExtractBinaryBytes(archive, archiveName, binaryName)
+	if err != nil {
+		return err
+	}
+	return writeExtractedBinary(destination, bytes.NewReader(content))
+}
+
+func extractTarGzBinaryBytes(archive []byte, binaryName string) ([]byte, error) {
 	gzipped, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return fmt.Errorf("open tar.gz release archive: %w", err)
+		return nil, fmt.Errorf("open tar.gz release archive: %w", err)
 	}
 	defer gzipped.Close()
 	reader := tar.NewReader(gzipped)
-	found := false
+	var content []byte
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("read tar.gz release archive: %w", err)
+			return nil, fmt.Errorf("read tar.gz release archive: %w", err)
 		}
 		if header.Name != binaryName {
 			continue
 		}
-		if found || !header.FileInfo().Mode().IsRegular() {
-			return fmt.Errorf("release archive has an invalid binary entry %q", binaryName)
+		if content != nil || !header.FileInfo().Mode().IsRegular() {
+			return nil, fmt.Errorf("release archive has an invalid binary entry %q", binaryName)
 		}
-		if err := writeExtractedBinary(destination, reader); err != nil {
-			return err
+		content, err = io.ReadAll(reader)
+		if err != nil {
+			return nil, fmt.Errorf("read binary entry %q from tar.gz release archive: %w", binaryName, err)
 		}
-		found = true
 	}
-	if !found {
-		return fmt.Errorf("release archive has no binary entry %q", binaryName)
+	if content == nil {
+		return nil, fmt.Errorf("release archive has no binary entry %q", binaryName)
 	}
-	return nil
+	return content, nil
 }
 
-func extractZIPBinary(archive []byte, destination, binaryName string) error {
+func extractZIPBinaryBytes(archive []byte, binaryName string) ([]byte, error) {
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
-		return fmt.Errorf("open zip release archive: %w", err)
+		return nil, fmt.Errorf("open zip release archive: %w", err)
 	}
 	var binary *zip.File
 	for _, file := range reader.File {
@@ -335,19 +345,23 @@ func extractZIPBinary(archive []byte, destination, binaryName string) error {
 			continue
 		}
 		if binary != nil || !file.FileInfo().Mode().IsRegular() {
-			return fmt.Errorf("release archive has an invalid binary entry %q", binaryName)
+			return nil, fmt.Errorf("release archive has an invalid binary entry %q", binaryName)
 		}
 		binary = file
 	}
 	if binary == nil {
-		return fmt.Errorf("release archive has no binary entry %q", binaryName)
+		return nil, fmt.Errorf("release archive has no binary entry %q", binaryName)
 	}
 	entry, err := binary.Open()
 	if err != nil {
-		return fmt.Errorf("open zip binary entry %q: %w", binaryName, err)
+		return nil, fmt.Errorf("open zip binary entry %q: %w", binaryName, err)
 	}
 	defer entry.Close()
-	return writeExtractedBinary(destination, entry)
+	content, err := io.ReadAll(entry)
+	if err != nil {
+		return nil, fmt.Errorf("read zip binary entry %q: %w", binaryName, err)
+	}
+	return content, nil
 }
 
 func writeExtractedBinary(destination string, source io.Reader) error {
