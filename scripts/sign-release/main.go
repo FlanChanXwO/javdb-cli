@@ -40,6 +40,7 @@ type generateOptions struct {
 	releaseDate string
 	dir         string
 	outputDir   string
+	checksums   string
 	getenv      func(string) string
 	stdout      io.Writer
 }
@@ -50,13 +51,22 @@ func main() {
 	releaseDate := flags.String("release-date", "", "release date in YYYY-MM-DD, matching the audited changelog")
 	dir := flags.String("dir", ".", "directory containing the six verified platform archives")
 	output := flags.String("output", "", "output directory for release-manifest.json and release-manifest.sig (default: --dir)")
+	checksums := flags.String("checksums", "", "output path for checksums.txt derived from the manifest (optional)")
+	showKeys := flags.Bool("show-keys", false, "print the derived public key and key_id for each environment seed, then exit")
 	flags.Usage = func() {
-		fmt.Fprintf(flags.Output(), "usage: sign-release --version VERSION --release-date DATE [--dir DIR] [--output DIR]\n")
+		fmt.Fprintf(flags.Output(), "usage: sign-release --version VERSION --release-date DATE [--dir DIR] [--output DIR] [--checksums PATH]\n       sign-release --show-keys\n")
 		fmt.Fprintf(flags.Output(), "\nReads private key seeds from the %s environment variable and signs a\nv1 release manifest over the six platform archives in --dir.\n", privateKeysEnvironment)
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
+	}
+	if *showKeys {
+		if err := runShowKeys(os.Getenv(privateKeysEnvironment), os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "sign-release: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 	outputDir := *output
 	if outputDir == "" {
@@ -67,6 +77,7 @@ func main() {
 		releaseDate: *releaseDate,
 		dir:         *dir,
 		outputDir:   outputDir,
+		checksums:   *checksums,
 		getenv:      os.Getenv,
 		stdout:      os.Stdout,
 	})
@@ -74,6 +85,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "sign-release: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runShowKeys 打印每个环境 seed 派生的公钥与 key_id，用于把生产公钥登记到
+// DefaultKeyring；绝不打印 seed、私钥或原始环境值。
+func runShowKeys(environmentValue string, stdout io.Writer) error {
+	seeds, err := seedsFromEnvironment(environmentValue)
+	if err != nil {
+		return err
+	}
+	for index, seed := range seeds {
+		publicKey := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
+		fmt.Fprintf(stdout, "key %d: key_id=%s public_key_hex=%s\n", index, manifest.KeyID(publicKey), hex.EncodeToString(publicKey))
+	}
+	return nil
 }
 
 // runGenerate 计算六平台归档与内部二进制的 SHA-256、生成规范清单并用环境
@@ -144,11 +169,30 @@ func runGenerate(options generateOptions) error {
 	if err := writeFileExclusive(signaturePath, signatureBytes); err != nil {
 		return err
 	}
+	if options.checksums != "" {
+		// checksums.txt 由清单派生（archive 哈希），保持 v0.6.x 更新器、
+		// Homebrew 与人工校验兼容的 `<hex>  <archive>` 格式。
+		if err := writeFileExclusive(options.checksums, deriveChecksums(releaseManifest)); err != nil {
+			return err
+		}
+	}
 	if options.stdout != nil {
 		fmt.Fprintf(options.stdout, "signed release manifest %s with %d key(s)\n", tag, len(signatures.Signatures))
 		fmt.Fprintf(options.stdout, "wrote %s\nwrote %s\n", manifestPath, signaturePath)
+		if options.checksums != "" {
+			fmt.Fprintf(options.stdout, "wrote %s\n", options.checksums)
+		}
 	}
 	return nil
+}
+
+// deriveChecksums 从清单的归档哈希派生兼容 checksums.txt 内容。
+func deriveChecksums(releaseManifest *manifest.Manifest) []byte {
+	var builder strings.Builder
+	for _, target := range releaseManifest.Targets {
+		fmt.Fprintf(&builder, "%s  %s\n", target.ArchiveSHA256, target.Archive)
+	}
+	return []byte(builder.String())
 }
 
 type platformArchive struct {

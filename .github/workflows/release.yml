@@ -347,6 +347,9 @@ jobs:
     name: Publish GitHub Release
     needs: [validate, verify_release_source, release_notes_audit]
     runs-on: ubuntu-24.04
+    # 受保护 environment：只有这里允许读取签名私钥。缺失 secret 或未配置
+    # required reviewers 时 job 显式失败（fail-closed），不发布未签名资产。
+    environment: release
     permissions:
       contents: write
     steps:
@@ -385,10 +388,11 @@ jobs:
           name: verified-release-windows-arm64
           path: dist
 
-      - name: Check the exact release asset set and write checksums
+      - name: Check the exact release asset set and sign the release manifest
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
+          JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}
         run: |
           set -euo pipefail
           for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
@@ -401,10 +405,18 @@ jobs:
             test -f "dist/javdb-cli_${VERSION}_${goos}_${goarch}.${ext}"
           done
           test "$(find dist -maxdepth 1 -type f -name 'javdb-cli_*' | wc -l | tr -d ' ')" = 6
-          (
-            cd dist
-            sha256sum javdb-cli_"${VERSION}"_* > checksums.txt
-          )
+          release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
+          test -n "$release_date"
+          # 只从已验证的 production archives 生成清单、签名与兼容 checksums。
+          go run ./scripts/sign-release \
+            --version "$VERSION" \
+            --release-date "$release_date" \
+            --dir dist \
+            --output dist \
+            --checksums dist/checksums.txt
+          test -s dist/release-manifest.json
+          test -s dist/release-manifest.sig
+          test -s dist/checksums.txt
           cat dist/checksums.txt
 
       - name: Create and verify the GitHub Release
@@ -426,7 +438,9 @@ jobs:
             --notes-file release/release-notes.md \
             dist/javdb-cli_*.tar.gz \
             dist/javdb-cli_*.zip \
-            dist/checksums.txt
+            dist/checksums.txt \
+            dist/release-manifest.json \
+            dist/release-manifest.sig
           expected=$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)
           actual=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)
           if [ "$actual" != "$expected" ]; then

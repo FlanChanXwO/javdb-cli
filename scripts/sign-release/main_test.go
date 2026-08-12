@@ -345,3 +345,103 @@ func TestRunGenerateRejectsMissingArguments(t *testing.T) {
 		})
 	}
 }
+
+// TestRunShowKeysPrintsOnlyPublicMaterial 验证 --show-keys 只输出公钥与
+// key_id，绝不泄漏 seed/私钥字节。
+func TestRunShowKeysPrintsOnlyPublicMaterial(t *testing.T) {
+	var output bytes.Buffer
+	err := runShowKeys(fixtureSeedsJSON(t, [][]byte{fixtureSeedA}), &output)
+	if err != nil {
+		t.Fatalf("runShowKeys: %v", err)
+	}
+	text := output.String()
+	seedB64 := base64.StdEncoding.EncodeToString(fixtureSeedA)
+	if strings.Contains(text, seedB64) {
+		t.Fatal("runShowKeys printed the seed value")
+	}
+	expectedKeyID := manifest.KeyID(ed25519.NewKeyFromSeed(fixtureSeedA).Public().(ed25519.PublicKey))
+	if !strings.Contains(text, "key_id="+expectedKeyID) {
+		t.Errorf("runShowKeys output lacks the derived key_id: %s", text)
+	}
+	if !strings.Contains(text, "public_key_hex=") {
+		t.Errorf("runShowKeys output lacks the public key: %s", text)
+	}
+}
+
+func TestRunShowKeysRejectsInvalidEnvironment(t *testing.T) {
+	var output bytes.Buffer
+	if err := runShowKeys("not-json", &output); err == nil {
+		t.Fatal("runShowKeys accepted an invalid seed environment")
+	}
+	if output.Len() != 0 {
+		t.Error("runShowKeys wrote output despite invalid environment")
+	}
+}
+
+// legacyChecksumLookup 复刻 v0.6.0 更新器的 checksums.txt 解析器语义：
+// 每行恰好两个字段、哈希为 64 位小写十六进制、重复条目报错。
+func legacyChecksumLookup(t *testing.T, checksums []byte, archiveName string) string {
+	t.Helper()
+	var expected string
+	for _, line := range strings.Split(string(checksums), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != archiveName {
+			continue
+		}
+		if expected != "" {
+			t.Fatalf("legacy updater would reject duplicate entry for %q", archiveName)
+		}
+		if len(fields[0]) != 64 || strings.ToLower(fields[0]) != fields[0] {
+			t.Fatalf("legacy updater would reject invalid SHA-256 %q", fields[0])
+		}
+		expected = fields[0]
+	}
+	return expected
+}
+
+// TestRunGenerateChecksumsSatisfyLegacyUpdaterContract 是 v0.6.0 -> v0.6.1
+// fixture 测试：v0.6.0 更新器只信任 checksums.txt + archive，本测试用旧解析
+// 语义验证由清单派生的 checksums.txt 每个归档恰好一条且哈希匹配。
+func TestRunGenerateChecksumsSatisfyLegacyUpdaterContract(t *testing.T) {
+	const version = "0.7.0"
+	dir := writeReleaseDir(t, version)
+	checksumsPath := filepath.Join(dir, "checksums.txt")
+	err := runGenerate(generateOptions{
+		version:     version,
+		releaseDate: "2026-08-12",
+		dir:         dir,
+		outputDir:   dir,
+		checksums:   checksumsPath,
+		getenv: func(string) string {
+			return fixtureSeedsJSON(t, [][]byte{fixtureSeedA})
+		},
+		stdout: io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+	checksums, err := os.ReadFile(checksumsPath)
+	if err != nil {
+		t.Fatalf("read checksums.txt: %v", err)
+	}
+	for _, platform := range releasePlatforms {
+		extension := ".tar.gz"
+		if platform.goos == "windows" {
+			extension = ".zip"
+		}
+		name := "javdb-cli_" + version + "_" + platform.goos + "_" + platform.goarch + extension
+		expected, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("read archive %q: %v", name, err)
+		}
+		sum := sha256.Sum256(expected)
+		lookedUp := legacyChecksumLookup(t, checksums, name)
+		if lookedUp == "" {
+			t.Errorf("checksums.txt has no entry for %q", name)
+			continue
+		}
+		if lookedUp != hex.EncodeToString(sum[:]) {
+			t.Errorf("checksums.txt entry for %q does not match archive bytes", name)
+		}
+	}
+}

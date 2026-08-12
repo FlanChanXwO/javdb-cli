@@ -70,8 +70,10 @@ internal/storage/tags/                  # 公开标签目录缓存（model/file/
 internal/buildinfo/                     # linker 注入版本信息
 internal/update/                        # Coordinator 与最小依赖接口（coordinator.go/interfaces.go）
 internal/update/{model,archive}/        # 更新模型与归档校验/安装
+internal/update/manifest/               # v1 签名发布清单协议、Ed25519 签名与受信公钥环
 internal/update/{release,source,process}/ # Release、来源和进程/平台边界
 scripts/releasenotes/                   # release-note command 入口（仅分派）
+scripts/sign-release/                   # 从环境私钥生成/签名 v1 发布清单与兼容 checksums
 scripts/internal/releasenotes/{model,github,audit,document,prepare,history}/ # release-note 领域实现
 scripts/                                # 构建、打包和静态检查
 skills/javdb-cli/                  # 面向产品使用者的 agent skill
@@ -145,9 +147,55 @@ sh scripts/package-release.sh \
 `package-release.sh` 会拒绝不支持的平台、错误二进制名、符号链接输出和既有资产名。
 Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 
-`javdb update` 依赖 Release 中与当前目标严格匹配的 archive 及 `checksums.txt`。安装器在替换
-二进制前必须验证该 archive 的 SHA-256，并执行候选二进制的 `version --json` 核对 tag；因此变更
-资产命名、平台矩阵或 checksum 格式时，必须同步更新 `internal/update` 的测试和用户文档。
+`javdb update` 依赖 Release 中与当前目标严格匹配的 archive、`release-manifest.json` 和
+`release-manifest.sig`。安装器按固定顺序验证官方 URL、清单的 Ed25519 签名、仓库/tag/平台绑定、
+archive 与解包二进制的 SHA-256，全部通过后才做同目录 staging 与原子替换；候选二进制绝不执行。
+`checksums.txt` 由清单派生，继续服务 v0.6.0 更新器、Homebrew 与人工校验，但不再是信任根。
+变更资产命名、平台矩阵、清单或 checksum 格式时，必须同步更新 `internal/update` 的测试和用户文档。
+
+## 发布签名密钥
+
+发布清单使用 Ed25519（Go 标准库）签名。仓库只保存生产公钥环
+（`internal/update/manifest/keyring.go` 的 `DefaultKeyring`）与测试专用 fixture 密钥；
+任何生产私钥都不得写入仓库、日志、artifact 或 Release。
+
+### 生成（首次发布前）
+
+```bash
+# 生成一个 32-byte seed（标准 Base64），保存到密码管理器；绝不要写进仓库。
+seed=$(openssl rand -base64 32)
+# 从 seed 派生公钥与 key_id（只输出公钥，绝不打印 seed）。
+JAVDB_RELEASE_ED25519_PRIVATE_KEYS="[\"$seed\"]" go run ./scripts/sign-release --show-keys
+# 把输出的 public_key_hex 解码为 32 字节公钥，登记到 DefaultKeyring。
+```
+
+`sign-release` 只从 `JAVDB_RELEASE_ED25519_PRIVATE_KEYS` 环境变量读取 seed（JSON 数组，
+每项是一个标准 Base64 的 32-byte seed）；错误只报告索引与非敏感原因。确认 `--show-keys`
+输出后，把 Base64 seed 配置为 GitHub `release` environment 的
+`JAVDB_RELEASE_ED25519_PRIVATE_KEYS` secret（仓库管理员设置 required reviewers），并把
+派生出的 32-byte 公钥登记到 `DefaultKeyring`。空公钥环保持 fail-closed：任何远程清单都
+无法通过验证，直到首个公钥登记。
+
+### 轮换（新增密钥双签）
+
+1. 生成新 seed 并按上述步骤配置为 environment secret 的第二个数组项（旧项保留）。
+2. 在发布一个新版本时把新公钥加入 `DefaultKeyring`（客户端同时内置新旧公钥）。
+3. 过渡期清单由新旧私钥双签；`sign-release` 会为每个 seed 生成签名并按 `key_id` 排序。
+4. 只有在发布策略明确提高最低可升级版本之后，才停止用旧私钥签名。
+
+### 撤销（泄露处置）
+
+1. 立即停止发布：删除 environment secret 或移出旧 seed，避免继续用泄露密钥签名。
+2. 发布一个把旧公钥从 `DefaultKeyring` 移除的新版本（同时双签到该版本为止）。
+3. 接受残余风险：泄露私钥对应的旧客户端无法仅靠远端元数据安全修复，只能升级到移除该
+   公钥的版本。
+
+### 桥接与兼容
+
+v0.6.1 是发布桥：交付签名清单更新器、把 `publish` job 绑定受保护的 `release`
+environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt`，保证 v0.6.0 可直接
+验证并安装后续版本。v0.6.1 的精确 bridge commit 记录在 goal-1 完成记录中；创建 v0.6.1 tag
+必须由维护者明确授权。
 
 ## CI 与发布
 
@@ -161,7 +209,13 @@ Windows Git Bash runner 用预装 `7z` 生成 ZIP。
    `changelog/plans/vX.Y.Z.json`，然后运行 `prepare` 与 `validate` 生成版本目录。
 4. `vX.Y.Z` tag 必须不可变且可追溯到 `main`；Release workflow 在打包前校验版本化双语 notes、
    审计来源，并以同一渲染正文创建 GitHub Release。
-5. 发布器核对资产、从同一 `checksums.txt` 渲染 Homebrew Formula，并在 macOS/Linux 的 amd64/arm64 环境验证。tap 部署是可选的：必须设置 `HOMEBREW_TAP_DEPLOY_ENABLED=true` 并在受保护 `release` environment 配置 `HOMEBREW_TAP_DEPLOY_KEY`；条件缺失时 Release 与 Formula 验证仍会完成。
+5. `publish` job 绑定受保护的 `release` environment，从 `JAVDB_RELEASE_ED25519_PRIVATE_KEYS`
+   读取私钥 seed，只对已验证的 production archives 运行 `scripts/sign-release` 生成
+   `release-manifest.json`、`release-manifest.sig` 与由清单派生的 `checksums.txt`；draft Release
+   资产审计覆盖全部六个归档与三个校验文件。发布器核对资产、从同一 `checksums.txt` 渲染
+   Homebrew Formula，并在 macOS/Linux 的 amd64/arm64 环境验证。tap 部署是可选的：必须设置
+   `HOMEBREW_TAP_DEPLOY_ENABLED=true` 并在受保护 `release` environment 配置
+   `HOMEBREW_TAP_DEPLOY_KEY`；条件缺失时 Release 与 Formula 验证仍会完成。
 6. `.github/CODEOWNERS` 将默认 review 路由到唯一维护者；它只会为未来 PR 请求 reviewer，不能让 PR 作者批准自己的 PR，也不替代 `main` 的分支保护要求。
 7. Release 在公开 GitHub Release 后上传只含不可变 tag 的 `clawhub-release-tag` artifact。成功结束的
    `Release` workflow 会由 `publish-clawhub.yml` 通过 `workflow_run` 消费；它 checkout 该 tag、验证

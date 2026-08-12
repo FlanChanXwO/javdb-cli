@@ -35,6 +35,14 @@ grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
 grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
+# publish job 必须绑定受保护的 release environment，只在此处读取签名私钥，
+# 并从已验证 archives 生成 manifest、signature 与由 manifest 派生的 checksums。
+grep -F 'environment: release' "$release_workflow" >/dev/null
+grep -F 'JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}' "$release_workflow" >/dev/null
+grep -F 'go run ./scripts/sign-release' "$release_workflow" >/dev/null
+grep -F 'dist/release-manifest.json' "$release_workflow" >/dev/null
+grep -F 'dist/release-manifest.sig' "$release_workflow" >/dev/null
+grep -F 'dist/checksums.txt' "$release_workflow" >/dev/null
 sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
 
 # 文档专属路径必须有一致的 classifier 与稳定汇总 gate；workflow 本身的改动不在白名单内。
