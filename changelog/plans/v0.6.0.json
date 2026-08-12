@@ -23,15 +23,6 @@
       ]
     },
     {
-      "category": "Fixed",
-      "breaking": false,
-      "english": "Map textual rankings zones such as censored, uncensored, western and fc2 to App API numeric values, and normalize ranking periods consistently across endpoints.",
-      "zh_cn": "将 censored、uncensored、western、fc2 等排行榜文本分区映射为 App API 数字值，并统一各排行接口的周期归一化。",
-      "sources": [
-        "https://github.com/FlanChanXwO/javdb-cli/pull/13"
-      ]
-    },
-    {
       "category": "Maintenance",
       "breaking": false,
       "english": "Verify ClawHub publication through its public skill endpoint without exposing publisher credentials during moderation.",
@@ -50,12 +41,5 @@
       ]
     }
   ],
-  "new_contributors": [
-    {
-      "login": "kanoshiou",
-      "profile_url": "https://github.com/kanoshiou",
-      "pull_number": 13,
-      "pull_url": "https://github.com/FlanChanXwO/javdb-cli/pull/13"
-    }
-  ]
+  "new_contributors": []
 }

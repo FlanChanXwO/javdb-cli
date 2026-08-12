@@ -8,17 +8,9 @@
 
 - Retire the SkillHub publisher, keep ClawHub as the active Agent skill distribution path, and document public ClawHub installation with version pinning. ([#19](https://github.com/FlanChanXwO/javdb-cli/pull/19), [#20](https://github.com/FlanChanXwO/javdb-cli/pull/20))
 
-## Fixed
-
-- Map textual rankings zones such as censored, uncensored, western and fc2 to App API numeric values, and normalize ranking periods consistently across endpoints. ([#13](https://github.com/FlanChanXwO/javdb-cli/pull/13))
-
 ## Maintenance
 
 - Verify ClawHub publication through its public skill endpoint without exposing publisher credentials during moderation. ([#18](https://github.com/FlanChanXwO/javdb-cli/pull/18))
 - Remove internal compatibility facades and realign the CLI around real commands; split app capabilities into invocation, client and authstore packages, and unify movie, magnet and named projections under result without changing public contracts. ([#21](https://github.com/FlanChanXwO/javdb-cli/pull/21))
-
-## New Contributors
-
-- [@kanoshiou](https://github.com/kanoshiou) made their first contribution in [#13](https://github.com/FlanChanXwO/javdb-cli/pull/13).
 
 **Full Changelog**: [v0.5.2...v0.6.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.5.2...v0.6.0)
