@@ -105,6 +105,10 @@ func envLookup(name string) string {
 	return os.Getenv(name)
 }
 
+// sourceNamePattern 约束 source 名只含字母、数字、- 与 _，避免缓存文件名
+// 消毒后不同 source 互相覆盖。
+var sourceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
 // ResolveReverseSearch 校验 reverse_search 区域并展开 header 环境引用。
 func ResolveReverseSearch(s Settings, getenv func(string) string) (ResolvedReverseSearch, error) {
 	rs := s.ReverseSearch
@@ -145,6 +149,9 @@ func ResolveReverseSearch(s Settings, getenv func(string) string) (ResolvedRever
 	for index, source := range rs.Sources {
 		if strings.TrimSpace(source.Name) == "" {
 			return ResolvedReverseSearch{}, fmt.Errorf("reverse_search.sources[%d] must have a name", index)
+		}
+		if !sourceNamePattern.MatchString(source.Name) {
+			return ResolvedReverseSearch{}, fmt.Errorf("reverse_search source name %q may only contain letters, digits, - and _", source.Name)
 		}
 		if source.Name == "builtin" {
 			return ResolvedReverseSearch{}, fmt.Errorf("reverse_search source name %q is reserved for the builtin provider", source.Name)

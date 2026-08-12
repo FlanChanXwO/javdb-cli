@@ -115,6 +115,9 @@ func TestResolveReverseSearchRejectsInvalidSources(t *testing.T) {
 		{name: "non http url", mutate: func(rs *ReverseSearchSettings) {
 			rs.Sources = append(rs.Sources, ReverseSearchSource{Name: "evil", URL: "ftp://example.test/search"})
 		}},
+		{name: "unsafe source name characters", mutate: func(rs *ReverseSearchSettings) {
+			rs.Sources = append(rs.Sources, ReverseSearchSource{Name: "a/b", URL: "https://example.test/search"})
+		}},
 		{name: "unknown default source", mutate: func(rs *ReverseSearchSettings) {
 			rs.DefaultSource = "ghost"
 		}},
