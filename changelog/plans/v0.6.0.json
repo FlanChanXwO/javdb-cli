@@ -6,8 +6,8 @@
     {
       "category": "Added",
       "breaking": false,
-      "english": "Add automatic API host selection: decrypt startup route data, probe candidate hosts concurrently with cancellable requests, persist the preferred route in a private cache, expose explicit public SDK support, and make auto the CLI default while preserving explicit hosts; validation now rejects blank proxy overrides without side effects, and unmark sends large review IDs as exact decimals.",
-      "zh_cn": "新增 API 自动选线：解密启动线路数据，以可取消请求并发探测候选主机，把优选线路持久化到本机私有缓存，提供显式 public SDK 支持，并在保留显式 host 的同时将 auto 设为 CLI 默认值；校验现会无副作用拒绝空白 proxy 覆盖，unmark 也会以精确十进制发送大 review ID。",
+      "english": "Add automatic API host selection: reuse a valid cached route, otherwise probe startup candidates concurrently and persist the fastest host; expose explicit public SDK support and make auto the CLI default while preserving explicit hosts. Configuration creation is atomic, update proxy resolution is independent of JavDB host settings, invalid proxy ports and negative retries are rejected, and unmark sends large review IDs as exact decimals.",
+      "zh_cn": "新增 API 自动选线：缓存线路有效时直接复用，否则并发探测 startup 候选并持久化最快主机；提供显式 public SDK 支持，并在保留显式 host 的同时将 auto 设为 CLI 默认值。配置文件以原子方式创建，update 代理解析不再依赖 JavDB host 设置，非法 proxy 端口和负重试次数会被拒绝，unmark 也会以精确十进制发送大 review ID。",
       "sources": [
         "https://github.com/FlanChanXwO/javdb-cli/pull/22"
       ]

@@ -8,7 +8,6 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
-	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
@@ -33,10 +32,7 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 		return fmt.Errorf("default account has no token; run: javdb auth login")
 	}
 	// host/proxy 无副作用校验与本地检查都通过后再创建基线配置，随后执行可能失败的网络选线。
-	if err := paths.EnsureDefaultConfigFile(); err != nil {
-		return err
-	}
-	baseURL, err := resolveBaseURL(rt, productionAutoHost)
+	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
 	if err != nil {
 		return err
 	}
@@ -94,10 +90,7 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 			token = acc.Token
 		}
 	}
-	if err := paths.EnsureDefaultConfigFile(); err != nil {
-		return err
-	}
-	baseURL, err := resolveBaseURL(rt, productionAutoHost)
+	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
 	if err != nil {
 		return err
 	}

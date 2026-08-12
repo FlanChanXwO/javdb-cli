@@ -90,7 +90,6 @@ type Runtime struct {
 func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (Runtime, error) {
 	r := Runtime{
 		Host:        file.Host,
-		Proxy:       file.HTTPSProxy,
 		AutoRelogin: file.AutoRelogin,
 		Lang:        file.Lang,
 		DeviceUUID:  file.DeviceUUID,
@@ -106,9 +105,6 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (
 	if v := firstEnv("JAVDB_HOST"); v != "" {
 		r.Host = v
 	}
-	if v := firstEnv("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"); v != "" {
-		r.Proxy = v
-	}
 	if v := firstEnv("JAVDB_AUTO_RELOGIN"); v != "" {
 		r.AutoRelogin = parseBool(v)
 	}
@@ -120,25 +116,22 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (
 	if flagHost != "" {
 		r.Host = flagHost
 	}
-	if flagProxy != "" {
-		// 显式传入的空白 proxy 直接报错：当前文档只定义 --proxy URL，若裁剪成空串会静默
-		// 覆盖继承代理并直连，绕过用户网络策略；config/env 来源的空白仍按空值规范。
-		if strings.TrimSpace(flagProxy) == "" {
-			return Runtime{}, fmt.Errorf("--proxy flag must be a non-empty URL, got %q", flagProxy)
-		}
-		r.Proxy = flagProxy
-	}
 	if flagAutoRelogin != nil {
 		r.AutoRelogin = *flagAutoRelogin
 	}
 
-	// 空白 proxy（config/env/flag 任一来源）规范为空串，避免 validator 视为"空"但 transport
-	// 仍收到原始空白而在请求阶段失败，且失败命令已留下本机状态。
-	r.Proxy = strings.TrimSpace(r.Proxy)
+	proxy, err := ResolveProxy(file, flagProxy)
+	if err != nil {
+		return Runtime{}, err
+	}
+	r.Proxy = proxy
 
 	host, err := NormalizeHost(r.Host)
 	if err != nil {
 		return Runtime{}, err
+	}
+	if host == "" {
+		host = HostAuto
 	}
 	r.Host = host
 	if baseURL, ok := HostURLs[host]; ok {
@@ -147,6 +140,22 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (
 		r.BaseURL = host
 	}
 	return r, nil
+}
+
+// ResolveProxy 按 flag > env > file 的优先级解析代理，供无需 JavDB host 的独立流程复用。
+func ResolveProxy(file Settings, flagProxy string) (string, error) {
+	proxy := file.HTTPSProxy
+	if v := firstEnv("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"); v != "" {
+		proxy = v
+	}
+	if flagProxy != "" {
+		// 显式空白会静默覆盖继承代理并直连，因此与“未设置”区分并直接拒绝。
+		if strings.TrimSpace(flagProxy) == "" {
+			return "", fmt.Errorf("--proxy flag must be a non-empty URL, got %q", flagProxy)
+		}
+		proxy = flagProxy
+	}
+	return strings.TrimSpace(proxy), nil
 }
 
 // NormalizeHost 校验并规范逻辑 host 或绝对 HTTP(S) URL。绝对 URL 必须不含 query 或

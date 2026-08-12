@@ -56,6 +56,15 @@ type Options = model.Options
 
 // New constructs a signed API client.
 func New(opts Options) (*Client, error) {
+	// nil 表示默认重试 2 次；显式 0 表示零重试（测速/探测场景）。负值会让请求循环
+	// 跳过所有尝试，必须在分配 HTTP transport 前拒绝。
+	retries := defaultRetries
+	if opts.Retries != nil {
+		if *opts.Retries < 0 {
+			return nil, fmt.Errorf("retries must be non-negative")
+		}
+		retries = *opts.Retries
+	}
 	if opts.Host == "" {
 		opts.Host = HostMirror
 	}
@@ -81,11 +90,6 @@ func New(opts Options) (*Client, error) {
 	hc, err := httpx.New(httpx.Options{Proxy: opts.Proxy, Timeout: opts.Timeout})
 	if err != nil {
 		return nil, err
-	}
-	// nil 表示默认重试 2 次；显式 0 表示零重试（测速/探测场景）。
-	retries := defaultRetries
-	if opts.Retries != nil {
-		retries = *opts.Retries
 	}
 	return &Client{
 		http:       hc,
@@ -121,6 +125,9 @@ func (c *Client) Language() string { return c.lang }
 
 // SetLanguage temporarily changes the language used by request headers.
 func (c *Client) SetLanguage(lang string) { c.lang = lang }
+
+// CloseIdleConnections 释放短生命周期 client 的空闲连接。
+func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 
 // FetchMedia 获取未经过 App envelope 包装的媒体资源，供 media 包通过 callback 使用。
 func (c *Client) FetchMedia(rawURL string) ([]byte, error) {

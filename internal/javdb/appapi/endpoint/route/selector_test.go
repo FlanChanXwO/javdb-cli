@@ -30,6 +30,17 @@ type recorder struct {
 	calls []string
 }
 
+type closingProbeClient struct {
+	err    error
+	closed bool
+}
+
+func (c *closingProbeClient) GetJSONContext(context.Context, string, map[string]string, any) error {
+	return c.err
+}
+
+func (c *closingProbeClient) CloseIdleConnections() { c.closed = true }
+
 func (r *recorder) add(host string) {
 	r.mu.Lock()
 	r.calls = append(r.calls, host)
@@ -464,6 +475,34 @@ func TestSelectDoesNotCancelPotentialDynamicSource(t *testing.T) {
 	}
 }
 
+// TestProbeBootstrapsCancelsCompletedContexts 验证每个 bootstrap 完成后都立即释放自己的
+// context；已从状态表删除的完成项不能依赖函数退出时的兜底取消。
+func TestProbeBootstrapsCancelsCompletedContexts(t *testing.T) {
+	var mu sync.Mutex
+	contexts := make(map[string]context.Context, len(bootstrapHosts))
+	probe := func(ctx context.Context, host string, onRequestStart func()) (time.Duration, map[string]any, error) {
+		mu.Lock()
+		contexts[host] = ctx
+		mu.Unlock()
+		if onRequestStart != nil {
+			onRequestStart()
+		}
+		return time.Millisecond, map[string]any{}, nil
+	}
+
+	probeBootstraps(context.Background(), probe)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(contexts) != len(bootstrapHosts) {
+		t.Fatalf("recorded contexts = %d, want %d", len(contexts), len(bootstrapHosts))
+	}
+	for host, ctx := range contexts {
+		if !errors.Is(ctx.Err(), context.Canceled) {
+			t.Errorf("bootstrap %s context error = %v, want context.Canceled", host, ctx.Err())
+		}
+	}
+}
+
 // TestStartupProbeLatencyExcludesTransportConstruction 验证测速 latency 只统计单次 /startup
 // 请求耗时，不包含 transport 构造（TLS client/cookie jar/proxy 初始化）。
 func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {
@@ -474,7 +513,7 @@ func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {
 	defer server.Close()
 
 	const constructionDelay = 200 * time.Millisecond
-	factory := func(opts client.Options) (*client.Client, error) {
+	factory := func(opts client.Options) (startupProbeClient, error) {
 		time.Sleep(constructionDelay) // 模拟慢 transport 构造
 		return client.New(opts)
 	}
@@ -493,5 +532,31 @@ func TestStartupProbeLatencyExcludesTransportConstruction(t *testing.T) {
 	}
 	if elapsed < constructionDelay {
 		t.Fatalf("elapsed = %v, want >= %v (construction delay was not exercised)", elapsed, constructionDelay)
+	}
+}
+
+// TestStartupProbeClosesIdleConnections 验证单次临时 transport 无论请求成功或失败都会释放
+// 空闲连接，避免自动选线按 host 累积闲置连接池。
+func TestStartupProbeClosesIdleConnections(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "success"},
+		{name: "request failure", err: errors.New("offline")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := &closingProbeClient{err: tc.err}
+			probe, err := newStartupProbe(SelectorOptions{}, func(client.Options) (startupProbeClient, error) {
+				return transport, nil
+			})
+			if err != nil {
+				t.Fatalf("newStartupProbe() error = %v", err)
+			}
+			_, _, _ = probe(context.Background(), "https://probe.example", nil)
+			if !transport.closed {
+				t.Fatal("probe transport idle connections were not closed")
+			}
+		})
 	}
 }

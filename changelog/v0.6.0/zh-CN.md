@@ -2,7 +2,7 @@
 
 ## 新增
 
-- 新增 API 自动选线：解密启动线路数据，以可取消请求并发探测候选主机，把优选线路持久化到本机私有缓存，提供显式 public SDK 支持，并在保留显式 host 的同时将 auto 设为 CLI 默认值；校验现会无副作用拒绝空白 proxy 覆盖，unmark 也会以精确十进制发送大 review ID。 ([#22](https://github.com/FlanChanXwO/javdb-cli/pull/22))
+- 新增 API 自动选线：缓存线路有效时直接复用，否则并发探测 startup 候选并持久化最快主机；提供显式 public SDK 支持，并在保留显式 host 的同时将 auto 设为 CLI 默认值。配置文件以原子方式创建，update 代理解析不再依赖 JavDB host 设置，非法 proxy 端口和负重试次数会被拒绝，unmark 也会以精确十进制发送大 review ID。 ([#22](https://github.com/FlanChanXwO/javdb-cli/pull/22))
 
 ## 变更
 

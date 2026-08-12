@@ -59,10 +59,13 @@ if err != nil {
 }
 ```
 
-`AutoHostOptions.PreferredHost` 是可选的首验候选，SDK 不负责持久化。当
-`result.ReusedPreferred` 为 true 时 preferred 主机仍有效，调用方无需重写自己的线路缓存。
-`Latency` 是赢家主机单次 `/startup` 请求耗时。选线探测使用零重试，延迟样本不会被重试
-污染；context 取消会立即中止选线。
+`AutoHostOptions.PreferredHost` 会被优先验证。验证成功时，SDK 立即原样返回该主机并令
+`result.ReusedPreferred == true`，不会继续探测或排序其他候选，调用方也无需重写线路缓存。
+只有 preferred 主机不可复用时，SDK 才发现并探测候选，返回最快的成功主机并令
+`ReusedPreferred == false`。SDK 不负责持久化任何结果。`Latency` 是返回主机单次
+`/startup` 请求耗时。选线探测使用零重试，延迟样本不会被重试污染。
+`AutoHostOptions.Timeout` 约束每次探测请求（包括 preferred 主机验证）；零值沿用 transport
+既有的 20 秒默认值。context 取消会立即中止选线。
 
 ## 登录
 

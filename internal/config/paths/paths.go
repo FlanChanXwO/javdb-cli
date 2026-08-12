@@ -80,7 +80,7 @@ func EnsureDefaultConfigFile() error {
 		if written != len(defaultConfigTemplate) {
 			return io.ErrShortWrite
 		}
-		return file.Sync()
+		return nil
 	})
 }
 
@@ -92,21 +92,22 @@ func ensureDefaultConfigFileAt(path string, populate func(*os.File) error) (err 
 	if err := os.Chmod(directory, 0o700); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
+	if _, err := os.Stat(path); err == nil {
 		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
+	file, err := os.CreateTemp(directory, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
-	// 只有写入、同步和关闭全部成功才保留文件，避免首次创建留下半成品。
-	complete := false
+	temporaryPath := file.Name()
+	closed := false
 	defer func() {
-		if complete {
-			return
+		if !closed {
+			err = errors.Join(err, file.Close())
 		}
-		err = errors.Join(err, file.Close())
-		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		if removeErr := os.Remove(temporaryPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			err = errors.Join(err, removeErr)
 		}
 	}()
@@ -116,10 +117,22 @@ func ensureDefaultConfigFileAt(path string, populate func(*os.File) error) (err 
 	if err := populate(file); err != nil {
 		return err
 	}
-	if err := file.Close(); err != nil {
+	if err := file.Sync(); err != nil {
 		return err
 	}
-	complete = true
+	if err := file.Close(); err != nil {
+		closed = true
+		return err
+	}
+	closed = true
+	// 同目录 hard link 以 no-replace 语义原子发布：目标出现时，内容已经写完、同步并关闭；
+	// 并发创建者若已先发布，则保留现有赢家，绝不覆盖用户或另一调用方的完整配置。
+	if err := os.Link(temporaryPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 

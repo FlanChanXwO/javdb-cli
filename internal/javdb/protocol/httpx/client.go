@@ -55,6 +55,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.inner.Do(req)
 }
 
+// CloseIdleConnections 关闭底层 transport 持有的空闲连接。
+func (c *Client) CloseIdleConnections() {
+	c.inner.CloseIdleConnections()
+}
+
 // Get is a convenience GET using context.Background().
 func (c *Client) Get(urlStr string, headers map[string]string) (*http.Response, error) {
 	return c.GetWithContext(context.Background(), urlStr, headers)

@@ -99,7 +99,8 @@ current OS/architecture asset, verify its SHA-256 against the same Release's
 `checksums.txt`, validate the downloaded binary's version, and then replace the
 executable. `--check --json` is the machine-readable, no-write form;
 `--prerelease` includes prerelease tags. A Homebrew installation supports stable
-releases only. The existing `--proxy URL` setting also applies to Release checks.
+releases only. The existing `--proxy URL` setting also applies to Release checks;
+`update` resolves that proxy independently and ignores JavDB host settings.
 
 ### Install with a coding agent
 
@@ -153,8 +154,9 @@ Movie and playback rankings accept `censored`, `uncensored`, `western`, or
 `fc2` as their zone selector; ranking periods use `day`, `week`, or `month`.
 
 The global `--proxy URL` and `--host auto|mirror|main|URL` flags affect only that command.
-The default `auto` host verifies the cached route and re-selects the fastest App API
-host from the startup configuration; a fixed host skips route discovery entirely.
+The default `auto` host reuses the cached route immediately when validation succeeds.
+Only a failed cache validation discovers the startup candidates, selects the fastest
+App API host, and rewrites `~/.javdb-cli/route.json`; a fixed host skips route discovery entirely.
 Use `javdb config get` before relying on persisted settings.
 
 ### Go SDK

@@ -2,7 +2,7 @@
 
 ## Added
 
-- Add automatic API host selection: decrypt startup route data, probe candidate hosts concurrently with cancellable requests, persist the preferred route in a private cache, expose explicit public SDK support, and make auto the CLI default while preserving explicit hosts; validation now rejects blank proxy overrides without side effects, and unmark sends large review IDs as exact decimals. ([#22](https://github.com/FlanChanXwO/javdb-cli/pull/22))
+- Add automatic API host selection: reuse a valid cached route, otherwise probe startup candidates concurrently and persist the fastest host; expose explicit public SDK support and make auto the CLI default while preserving explicit hosts. Configuration creation is atomic, update proxy resolution is independent of JavDB host settings, invalid proxy ports and negative retries are rejected, and unmark sends large review IDs as exact decimals. ([#22](https://github.com/FlanChanXwO/javdb-cli/pull/22))
 
 ## Changed
 

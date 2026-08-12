@@ -63,12 +63,16 @@ if err != nil {
 }
 ```
 
-`AutoHostOptions.PreferredHost` is an optional candidate verified first; the SDK
-does not persist it. When `result.ReusedPreferred` is true the preferred host is
-still valid, so a caller does not need to rewrite its own route cache. `Latency`
-is the winning host's single `/startup` request duration. Selection probes use
-zero retries so latency samples are never polluted by retries, and a cancelled
-context aborts selection immediately.
+`AutoHostOptions.PreferredHost` is verified first. When it succeeds, the SDK
+returns that same host immediately with `result.ReusedPreferred == true`; it does
+not probe or rank the remaining candidates, and the caller does not need to
+rewrite its route cache. Only when the preferred host cannot be reused does the
+SDK discover and probe candidates, then return the fastest successful host with
+`ReusedPreferred == false`. The SDK never persists either result. `Latency` is
+the returned host's single `/startup` request duration. Selection probes use zero
+retries so latency samples are never polluted by retries. `AutoHostOptions.Timeout`
+applies to every probe request, including preferred-host validation; zero uses the
+transport's existing 20-second default. A cancelled context aborts selection immediately.
 
 ## Authentication
 

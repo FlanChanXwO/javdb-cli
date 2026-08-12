@@ -13,7 +13,7 @@ type AutoHostOptions struct {
 	PreferredHost string
 	Proxy         string
 	DeviceUUID    string
-	Timeout       time.Duration
+	Timeout       time.Duration // 每次 probe 请求的 timeout；零值沿用 transport 默认值。
 	Lang          string
 }
 

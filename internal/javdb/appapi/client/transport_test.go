@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+// TestNewRejectsNegativeRetries 验证负重试次数在构造期直接失败，不能进入请求循环。
+func TestNewRejectsNegativeRetries(t *testing.T) {
+	negative := -1
+	if _, err := New(Options{Retries: &negative}); err == nil || !strings.Contains(err.Error(), "non-negative") {
+		t.Fatalf("New() error = %v, want non-negative retries error", err)
+	}
+}
+
 func TestGetJSONMapsEnvelopeErrors(t *testing.T) {
 	tests := []struct {
 		name       string

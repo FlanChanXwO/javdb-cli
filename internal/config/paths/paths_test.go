@@ -126,6 +126,56 @@ func TestEnsureDefaultConfigFileSupportsConcurrentCreation(t *testing.T) {
 	}
 }
 
+// TestEnsureDefaultConfigFilePublishesOnlyCompleteContent 验证慢写入者不会先暴露目标文件；
+// 并发创建者可以发布完整文件，慢写入者完成后也不能覆盖已经发布的内容。
+func TestEnsureDefaultConfigFilePublishesOnlyCompleteContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "config.toml")
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstDone := make(chan error, 1)
+	released := false
+	defer func() {
+		if !released {
+			close(releaseFirst)
+		}
+	}()
+
+	go func() {
+		firstDone <- ensureDefaultConfigFileAt(path, func(file *os.File) error {
+			if _, err := file.WriteString("partial"); err != nil {
+				return err
+			}
+			close(firstStarted)
+			<-releaseFirst
+			_, err := file.WriteString("-first")
+			return err
+		})
+	}()
+	<-firstStarted
+
+	if _, err := os.ReadFile(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ReadFile() before complete publish error = %v, want os.ErrNotExist", err)
+	}
+	if err := ensureDefaultConfigFileAt(path, func(file *os.File) error {
+		_, err := file.WriteString("winner")
+		return err
+	}); err != nil {
+		t.Fatalf("second ensureDefaultConfigFileAt() error = %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "winner" {
+		t.Fatalf("ReadFile() after second publish = %q, %v, want winner", data, err)
+	}
+
+	close(releaseFirst)
+	released = true
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first ensureDefaultConfigFileAt() error = %v", err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "winner" {
+		t.Fatalf("ReadFile() after first completion = %q, %v, want winner", data, err)
+	}
+}
+
 func assertPermissions(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
 	info, err := os.Stat(path)

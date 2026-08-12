@@ -65,6 +65,7 @@ for required_dir in \
 	internal/config/settings \
 	internal/storage/auth \
 	internal/storage/tags \
+	internal/storage/route \
 	scripts/releasenotes \
 	scripts/internal/releasenotes/model \
 	scripts/internal/releasenotes/github \

@@ -60,7 +60,7 @@ HTTP、签名或上游响应解码。目录职责如下：
 - `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update,version}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
-  `commands/update` 同时拥有 proxy 解析、production coordinator 组装与 build info
+  `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info
   获取（未导出 helper）。
 
 ### `sdk/`（`package javdb`）
@@ -99,7 +99,8 @@ App API 不解析终端参数，也不格式化面向用户的输出。
 ### `internal/config`
 
 根目录不建立 Go package；`config/paths` 负责配置目录、config/route/device/tag 路径，
-并以 `O_CREATE|O_EXCL`、私有权限和失败清理安全创建首次基线配置（不覆盖已有文件），
+并以同目录临时文件写入、`Sync`、关闭后 no-replace 原子发布、私有权限和失败清理安全创建
+首次基线配置（并发调用方只会看到完整文件，且不覆盖已有配置），
 `config/settings` 负责 TOML schema、默认值（`host` 缺省为 `auto`）、环境变量和运行时
 合并。调用方直接依赖两个子包。配置优先级必须维持为命令行 flag > 环境变量 > 文件 > 默认值。
 

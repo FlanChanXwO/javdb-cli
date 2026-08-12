@@ -3,9 +3,10 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
@@ -54,15 +55,19 @@ func resolveClientWithAutoHost(options *invocation.RootOptions, ah autoHost) (se
 	if err != nil {
 		return settings.Runtime{}, "", err
 	}
-	// 无副作用的 host/proxy 校验通过后、可能失败的网络选线前创建基线配置。
-	if err := paths.EnsureDefaultConfigFile(); err != nil {
-		return settings.Runtime{}, "", err
-	}
-	baseURL, err := resolveBaseURL(rt, ah)
+	baseURL, err := ensureConfigAndBaseURL(rt, ah)
 	if err != nil {
 		return settings.Runtime{}, "", err
 	}
 	return rt, baseURL, nil
+}
+
+// ensureConfigAndBaseURL 在参数与本地前置检查通过后创建基线配置，再执行可能联网的选线。
+func ensureConfigAndBaseURL(rt settings.Runtime, ah autoHost) (string, error) {
+	if err := paths.EnsureDefaultConfigFile(); err != nil {
+		return "", err
+	}
+	return resolveBaseURL(rt, ah)
 }
 
 // resolveRuntime 解析配置文件、环境变量和根 flags，校验 host 与 proxy，并补齐 device UUID。
@@ -102,7 +107,7 @@ func resolveRuntime(options *invocation.RootOptions) (settings.Runtime, error) {
 // validateProxy 无副作用地校验 proxy URL（不构造 transport、不写本机状态），校验与
 // tls-client transport 的 newConnectDialer 对齐：scheme 支持 http/https/socks4/socks4a/
 // socks5/socks5h，host 必须非空；http/https 缺省端口由 transport 补齐，socks 拨号要求
-// 显式 host:port，显式端口需可被 net.Dial 解析。错误消息只含 Redacted() 后的 URL 或
+// 显式 host:port，显式端口必须是 1–65535 的十进制整数。错误消息只含 Redacted() 后的 URL 或
 // 通用文本，绝不回显可能携带凭据的原始 proxy。
 func validateProxy(proxy string) error {
 	if strings.TrimSpace(proxy) == "" {
@@ -111,7 +116,7 @@ func validateProxy(proxy string) error {
 	u, err := url.Parse(proxy)
 	if err != nil {
 		// url.Parse 的错误会把完整输入（含 userinfo 凭据）带进消息，只能给通用文本。
-		return fmt.Errorf("invalid proxy URL: malformed")
+		return errors.New("invalid proxy URL: malformed")
 	}
 	redacted := u.Redacted()
 	if !u.IsAbs() || u.Hostname() == "" {
@@ -129,7 +134,8 @@ func validateProxy(proxy string) error {
 		return fmt.Errorf("unsupported proxy scheme %q", u.Scheme)
 	}
 	if u.Port() != "" {
-		if _, err := net.LookupPort("tcp", u.Port()); err != nil {
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
 			return fmt.Errorf("invalid proxy URL %q: invalid port", redacted)
 		}
 	}

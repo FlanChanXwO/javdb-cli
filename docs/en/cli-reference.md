@@ -13,7 +13,7 @@ Every remote command accepts these persistent options:
 | Option | Meaning |
 | --- | --- |
 | `--proxy URL` | HTTP(S) proxy for this invocation. |
-| `--host auto\|mirror\|main\|URL` | Select the App API host for this invocation; `auto` (the default) verifies the cached route and re-selects the fastest host from the startup configuration. |
+| `--host auto\|mirror\|main\|URL` | Select the App API host for this invocation; `auto` (the default) immediately reuses a valid cached route and only re-selects the fastest startup candidate when validation fails. |
 
 Configuration precedence is command-line options, then environment, then
 `~/.javdb-cli/config.toml`, then built-in defaults. The configuration commands
@@ -181,8 +181,9 @@ The command preserves the installation channel: Homebrew uses its Formula,
 the matching platform asset. Archive installation verifies the asset SHA-256
 from that Release's `checksums.txt` and runs the downloaded binary's
 `version --json` before replacement. `--prerelease` includes prerelease tags;
-Homebrew installations cannot install those tags. `--proxy` applies to GitHub
-requests; `--host` does not, because update never contacts the JavDB App API.
+Homebrew installations cannot install those tags. `update` resolves `--proxy`
+and proxy configuration independently for GitHub requests. It ignores `--host`,
+`JAVDB_HOST`, and the configured JavDB host because it never contacts the App API.
 
 Development builds (`version=dev`) deliberately refuse self-update. Install a
 published release first. On Windows, a successful replacement leaves the prior

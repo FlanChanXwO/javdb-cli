@@ -349,6 +349,7 @@ func TestValidateProxy(t *testing.T) {
 		{"scheme case insensitive", "SOCKS5://proxy.example:1080", true},
 		{"with credentials", "http://user:pass@proxy.example:7890", true},
 		{"ipv6 host", "http://[::1]:7890", true},
+		{"maximum port", "http://proxy.example:65535", true},
 		{"malformed", "://bad", false},
 		{"relative url", "proxy.example:7890", false},
 		{"missing scheme", "//proxy.example:7890", false},
@@ -358,6 +359,7 @@ func TestValidateProxy(t *testing.T) {
 		{"socks missing port", "socks5://proxy.example", false},
 		{"socks4 missing port", "socks4://proxy.example", false},
 		{"non numeric port", "http://proxy.example:abc", false},
+		{"zero port", "http://proxy.example:0", false},
 		{"out of range port", "http://proxy.example:99999", false},
 	}
 	for _, tc := range cases {

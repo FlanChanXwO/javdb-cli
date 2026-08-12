@@ -58,6 +58,26 @@ func TestResolveProxyUsesConfigPriority(t *testing.T) {
 	}
 }
 
+// TestResolveProxyIgnoresInvalidJavDBHost 验证 update 只依赖 Release 代理配置；即使
+// JAVDB_HOST 对数据命令无效，也不能阻断独立的 GitHub Release 检查。
+func TestResolveProxyIgnoresInvalidJavDBHost(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(home))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(home, filepath.VolumeName(home)))
+	t.Setenv("JAVDB_HOST", "not-a-valid-host")
+	t.Setenv("HTTPS_PROXY", "http://env-proxy.invalid")
+
+	got, err := resolveProxy(&invocation.RootOptions{})
+	if err != nil {
+		t.Fatalf("resolveProxy() error = %v", err)
+	}
+	if got != "http://env-proxy.invalid" {
+		t.Fatalf("resolveProxy() = %q, want environment proxy", got)
+	}
+}
+
 func TestNewProductionCoordinatorOffline(t *testing.T) {
 	coordinator, err := newProductionCoordinator("", io.Discard, io.Discard)
 	if err != nil {

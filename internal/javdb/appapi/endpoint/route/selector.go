@@ -55,11 +55,19 @@ type probeResult struct {
 // NewStartupProbe 构造零重试的 /startup 探测函数。所有 probe 共享同一 effective 网络选项
 // 与稳定 device UUID，不携带 bearer token。
 func NewStartupProbe(opts SelectorOptions) (Probe, error) {
-	return newStartupProbe(opts, client.New)
+	return newStartupProbe(opts, func(options client.Options) (startupProbeClient, error) {
+		return client.New(options)
+	})
 }
 
-// probeTransport 构造零重试签名 transport 的可注入依赖，便于测试区分构造耗时与请求耗时。
-type probeTransport func(opts client.Options) (*client.Client, error)
+// startupProbeClient 是单次 startup probe 使用的最小 transport 契约。
+type startupProbeClient interface {
+	GetJSONContext(context.Context, string, map[string]string, any) error
+	CloseIdleConnections()
+}
+
+// probeTransport 构造零重试签名 transport 的可注入依赖，便于测试资源清理与请求耗时。
+type probeTransport func(opts client.Options) (startupProbeClient, error)
 
 // newStartupProbe 是 NewStartupProbe 的可注入核心。
 func newStartupProbe(opts SelectorOptions, factory probeTransport) (Probe, error) {
@@ -85,6 +93,7 @@ func newStartupProbe(opts SelectorOptions, factory probeTransport) (Probe, error
 		if err != nil {
 			return 0, nil, err
 		}
+		defer t.CloseIdleConnections()
 		if onRequestStart != nil {
 			onRequestStart()
 		}
@@ -283,6 +292,7 @@ func probeBootstraps(ctx context.Context, probe Probe) (bootstraps []probeResult
 		case r := <-results:
 			received++
 			stateMu.Lock()
+			states[r.host].cancel()
 			delete(states, r.host)
 			stateMu.Unlock()
 			if r.err != nil {

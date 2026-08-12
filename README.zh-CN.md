@@ -86,7 +86,7 @@ javdb update
 压缩包更新只下载当前 OS/架构的资产，用同一 Release 的 `checksums.txt` 校验 SHA-256，再验证下载
 二进制报告的版本，最后替换可执行文件。`--check --json` 是机器可读且不写入的检查形式；
 `--prerelease` 会纳入预发布 tag。Homebrew 安装只支持 stable release。现有的 `--proxy URL` 同样
-适用于 Release 检查。
+适用于 Release 检查；`update` 会独立解析该代理并忽略 JavDB host 设置。
 
 ### 让 AI Agent 安装
 
@@ -137,8 +137,9 @@ javdb lists search 巨乳 --zone all --json
 影片榜与播放榜的分区参数可用 `censored`、`uncensored`、`western` 或 `fc2`；
 排行周期使用 `day`、`week` 或 `month`。
 
-全局 `--proxy URL` 与 `--host auto|mirror|main|URL` 仅影响本次命令。默认 `auto` 主机会先验证
-缓存线路，再从 startup 配置中重选最快的 App API 主机；固定主机则完全跳过线路发现。
+全局 `--proxy URL` 与 `--host auto|mirror|main|URL` 仅影响本次命令。默认 `auto` 主机验证缓存
+成功后会立即复用；只有缓存失效时才从 startup 配置发现候选、重选最快 App API 主机并改写
+`~/.javdb-cli/route.json`。固定主机完全跳过线路发现。
 依赖持久化设置前先执行 `javdb config get` 查看有效配置。
 
 ### Go SDK

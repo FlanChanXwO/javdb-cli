@@ -52,6 +52,34 @@ func TestResolveNormalizesEffectiveHost(t *testing.T) {
 	}
 }
 
+// TestResolveBlankEffectiveHostUsesAuto 覆盖 config/env/flag 三条入口：仅由空白组成的 host
+// 与未设置 host 语义一致，统一回到 auto，不能留下 Host/BaseURL 都为空的无效运行时。
+func TestResolveBlankEffectiveHostUsesAuto(t *testing.T) {
+	tests := []struct {
+		name     string
+		fileHost string
+		envHost  string
+		flagHost string
+	}{
+		{name: "file", fileHost: "   "},
+		{name: "environment", fileHost: HostMain, envHost: "   "},
+		{name: "flag", fileHost: HostMain, envHost: HostMirror, flagHost: "   "},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("JAVDB_HOST", tc.envHost)
+			rt, err := Resolve(Settings{Host: tc.fileHost}, tc.flagHost, "", nil)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+			if rt.Host != HostAuto || rt.BaseURL != "" {
+				t.Fatalf("Resolve() host/base = %q/%q, want %q/empty", rt.Host, rt.BaseURL, HostAuto)
+			}
+		})
+	}
+}
+
 // TestResolveBlankProxyHandling 覆盖 config/env/flag 三条入口的空白 proxy 语义：config/env
 // 来源的空白规范为空串（与 validator 的"空即合法"一致），显式 flag 空白则直接报错，避免
 // 静默覆盖继承代理并直连绕过网络策略。
