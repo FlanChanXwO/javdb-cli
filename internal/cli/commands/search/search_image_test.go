@@ -76,6 +76,7 @@ func TestSearchImagePathAutoDetectsAndOutputsMatches(t *testing.T) {
 	}
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	streams.InIsTerminal = true
 	err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL},
 		imagePath, "--source", "test", "--no-cache")
 	// 部分失败（GHOST-999 无法解析）必须在输出完成后非零。
@@ -143,8 +144,12 @@ func TestSearchImageFromStdinMagic(t *testing.T) {
 		t.Fatal("partial failure must exit non-zero")
 	}
 	out := streams.Out.(*bytes.Buffer).String()
-	if !strings.Contains(out, "SSIS-589") {
-		t.Errorf("stdin image output lacks candidate:\n%s", out)
+	// 非 TTY 管道默认 JSONL 信封；成功项 movie 信封、失败项 error 信封。
+	if !strings.Contains(out, `"kind":"movie"`) || !strings.Contains(out, "SSIS-589") {
+		t.Errorf("stdin image JSONL output lacks movie envelope:\n%s", out)
+	}
+	if !strings.Contains(out, `"kind":"error"`) {
+		t.Errorf("stdin image JSONL output lacks error envelope:\n%s", out)
 	}
 }
 

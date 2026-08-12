@@ -131,11 +131,13 @@ Flags:
   -h, --help               help for search
       --image              Treat the argument as an image path or HTTP(S) URL
       --json               Machine-readable JSON
+      --jsonl              Pipeline JSONL envelopes
       --limit int          Page size (0 = server default)
       --no-cache           Bypass the reverse-search response cache
       --page int           Page number (default 1)
       --sort string        relevance|release|score|update|hit
       --source string      Reverse-search source (default: reverse_search.default_source)
+      --text               Plain text lines (default for TTY)
       --type string        movie|code|series|actor|maker|director|list
       --zone string        censored|uncensored|western|fc2|all (default "censored")
 
@@ -405,5 +407,29 @@ func TestConfigSetPersistsHostValue(t *testing.T) {
 	}
 	if got := strings.TrimSpace(out.String()); got != "main" {
 		t.Fatalf("host after set = %q, want %q", got, "main")
+	}
+}
+
+// errorReader 在读取时显式报错，用于证明命令不会误读 stdin。
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("stdin must not be read")
+}
+
+// TestHelpCompletionAndZeroArgCommandsDoNotReadStdin 锁定管道 stdin 所有权：
+// help、completion 与零参数命令在非 TTY stdin 有内容时也不得消费输入。
+func TestHelpCompletionAndZeroArgCommandsDoNotReadStdin(t *testing.T) {
+	for _, args := range [][]string{
+		{"--help"},
+		{"completion", "bash"},
+		{"version"},
+		{"rankings", "--help"},
+	} {
+		var out, errb bytes.Buffer
+		code := Run(args, errorReader{}, &out, &errb)
+		if code != 0 {
+			t.Fatalf("%v: code=%d err=%s", args, code, errb.String())
+		}
 	}
 }

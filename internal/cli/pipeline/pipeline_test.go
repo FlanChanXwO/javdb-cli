@@ -1,0 +1,256 @@
+package pipeline
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+var testJPEG = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00}
+
+func TestEnvelopeValidate(t *testing.T) {
+	valid := New(KindMovie, "SSIS-589", "9DGB5X")
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid envelope rejected: %v", err)
+	}
+	for _, tc := range []struct {
+		name     string
+		envelope Envelope
+	}{
+		{name: "wrong schema", envelope: Envelope{Schema: "other", Kind: KindMovie, Ref: "x"}},
+		{name: "unknown kind", envelope: Envelope{Schema: Schema, Kind: "ghost", Ref: "x"}},
+		{name: "no ref and id", envelope: Envelope{Schema: Schema, Kind: KindMovie}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.envelope.Validate(); err == nil {
+				t.Fatal("invalid envelope accepted")
+			}
+		})
+	}
+}
+
+func TestDecodeJSONL(t *testing.T) {
+	envelope, err := DecodeJSONL(`{"schema":"javdb.pipeline/v1","kind":"movie","ref":"SSIS-589","id":"9DGB5X"}`)
+	if err != nil {
+		t.Fatalf("DecodeJSONL: %v", err)
+	}
+	if envelope.Ref != "SSIS-589" || envelope.ID != "9DGB5X" {
+		t.Errorf("envelope = %+v", envelope)
+	}
+
+	// meta/data 保留。
+	envelope, err = DecodeJSONL(`{"schema":"javdb.pipeline/v1","kind":"movie","ref":"x","meta":{"source":"builtin"}}`)
+	if err != nil {
+		t.Fatalf("DecodeJSONL with meta: %v", err)
+	}
+	if envelope.Meta["source"] != "builtin" {
+		t.Errorf("meta lost: %+v", envelope.Meta)
+	}
+
+	for _, tc := range []struct {
+		name string
+		line string
+	}{
+		{name: "empty", line: "  "},
+		{name: "not json", line: "plain text"},
+		{name: "array", line: `[1,2]`},
+		{name: "wrong schema", line: `{"schema":"other","kind":"movie","ref":"x"}`},
+		{name: "trailing data", line: `{"schema":"javdb.pipeline/v1","kind":"movie","ref":"x"} extra`},
+		{name: "no ref", line: `{"schema":"javdb.pipeline/v1","kind":"movie"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := DecodeJSONL(tc.line); err == nil {
+				t.Fatal("DecodeJSONL accepted invalid line")
+			}
+		})
+	}
+}
+
+func TestParseBatchTextAndJSONL(t *testing.T) {
+	text, err := ParseBatch([]byte("SSIS-589\nHZGD-246\n"), KindMovie)
+	if err != nil {
+		t.Fatalf("ParseBatch text: %v", err)
+	}
+	if len(text) != 2 || text[0].Ref != "SSIS-589" || text[1].Kind != KindMovie {
+		t.Errorf("text batch = %+v", text)
+	}
+
+	jsonl, err := ParseBatch([]byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n"), KindJSONLInput)
+	if err != nil {
+		t.Fatalf("ParseBatch jsonl: %v", err)
+	}
+	if len(jsonl) != 2 || jsonl[0].Ref != "a" || jsonl[1].Ref != "b" {
+		t.Errorf("jsonl batch = %+v", jsonl)
+	}
+
+	// 混合/非法行必须带行号报错。
+	if _, err := ParseBatch([]byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\ngarbage\n"), KindJSONLInput); err == nil || !strings.Contains(err.Error(), "line 2") {
+		t.Fatalf("mixed batch error = %v", err)
+	}
+}
+
+func TestClassifyImageJSONLText(t *testing.T) {
+	// 图片 magic 优先。
+	classification, content, err := Classify(bufio.NewReader(bytes.NewReader(testJPEG)))
+	if err != nil || classification != ClassificationImage {
+		t.Fatalf("image classification = %v err=%v", classification, err)
+	}
+	_ = content
+
+	// JSONL。
+	jsonl := []byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n")
+	classification, content, err = Classify(bufio.NewReader(bytes.NewReader(jsonl)))
+	if err != nil || classification != ClassificationJSONL {
+		t.Fatalf("jsonl classification = %v err=%v", classification, err)
+	}
+	if !bytes.Equal(content, jsonl) {
+		t.Error("jsonl content not preserved")
+	}
+
+	// 文本。
+	classification, content, err = Classify(bufio.NewReader(strings.NewReader("SSIS-589\nHZGD-246\n")))
+	if err != nil || classification != ClassificationText {
+		t.Fatalf("text classification = %v err=%v", classification, err)
+	}
+
+	// 空输入是文本。
+	classification, _, err = Classify(bufio.NewReader(strings.NewReader("")))
+	if err != nil || classification != ClassificationText {
+		t.Fatalf("empty classification = %v err=%v", classification, err)
+	}
+}
+
+func TestResolveOutputMode(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		jsonl     bool
+		text      bool
+		json      bool
+		terminal  bool
+		want      OutputMode
+		wantError bool
+	}{
+		{name: "default tty", terminal: true, want: OutputText},
+		{name: "default pipe", terminal: false, want: OutputJSONL},
+		{name: "explicit jsonl", jsonl: true, terminal: true, want: OutputJSONL},
+		{name: "explicit text", text: true, terminal: false, want: OutputText},
+		{name: "explicit json", json: true, terminal: false, want: OutputJSON},
+		{name: "jsonl and json", jsonl: true, json: true, wantError: true},
+		{name: "all three", jsonl: true, text: true, json: true, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mode, err := ResolveOutputMode(tc.jsonl, tc.text, tc.json, tc.terminal)
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected mutual exclusion error")
+				}
+				return
+			}
+			if err != nil || mode != tc.want {
+				t.Fatalf("mode = %v err = %v, want %v", mode, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestWriterModes(t *testing.T) {
+	envelope := New(KindMovie, "SSIS-589", "9DGB5X")
+
+	// JSONL：每行一个信封。
+	var jsonlOut bytes.Buffer
+	jsonlWriter := NewWriter(&jsonlOut, OutputJSONL)
+	if err := jsonlWriter.Write(envelope); err != nil {
+		t.Fatal(err)
+	}
+	if err := jsonlWriter.Write(envelope.WithData(map[string]any{"n": 1})); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(jsonlOut.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("jsonl lines = %d", len(lines))
+	}
+	var parsed Envelope
+	if err := json.Unmarshal([]byte(lines[0]), &parsed); err != nil || parsed.Schema != Schema {
+		t.Fatalf("jsonl line invalid: %v", err)
+	}
+
+	// Text：逐行 ref。
+	var textOut bytes.Buffer
+	textWriter := NewWriter(&textOut, OutputText)
+	if err := textWriter.Write(envelope); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(textOut.String()) != "SSIS-589" {
+		t.Errorf("text output = %q", textOut.String())
+	}
+
+	// JSON：单项对象，多项数组。
+	var singleOut bytes.Buffer
+	singleWriter := NewWriter(&singleOut, OutputJSON)
+	if err := singleWriter.Write(envelope); err != nil {
+		t.Fatal(err)
+	}
+	if err := singleWriter.Finish(); err != nil {
+		t.Fatal(err)
+	}
+	var object map[string]any
+	if err := json.Unmarshal(singleOut.Bytes(), &object); err != nil || object["ref"] != "SSIS-589" {
+		t.Fatalf("single json output = %q err=%v", singleOut.String(), err)
+	}
+
+	var multiOut bytes.Buffer
+	multiWriter := NewWriter(&multiOut, OutputJSON)
+	if err := multiWriter.Write(envelope); err != nil {
+		t.Fatal(err)
+	}
+	if err := multiWriter.Write(New(KindMovie, "HZGD-246", "")); err != nil {
+		t.Fatal(err)
+	}
+	if err := multiWriter.Finish(); err != nil {
+		t.Fatal(err)
+	}
+	var array []map[string]any
+	if err := json.Unmarshal(multiOut.Bytes(), &array); err != nil || len(array) != 2 {
+		t.Fatalf("multi json output = %q err=%v", multiOut.String(), err)
+	}
+}
+
+func TestRunBatchOrderErrorsAndExit(t *testing.T) {
+	var out bytes.Buffer
+	writer := NewWriter(&out, OutputJSONL)
+	inputs := []Envelope{
+		New(KindMovie, "a", ""),
+		New(KindMovie, "b", ""),
+		New(KindMovie, "c", ""),
+	}
+	failures, err := RunBatch(writer, inputs, "test", func(input Envelope) (Envelope, error) {
+		if input.Ref == "b" {
+			return Envelope{}, testError("boom")
+		}
+		return New(KindMovie, input.Ref+"-ok", ""), nil
+	})
+	if err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if failures != 1 {
+		t.Fatalf("failures = %d, want 1", failures)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("output lines = %d, want 3 (all items emitted)", len(lines))
+	}
+	// 原位错误信封出现在失败项的位置。
+	var second Envelope
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.Kind != KindError || second.Ref != "b" || second.Data["message"] != "boom" {
+		t.Errorf("in-place error envelope = %+v", second)
+	}
+}
+
+type testError string
+
+func (e testError) Error() string { return string(e) }

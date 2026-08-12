@@ -14,6 +14,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/image"
@@ -28,6 +29,8 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		filterBy, typ string
 		hasMagnets    bool
 		asJSON        bool
+		asJSONL       bool
+		asText        bool
 		asImage       bool
 		source        string
 		noCache       bool
@@ -37,6 +40,10 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Search movies (or other dimensions with --type)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			mode, err := pipeline.ResolveOutputMode(asJSONL, asText, asJSON, streams.InIsTerminal)
+			if err != nil {
+				return err
+			}
 			reader := bufio.NewReader(streams.In)
 			arg := ""
 			if len(args) == 1 {
@@ -47,7 +54,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				return err
 			}
 			if imageMode {
-				return runImageSearch(options, streams, arg, reader, source, noCache, asJSON)
+				return runImageSearch(options, streams, arg, reader, source, noCache, mode)
 			}
 			if arg == "" {
 				return fmt.Errorf("keyword or an image")
@@ -63,6 +70,8 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().StringVar(&typ, "type", "", "movie|code|series|actor|maker|director|list")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop movie rows with magnets_count == 0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 	cmd.Flags().BoolVar(&asImage, "image", false, "Treat the argument as an image path or HTTP(S) URL")
 	cmd.Flags().StringVar(&source, "source", "", "Reverse-search source (default: reverse_search.default_source)")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Bypass the reverse-search response cache")
@@ -71,7 +80,8 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 
 // decideImageMode 决定本次调用是否进入图片模式：
 //   - --image 强制；参数是现有普通文件或 HTTP(S) URL 自动进入。
-//   - 无参数且 stdin 非 TTY 时按图片 magic 分类（JSONL/文本在 pipeline 阶段扩展）。
+//   - 无参数且 stdin 非 TTY 时按固定顺序分类（图片 magic → JSONL → 文本），
+//     本阶段只消费图片；JSONL/文本批处理由 pipeline 阶段接入。
 //   - 位置参数与非空 stdin 同时存在是歧义错误，绝不静默丢数据。
 func decideImageMode(arg string, forced bool, reader *bufio.Reader, streams *invocation.Streams) (bool, error) {
 	stdinHasContent := false
@@ -100,15 +110,14 @@ func decideImageMode(arg string, forced bool, reader *bufio.Reader, streams *inv
 	if !stdinHasContent {
 		return false, fmt.Errorf("keyword or an image")
 	}
-	// stdin 只按真实 magic 分类；未知二进制与文本显式失败，不回退。
-	header, err := reader.Peek(image.DetectHeaderSize())
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, fmt.Errorf("read stdin: %w", err)
+	classification, _, err := pipeline.Classify(reader)
+	if err != nil {
+		return false, err
 	}
-	if image.DetectFormat(header) == image.Unknown {
-		return false, fmt.Errorf("stdin is not a JPEG, PNG or WEBP image")
+	if classification == pipeline.ClassificationImage {
+		return true, nil
 	}
-	return true, nil
+	return false, fmt.Errorf("stdin is not a JPEG, PNG or WEBP image")
 }
 
 func isHTTPURL(value string) bool {
@@ -160,7 +169,7 @@ func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams,
 // runImageSearch 执行以图搜番：读取并校验原始图片（路径/URL/stdin），调用
 // 公开 SDK 反搜+严格联动，输出候选、相似度、帧、匹配详情与逐项错误。
 // provider 顶层失败直接报错；候选部分失败在完成输出后返回非零。
-func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache, asJSON bool) error {
+func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode) error {
 	setup, err := client.NewReverseSearchClient(options, "", source)
 	if err != nil {
 		return err
@@ -179,15 +188,34 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 		// provider 顶层失败：不伪造空结果。
 		return fmt.Errorf("reverse search failed: %w", err)
 	}
-	if asJSON {
+	switch mode {
+	case pipeline.OutputJSON:
 		if err := writeJSON(streams.Out, map[string]any{
 			"reverse_search": result.ReverseSearch,
 			"matches":        result.Matches,
 		}); err != nil {
 			return err
 		}
-	} else if err := writeImageSearchText(streams.Out, result); err != nil {
-		return err
+	case pipeline.OutputJSONL:
+		writer := pipeline.NewWriter(streams.Out, pipeline.OutputJSONL)
+		for _, match := range result.Matches {
+			if match.Error != nil {
+				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMovie, match.Candidate.VideoCode, match.MovieID), "search", "link", match.Error.Code, match.Error.Message)); err != nil {
+					return err
+				}
+				continue
+			}
+			envelope := pipeline.New(pipeline.KindMovie, match.Candidate.VideoCode, match.MovieID).
+				WithData(map[string]any{"movie": match.Movie, "similarity": match.Candidate.Similarity}).
+				WithMeta(map[string]any{"reverse_search": map[string]any{"source": result.ReverseSearch.Source, "candidates": result.ReverseSearch.Candidates}})
+			if err := writer.Write(envelope); err != nil {
+				return err
+			}
+		}
+	default:
+		if err := writeImageSearchText(streams.Out, result); err != nil {
+			return err
+		}
 	}
 	if failures := countImageFailures(result); failures > 0 {
 		return fmt.Errorf("reverse search completed with %d of %d candidates failed", failures, len(result.Matches))
