@@ -71,9 +71,7 @@ func fakeProbe(specs map[string]probeSpec, rec *recorder) Probe {
 			}
 		}
 		if onRequestStart != nil {
-			if onRequestStart != nil {
-				onRequestStart()
-			}
+			onRequestStart()
 		}
 		if spec.err != nil {
 			return spec.latency, nil, spec.err
