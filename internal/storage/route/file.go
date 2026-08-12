@@ -14,10 +14,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // ErrEmptyHost 表示缓存 host 为空。
 var ErrEmptyHost = errors.New("route cache host is empty")
+
+// cacheFileMu 防止 Windows 在 Load 持有读句柄时拒绝 Save 的原子替换，并串行化并发替换。
+var cacheFileMu sync.RWMutex
 
 // Document 是 route.json 的磁盘 schema。
 type Document struct {
@@ -27,7 +31,9 @@ type Document struct {
 // Load 读取 route cache。缺失文件返回 ok=false、无错误；损坏 JSON、未知字段、空 host 或
 // 非法 URL 返回显式错误。
 func Load(path string) (Document, bool, error) {
+	cacheFileMu.RLock()
 	data, err := os.ReadFile(path)
+	cacheFileMu.RUnlock()
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Document{}, false, nil
@@ -88,7 +94,10 @@ func Save(path string, doc Document) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("route cache: close temp: %w", err)
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	cacheFileMu.Lock()
+	err = os.Rename(temporaryPath, path)
+	cacheFileMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("route cache: replace %s: %w", path, err)
 	}
 	complete = true
