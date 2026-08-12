@@ -51,6 +51,7 @@ for required_dir in \
 	internal/javdb/appapi/endpoint/magnets \
 	internal/javdb/appapi/endpoint/movie \
 	internal/javdb/appapi/endpoint/rankings \
+	internal/javdb/appapi/endpoint/route \
 	internal/javdb/appapi/endpoint/search \
 	internal/javdb/appapi/endpoint/user \
 	internal/javdb/protocol/httpx \
@@ -64,6 +65,7 @@ for required_dir in \
 	internal/config/settings \
 	internal/storage/auth \
 	internal/storage/tags \
+	internal/storage/route \
 	scripts/releasenotes \
 	scripts/internal/releasenotes/model \
 	scripts/internal/releasenotes/github \

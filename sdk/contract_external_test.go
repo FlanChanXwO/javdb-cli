@@ -2,6 +2,7 @@ package javdb_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -33,6 +34,11 @@ var (
 	_ func(m map[string]any) string                                          = javdb.MagnetURI
 	_ func(period string) string                                             = javdb.RankingPeriod
 	_ func(period string) string                                             = javdb.ActorPeriod
+
+	// 自动选线公开函数与类型（显式联网；javdb.New 保持无网络）。
+	_ func(ctx context.Context, options javdb.AutoHostOptions) (javdb.AutoHostResult, error) = javdb.SelectAutoHost
+	_ javdb.AutoHostOptions                                                                  = javdb.AutoHostOptions{}
+	_ javdb.AutoHostResult                                                                   = javdb.AutoHostResult{}
 )
 
 // ---- Client 方法签名（编译期） ----
@@ -114,6 +120,17 @@ func TestExternalNewBuildsClientWithoutNetwork(t *testing.T) {
 	}
 	if api := client.API(); api == nil {
 		t.Fatal("API() returned nil")
+	}
+}
+
+// TestExternalSelectAutoHostWiringWithoutNetwork 验证公开 SelectAutoHost 已接入内部选线：
+// 已取消的 context 会快速返回取消错误，不发真实网络请求、不悬挂。
+func TestExternalSelectAutoHostWiringWithoutNetwork(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := javdb.SelectAutoHost(ctx, javdb.AutoHostOptions{PreferredHost: "https://apidd.spthgb.com"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("SelectAutoHost error = %v, want context.Canceled", err)
 	}
 }
 

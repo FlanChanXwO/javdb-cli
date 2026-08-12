@@ -121,6 +121,20 @@ func (e *UserEndpoint) Mark(movieID, status string, score int, content string) (
 	return out, nil
 }
 
+// reviewID 把 detail 响应里的 review id 格式化为十进制字符串。review id 是大整数，经
+// map[string]any 解码后是 float64，若用 fmt.Sprint 会输出科学计数法（如 2.44850177e+08），
+// 导致 DELETE 打到不存在的 review 而被服务端拒绝；这里经 scalar.Int64 取整后再格式化。
+func reviewID(rev map[string]any) string {
+	if rev == nil {
+		return ""
+	}
+	id, ok := scalar.Int64(rev["id"])
+	if !ok || id <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
+}
+
 // Unmark deletes the user's review for a movie. Returns false if none.
 func (e *UserEndpoint) Unmark(movieID string) (bool, error) {
 	detail, err := e.movie.MovieDetail(movieID)
@@ -138,7 +152,7 @@ func (e *UserEndpoint) Unmark(movieID string) (bool, error) {
 	if rev == nil {
 		return false, nil
 	}
-	rid := scalar.String(rev["id"])
+	rid := reviewID(rev)
 	if rid == "" {
 		return false, nil
 	}

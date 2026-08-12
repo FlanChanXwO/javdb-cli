@@ -48,7 +48,7 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		SilenceUsage:  true,
 	}
 	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
-	command.PersistentFlags().StringVar(&options.Host, "host", "", "mirror|main (default: config or mirror)")
+	command.PersistentFlags().StringVar(&options.Host, "host", "", "auto|mirror|main|URL (default: config or auto)")
 
 	// 保持原 root.go 的 AddCommand 顺序，避免 help 与 completion 输出漂移。
 	command.AddCommand(authcmd.New(options, streams))

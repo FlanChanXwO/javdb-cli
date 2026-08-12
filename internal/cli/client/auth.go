@@ -12,7 +12,9 @@ import (
 )
 
 // WithRequiredAuth 使用默认账户 token 执行 fn；按配置决定是否自动重新登录。
-// 错误文本与既有 WithAuthedClient 逐字一致；errOut == nil 时不写提示。
+// 本地账号/token 前置检查先于线路选择：断网或代理不可用时仍先报"请先登录"类错误，
+// 不会因自动选线失败而掩盖认证缺失。错误文本与既有 WithAuthedClient 逐字一致；
+// errOut == nil 时不写提示。
 func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func(*javdb.Client) error) error {
 	rt, err := resolveRuntime(options)
 	if err != nil {
@@ -29,7 +31,12 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 	if acc.Token == "" {
 		return fmt.Errorf("default account has no token; run: javdb auth login")
 	}
-	c, err := buildClient(rt, acc.Token)
+	// host/proxy 无副作用校验与本地检查都通过后再创建基线配置，随后执行可能失败的网络选线。
+	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return err
+	}
+	c, err := buildClient(rt, baseURL, acc.Token)
 	if err != nil {
 		return err
 	}
@@ -51,7 +58,7 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 		fmt.Fprintln(errOut, "缓存 token 已失效，重新登录…")
 	}
 	// re-login
-	c2, err := buildClient(rt, "")
+	c2, err := buildClient(rt, baseURL, "")
 	if err != nil {
 		return err
 	}
@@ -71,6 +78,7 @@ func WithRequiredAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 }
 
 // WithOptionalAuth 在有 token 时携带默认账户，否则匿名执行；认证失败时保留原有匿名重试。
+// 本地 token 读取先于线路选择，避免只读/匿名命令在离线时被选线失败阻断。
 func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func(*javdb.Client) error) error {
 	rt, err := resolveRuntime(options)
 	if err != nil {
@@ -82,7 +90,11 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 			token = acc.Token
 		}
 	}
-	c, err := buildClient(rt, token)
+	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return err
+	}
+	c, err := buildClient(rt, baseURL, token)
 	if err != nil {
 		return err
 	}
@@ -97,7 +109,7 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 	if errOut != nil {
 		fmt.Fprintln(errOut, "token 无效，改用匿名请求…")
 	}
-	c2, err := buildClient(rt, "")
+	c2, err := buildClient(rt, baseURL, "")
 	if err != nil {
 		return err
 	}

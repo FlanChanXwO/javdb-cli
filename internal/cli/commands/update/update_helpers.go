@@ -25,8 +25,12 @@ func resolveProxy(options *invocation.RootOptions) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("load update configuration: %w", err)
 	}
-	// update 访问 GitHub Releases，与 JavDB host 无关；沿用同一 proxy 优先级。
-	return settings.Resolve(cfg, "", options.Proxy, nil).Proxy, nil
+	// update 访问 GitHub Releases，与 JavDB host 无关；只沿用同一 proxy 优先级。
+	proxy, err := settings.ResolveProxy(cfg, options.Proxy)
+	if err != nil {
+		return "", fmt.Errorf("resolve update configuration: %w", err)
+	}
+	return proxy, nil
 }
 
 // newProductionCoordinator 组装显式、可离线测试的 update 依赖。

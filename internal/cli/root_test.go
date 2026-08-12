@@ -2,9 +2,23 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// isolateHome 把 HOME 指向临时目录，避免配置创建测试污染真实本机状态。
+func isolateHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(home))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(home, filepath.VolumeName(home)))
+	return home
+}
 
 // CLI 根契约测试（package cli，经 New/Run 组装最终命令树）。
 //
@@ -50,7 +64,7 @@ Available Commands:
 
 Flags:
   -h, --help           help for javdb
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb [command] --help" for more information about a command.
@@ -84,7 +98,7 @@ Flags:
       --json   Machine-readable JSON
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"update", `Check for or install updates
@@ -102,7 +116,7 @@ Flags:
       --prerelease   Include prerelease updates
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"search", `Search movies (or other dimensions with --type)
@@ -122,7 +136,7 @@ Flags:
       --zone string        censored|uncensored|western|fc2|all (default "censored")
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"detail", `Show movie detail (graph ids for agent navigation)
@@ -137,7 +151,7 @@ Flags:
       --magnets   Also list magnet links
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"magnets", `List magnet links for a movie
@@ -155,7 +169,7 @@ Flags:
       --min-size string   Min size e.g. 2000, 4GB, 500MB
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"mark", `Mark a movie as 看過 (--watched) or 想看 (--want)
@@ -172,7 +186,7 @@ Flags:
       --watched          Mark as 看過
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"lists", `My 合集; subcommands: show/search/related
@@ -194,7 +208,7 @@ Flags:
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb lists [command] --help" for more information about a command.
@@ -213,7 +227,7 @@ Flags:
   -h, --help   help for rankings
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb rankings [command] --help" for more information about a command.
@@ -234,7 +248,7 @@ Flags:
   -h, --help   help for auth
 
 Global Flags:
-      --host string    mirror|main (default: config or mirror)
+      --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb auth [command] --help" for more information about a command.
@@ -266,13 +280,14 @@ func TestPersistentFlagsLocked(t *testing.T) {
 	if host == nil {
 		t.Fatal("missing --host")
 	}
-	if host.DefValue != "" || host.Usage != "mirror|main (default: config or mirror)" {
+	if host.DefValue != "" || host.Usage != "auto|mirror|main|URL (default: config or auto)" {
 		t.Fatalf("host flag = def %q usage %q", host.DefValue, host.Usage)
 	}
 }
 
 // 无网络前置参数错误：任何远程请求发生前就必须失败并给出确定文本与 exit code。
 func TestNoNetworkParameterErrorsExact(t *testing.T) {
+	isolateHome(t) // update --json 会先经过配置创建 hook，隔离 HOME 避免污染真实本机状态
 	cases := []struct {
 		args []string
 		want string
@@ -314,5 +329,77 @@ func TestRootCommandSetMatchesHelp(t *testing.T) {
 		if !strings.Contains(out.String(), "  "+name+" ") {
 			t.Fatalf("root help missing command %q", name)
 		}
+	}
+}
+
+// 配置创建触发矩阵：只有真正执行的普通命令与 config path/get/set 会首次创建配置。
+// help、裸命令、version、completion、参数校验失败和缺失配置上的 unset 都不落盘。
+func TestConfigCreationTriggerMatrix(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		creates bool
+	}{
+		{"config path creates", []string{"config", "path"}, true},
+		{"config get creates", []string{"config", "get"}, true},
+		{"config set creates", []string{"config", "set", "host", "main"}, true},
+		{"normal command creates", []string{"auth", "list"}, true},
+		{"remote command creates", []string{"search", "test", "--host", "http://127.0.0.1:1"}, true},
+		{"help flag no create", []string{"--help"}, false},
+		{"help command no create", []string{"help"}, false},
+		{"help command target no create", []string{"help", "search"}, false},
+		{"bare command no create", []string{}, false},
+		{"parent command no create", []string{"config"}, false},
+		{"version no create", []string{"version"}, false},
+		{"completion no create", []string{"completion", "bash"}, false},
+		{"complete probe no create", []string{"__complete", "search", ""}, false},
+		{"arg validation failure no create", []string{"search"}, false},
+		{"unknown command no create", []string{"frobnicate"}, false},
+		{"config unset missing no create", []string{"config", "unset", "host"}, false},
+		{"invalid host no create", []string{"search", "test", "--host", "bogus"}, false},
+		{"invalid host scheme no create", []string{"search", "test", "--host", "ftp://x.example"}, false},
+		{"illegal flag combo no create", []string{"update", "--json"}, false},
+		{"invalid config key no create", []string{"config", "get", "bogus"}, false},
+		{"invalid config value no create", []string{"config", "set", "host", "bogus"}, false},
+		{"download without output flag no create", []string{"download", "ABC-123"}, false},
+		{"invalid proxy no create", []string{"search", "test", "--host", "mirror", "--proxy", "://bad"}, false},
+		{"blank proxy flag no create", []string{"search", "test", "--host", "mirror", "--proxy", "   "}, false},
+		{"invalid proxy empty host no create", []string{"search", "test", "--host", "mirror", "--proxy", "http://:8080"}, false},
+		{"invalid proxy socks missing port no create", []string{"search", "test", "--host", "mirror", "--proxy", "socks5://proxy.example"}, false},
+		{"socks4 proxy creates", []string{"search", "test", "--host", "mirror", "--proxy", "socks4://127.0.0.1:1"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := isolateHome(t)
+			var out, errb bytes.Buffer
+			Run(tc.args, strings.NewReader(""), &out, &errb)
+			path := filepath.Join(home, ".javdb-cli", "config.toml")
+			_, err := os.Stat(path)
+			if tc.creates && errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%v: expected config.toml to be created", tc.args)
+			}
+			if !tc.creates && err == nil {
+				t.Fatalf("%v: expected config.toml NOT to be created (stderr=%q)", tc.args, errb.String())
+			}
+		})
+	}
+}
+
+// config set 先经根 hook 创建基线，再写入目标值；后续读取必须看到该值。
+func TestConfigSetPersistsHostValue(t *testing.T) {
+	isolateHome(t)
+	var out, errb bytes.Buffer
+	code := Run([]string{"config", "set", "host", "main"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("config set exit=%d stderr=%q", code, errb.String())
+	}
+	out.Reset()
+	errb.Reset()
+	code = Run([]string{"config", "get", "host"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("config get exit=%d stderr=%q", code, errb.String())
+	}
+	if got := strings.TrimSpace(out.String()); got != "main" {
+		t.Fatalf("host after set = %q, want %q", got, "main")
 	}
 }

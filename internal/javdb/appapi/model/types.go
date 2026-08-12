@@ -52,6 +52,9 @@ type Options struct {
 	Proxy      string
 	Timeout    time.Duration
 	Lang       string
+	// Retries 覆盖普通请求的默认重试次数。nil 表示使用默认（2 次）；显式 0 用于测速等
+	// 需要单次真实请求的探测场景。该内部设置不进入公开 SDK 的自动选线接口。
+	Retries *int
 	// Device profile（可选覆盖项）。
 	AppChannel    string
 	SystemVersion string

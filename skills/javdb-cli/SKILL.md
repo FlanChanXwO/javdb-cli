@@ -94,8 +94,11 @@ javdb unmark SSIS-589
 ```
 
 所有数据命令可加的全局参数只有本次调用生效：`--proxy URL` 与
-`--host mirror|main`。实现也接受用户明确批准的绝对 API URL；不要把未审阅的
-URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `config.toml` > 默认值。
+`--host auto|mirror|main|URL`。`--proxy` 支持 http/https/socks4/socks4a/socks5/socks5h，
+必须带 host（socks 还需显式端口）；显式传入的空白值会直接报错，而不是静默覆盖继承代理后直连。
+默认 `auto` 验证缓存线路成功后会立即复用；只有缓存失效时才从 startup 配置发现候选、重选
+最快主机并改写 `~/.javdb-cli/route.json`；固定 `mirror`/`main`/绝对 URL 完全跳过线路发现。
+不要把未审阅的 URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `config.toml` > 默认值。
 
 ## 关键语义与常见陷阱
 
@@ -105,7 +108,7 @@ URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `conf
 4. `tags` 的首次调用可能联网建立缓存；`--refresh` 会明确覆写该缓存。标签参数可用 ID、英文名或中文名，优先使用刚读取到的确切值。
 5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。
 6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
-7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
+7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会独立解析 Release 代理并忽略 `--host`、`JAVDB_HOST` 与已配置 host，再按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
 9. `download NUMBER` 也默认解析番号。`--thumbnail` 保存缩略图；`--preview-image` 只取 `preview_images[0]`，不会选择后续图片；`--preview-video` 需要已结束的单媒体 HLS 预览流。下载失败时如实报告，不能把已包装的图片字节或不完整视频当作成功结果。
 10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。

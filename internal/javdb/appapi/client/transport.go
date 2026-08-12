@@ -2,6 +2,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -21,6 +22,9 @@ const (
 	UserAgent        = model.UserAgent
 	HostMirror       = model.HostMirror
 	HostMain         = model.HostMain
+
+	// defaultRetries 是普通业务请求的默认重试次数。
+	defaultRetries = 2
 )
 
 // Auth actions that mean the bearer token is missing/invalid.
@@ -52,6 +56,15 @@ type Options = model.Options
 
 // New constructs a signed API client.
 func New(opts Options) (*Client, error) {
+	// nil 表示默认重试 2 次；显式 0 表示零重试（测速/探测场景）。负值会让请求循环
+	// 跳过所有尝试，必须在分配 HTTP transport 前拒绝。
+	retries := defaultRetries
+	if opts.Retries != nil {
+		if *opts.Retries < 0 {
+			return nil, fmt.Errorf("retries must be non-negative")
+		}
+		retries = *opts.Retries
+	}
 	if opts.Host == "" {
 		opts.Host = HostMirror
 	}
@@ -84,7 +97,7 @@ func New(opts Options) (*Client, error) {
 		token:      opts.Token,
 		deviceUUID: opts.DeviceUUID,
 		lang:       opts.Lang,
-		retries:    2,
+		retries:    retries,
 		public: map[string]string{
 			"app_channel":        opts.AppChannel,
 			"app_version":        AppVersion,
@@ -112,6 +125,9 @@ func (c *Client) Language() string { return c.lang }
 
 // SetLanguage temporarily changes the language used by request headers.
 func (c *Client) SetLanguage(lang string) { c.lang = lang }
+
+// CloseIdleConnections 释放短生命周期 client 的空闲连接。
+func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 
 // FetchMedia 获取未经过 App envelope 包装的媒体资源，供 media 包通过 callback 使用。
 func (c *Client) FetchMedia(rawURL string) ([]byte, error) {
@@ -189,9 +205,11 @@ func successTruthy(v any) bool {
 	}
 }
 
-func (c *Client) do(method, path string, extra map[string]string) (json.RawMessage, error) {
+// doContext 发送一次签名请求。retries 为 0 时单次尝试即返回，不会因退避睡眠污染测速样本；
+// 退避期间观察 ctx 取消，避免重试在取消后继续空等。
+func (c *Client) doContext(ctx context.Context, method, path string, extra map[string]string, retries int) (json.RawMessage, error) {
 	var last error
-	for attempt := 0; attempt <= c.retries; attempt++ {
+	for attempt := 0; attempt <= retries; attempt++ {
 		ts := time.Now().Unix()
 		params := c.mergeParams(extra)
 		u := c.host + path
@@ -213,17 +231,21 @@ func (c *Client) do(method, path string, extra map[string]string) (json.RawMessa
 				full = u + "?" + enc
 			}
 			if method == http.MethodGet {
-				resp, err = c.http.Get(full, hm)
+				resp, err = c.http.GetWithContext(ctx, full, hm)
 			} else {
-				resp, err = c.http.Delete(full, hm)
+				resp, err = c.http.DeleteWithContext(ctx, full, hm)
 			}
 		default: // POST form
-			resp, err = c.http.PostForm(u, params, hm)
+			resp, err = c.http.PostFormWithContext(ctx, u, params, hm)
 		}
 		if err != nil {
 			last = err
-			if attempt < c.retries {
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+			if attempt < retries {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(time.Duration(attempt+1) * 500 * time.Millisecond):
+				}
 				continue
 			}
 			return nil, err
@@ -263,7 +285,12 @@ func truncate(s string, n int) string {
 
 // GetJSON performs a signed GET and unmarshals data into dest (optional).
 func (c *Client) GetJSON(path string, params map[string]string, dest any) error {
-	raw, err := c.do(http.MethodGet, path, params)
+	return c.GetJSONContext(context.Background(), path, params, dest)
+}
+
+// GetJSONContext performs a signed GET with an explicit context.
+func (c *Client) GetJSONContext(ctx context.Context, path string, params map[string]string, dest any) error {
+	raw, err := c.doContext(ctx, http.MethodGet, path, params, c.retries)
 	if err != nil {
 		return err
 	}
@@ -275,7 +302,12 @@ func (c *Client) GetJSON(path string, params map[string]string, dest any) error 
 
 // PostFormJSON performs a signed POST form and unmarshals data.
 func (c *Client) PostFormJSON(path string, form map[string]string, dest any) error {
-	raw, err := c.do(http.MethodPost, path, form)
+	return c.PostFormJSONContext(context.Background(), path, form, dest)
+}
+
+// PostFormJSONContext performs a signed POST form with an explicit context.
+func (c *Client) PostFormJSONContext(ctx context.Context, path string, form map[string]string, dest any) error {
+	raw, err := c.doContext(ctx, http.MethodPost, path, form, c.retries)
 	if err != nil {
 		return err
 	}
@@ -287,7 +319,12 @@ func (c *Client) PostFormJSON(path string, form map[string]string, dest any) err
 
 // DeleteJSON performs a signed DELETE.
 func (c *Client) DeleteJSON(path string, params map[string]string, dest any) error {
-	raw, err := c.do(http.MethodDelete, path, params)
+	return c.DeleteJSONContext(context.Background(), path, params, dest)
+}
+
+// DeleteJSONContext performs a signed DELETE with an explicit context.
+func (c *Client) DeleteJSONContext(ctx context.Context, path string, params map[string]string, dest any) error {
+	raw, err := c.doContext(ctx, http.MethodDelete, path, params, c.retries)
 	if err != nil {
 		return err
 	}

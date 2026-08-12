@@ -2,6 +2,7 @@
 package httpx
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -48,14 +49,25 @@ func New(opts Options) (*Client, error) {
 	return &Client{inner: inner, proxy: opts.Proxy, timeout: opts.Timeout}, nil
 }
 
-// Do executes a request.
+// Do executes a request. The request context controls cancellation through the
+// underlying transport (dial, header read and body read all observe ctx.Done()).
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.inner.Do(req)
 }
 
-// Get is a convenience GET.
+// CloseIdleConnections 关闭底层 transport 持有的空闲连接。
+func (c *Client) CloseIdleConnections() {
+	c.inner.CloseIdleConnections()
+}
+
+// Get is a convenience GET using context.Background().
 func (c *Client) Get(urlStr string, headers map[string]string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
+	return c.GetWithContext(context.Background(), urlStr, headers)
+}
+
+// GetWithContext issues a context-aware GET.
+func (c *Client) GetWithContext(ctx context.Context, urlStr string, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -65,10 +77,15 @@ func (c *Client) Get(urlStr string, headers map[string]string) (*http.Response, 
 	return c.Do(req)
 }
 
-// PostForm posts application/x-www-form-urlencoded body.
+// PostForm posts application/x-www-form-urlencoded body using context.Background().
 func (c *Client) PostForm(urlStr string, form url.Values, headers map[string]string) (*http.Response, error) {
+	return c.PostFormWithContext(context.Background(), urlStr, form, headers)
+}
+
+// PostFormWithContext issues a context-aware POST form.
+func (c *Client) PostFormWithContext(ctx context.Context, urlStr string, form url.Values, headers map[string]string) (*http.Response, error) {
 	body := strings.NewReader(form.Encode())
-	req, err := http.NewRequest(http.MethodPost, urlStr, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, urlStr, body)
 	if err != nil {
 		return nil, err
 	}
@@ -79,9 +96,14 @@ func (c *Client) PostForm(urlStr string, form url.Values, headers map[string]str
 	return c.Do(req)
 }
 
-// Delete issues a DELETE with query params already in urlStr.
+// Delete issues a DELETE with query params already in urlStr using context.Background().
 func (c *Client) Delete(urlStr string, headers map[string]string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodDelete, urlStr, nil)
+	return c.DeleteWithContext(context.Background(), urlStr, headers)
+}
+
+// DeleteWithContext issues a context-aware DELETE.
+func (c *Client) DeleteWithContext(ctx context.Context, urlStr string, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
