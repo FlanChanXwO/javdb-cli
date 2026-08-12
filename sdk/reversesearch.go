@@ -14,39 +14,39 @@ import (
 // ReverseSearchSource 描述一个反搜 source。Name 为空或 "builtin" 时使用内置
 // AVScan provider；否则 URL 必须是绝对 HTTP(S) 地址，Headers 必须已展开。
 type ReverseSearchSource struct {
-	Name    string
-	URL     string
-	Headers map[string]string
+	Name    string            `json:"name"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // ReverseSearchRequest 是一次以图搜番的原始图片输入。
 type ReverseSearchRequest struct {
-	Image    []byte
-	Filename string
-	Source   ReverseSearchSource
+	Image    []byte              `json:"image"`
+	Filename string              `json:"filename,omitempty"`
+	Source   ReverseSearchSource `json:"source,omitempty"`
 	// BypassCache 请求级绕过缓存读写。
-	BypassCache bool
+	BypassCache bool `json:"bypass_cache,omitempty"`
 }
 
 // ReverseSearchFrame 是候选结果中的一帧。
 type ReverseSearchFrame struct {
-	ImageName    string
-	Similarity   float64
-	Timestamp    string
-	ThumbnailURL string
+	ImageName    string  `json:"image_name,omitempty"`
+	Similarity   float64 `json:"similarity,omitempty"`
+	Timestamp    string  `json:"timestamp,omitempty"`
+	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 }
 
 // ReverseSearchCandidate 是一个视频候选。
 type ReverseSearchCandidate struct {
-	VideoCode  string
-	Similarity float64
-	Frames     []ReverseSearchFrame
+	VideoCode  string               `json:"video_code"`
+	Similarity float64              `json:"best_similarity,omitempty"`
+	Frames     []ReverseSearchFrame `json:"frames,omitempty"`
 }
 
 // ReverseSearchResponse 是反搜的规范化结果。
 type ReverseSearchResponse struct {
-	Source     string
-	Candidates []ReverseSearchCandidate
+	Source     string                   `json:"source"`
+	Candidates []ReverseSearchCandidate `json:"candidates"`
 }
 
 // ReverseSearchCache 是 SDK 可注入的响应缓存。key 是原图 SHA-256 十六进制；
@@ -71,9 +71,9 @@ type ImageSearchOptions struct{}
 
 // ImageSearchError 是单候选联动失败的稳定错误。
 type ImageSearchError struct {
-	Stage   string
-	Code    string
-	Message string
+	Stage   string `json:"stage"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 func (e *ImageSearchError) Error() string {
@@ -85,16 +85,16 @@ func (e *ImageSearchError) Error() string {
 
 // ImageSearchMatch 是单个候选的联动结果；失败时 Error 非空。
 type ImageSearchMatch struct {
-	Candidate ReverseSearchCandidate
-	MovieID   string
-	Movie     map[string]any
-	Error     *ImageSearchError
+	Candidate ReverseSearchCandidate `json:"candidate"`
+	MovieID   string                 `json:"movie_id,omitempty"`
+	Movie     map[string]any         `json:"movie,omitempty"`
+	Error     *ImageSearchError      `json:"error,omitempty"`
 }
 
 // ImageSearchResult 保留 provider 原始候选顺序。
 type ImageSearchResult struct {
-	ReverseSearch ReverseSearchResponse
-	Matches       []ImageSearchMatch
+	ReverseSearch ReverseSearchResponse `json:"reverse_search"`
+	Matches       []ImageSearchMatch    `json:"matches"`
 }
 
 // WithReverseSearch 注入反搜缓存与传输配置。javdb.New 本身仍不联网。

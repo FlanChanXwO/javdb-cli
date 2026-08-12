@@ -19,6 +19,9 @@ import (
 // 立即返回明确错误。
 const MaxSize = 8 << 20
 
+// DetectHeaderSize 返回识别全部支持格式所需的最小 magic 字节数（WEBP 12 字节）。
+func DetectHeaderSize() int { return 12 }
+
 // maxRedirects 是图片 URL 重定向的硬上限。
 const maxRedirects = 10
 

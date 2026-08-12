@@ -17,6 +17,10 @@ type Streams struct {
 	In  io.Reader
 	Out io.Writer
 	Err io.Writer
+
+	// InIsTerminal 标记 stdin 是否为交互终端；由根命令入口探测，测试可显式设置。
+	// 非 TTY stdin 是管道/批处理输入的信号，命令据此选择输入分类。
+	InIsTerminal bool
 }
 
 // NewStreams 构造 Streams。

@@ -1,10 +1,14 @@
-// Package search 提供影片/实体搜索命令。
+// Package search 提供影片/实体搜索命令与以图搜番图片模式。
 package search
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -12,10 +16,11 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
+	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/image"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// New builds the movie and dimension search command.
+// New builds the movie/dimension search command and the image reverse search mode.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
 		page, limit   int
@@ -23,44 +28,31 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		filterBy, typ string
 		hasMagnets    bool
 		asJSON        bool
+		asImage       bool
+		source        string
+		noCache       bool
 	)
 	cmd := &cobra.Command{
-		Use:   "search KEYWORD",
+		Use:   "search KEYWORD|IMAGE",
 		Short: "Search movies (or other dimensions with --type)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := client.New(options, "")
+			reader := bufio.NewReader(streams.In)
+			arg := ""
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			imageMode, err := decideImageMode(arg, asImage, reader, streams)
 			if err != nil {
 				return err
 			}
-			opt := javdb.SearchOptions{
-				Page:     page,
-				Limit:    limit,
-				Zone:     zone,
-				Sort:     sort,
-				FilterBy: filterBy,
-				Type:     typ,
+			if imageMode {
+				return runImageSearch(options, streams, arg, reader, source, noCache, asJSON)
 			}
-			res, err := c.Search(context.Background(), args[0], opt)
-			if err != nil {
-				return fmt.Errorf("search failed: %w", err)
+			if arg == "" {
+				return fmt.Errorf("keyword or an image")
 			}
-			if typ == "" || typ == "movie" {
-				movies := res.Movies()
-				if hasMagnets {
-					movies = result.FilterMoviesWithMagnets(movies)
-				}
-				if asJSON {
-					return writeJSON(streams.Out, map[string]any{"movies": movies})
-				}
-				return writeMovieRows(streams.Out, streams.Err, movies)
-			}
-			key := searchTypeKey(typ)
-			items := res.Named(key)
-			if asJSON {
-				return writeJSON(streams.Out, map[string]any{key: items})
-			}
-			return writeNamedRows(streams.Out, streams.Err, items)
+			return runTextSearch(options, streams, arg, page, limit, zone, sort, filterBy, typ, hasMagnets, asJSON)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page number")
@@ -71,7 +63,194 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().StringVar(&typ, "type", "", "movie|code|series|actor|maker|director|list")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop movie rows with magnets_count == 0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asImage, "image", false, "Treat the argument as an image path or HTTP(S) URL")
+	cmd.Flags().StringVar(&source, "source", "", "Reverse-search source (default: reverse_search.default_source)")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Bypass the reverse-search response cache")
 	return cmd
+}
+
+// decideImageMode 决定本次调用是否进入图片模式：
+//   - --image 强制；参数是现有普通文件或 HTTP(S) URL 自动进入。
+//   - 无参数且 stdin 非 TTY 时按图片 magic 分类（JSONL/文本在 pipeline 阶段扩展）。
+//   - 位置参数与非空 stdin 同时存在是歧义错误，绝不静默丢数据。
+func decideImageMode(arg string, forced bool, reader *bufio.Reader, streams *invocation.Streams) (bool, error) {
+	stdinHasContent := false
+	if !streams.InIsTerminal {
+		if _, err := reader.Peek(1); err == nil {
+			stdinHasContent = true
+		} else if !errors.Is(err, io.EOF) {
+			return false, fmt.Errorf("read stdin: %w", err)
+		}
+	}
+	if arg != "" && stdinHasContent {
+		return false, fmt.Errorf("ambiguous input: provide either a positional keyword/image or stdin, not both")
+	}
+	if arg != "" {
+		if forced {
+			return true, nil
+		}
+		if isHTTPURL(arg) || isRegularFile(arg) {
+			return true, nil
+		}
+		return false, nil
+	}
+	if streams.InIsTerminal {
+		return false, nil
+	}
+	if !stdinHasContent {
+		return false, fmt.Errorf("keyword or an image")
+	}
+	// stdin 只按真实 magic 分类；未知二进制与文本显式失败，不回退。
+	header, err := reader.Peek(image.DetectHeaderSize())
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("read stdin: %w", err)
+	}
+	if image.DetectFormat(header) == image.Unknown {
+		return false, fmt.Errorf("stdin is not a JPEG, PNG or WEBP image")
+	}
+	return true, nil
+}
+
+func isHTTPURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
+
+func isRegularFile(value string) bool {
+	info, err := os.Stat(value)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// runTextSearch 保持既有文本搜索行为。
+func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams, keyword string, page, limit int, zone, sort, filterBy, typ string, hasMagnets, asJSON bool) error {
+	c, err := client.New(options, "")
+	if err != nil {
+		return err
+	}
+	opt := javdb.SearchOptions{
+		Page:     page,
+		Limit:    limit,
+		Zone:     zone,
+		Sort:     sort,
+		FilterBy: filterBy,
+		Type:     typ,
+	}
+	res, err := c.Search(context.Background(), keyword, opt)
+	if err != nil {
+		return fmt.Errorf("search failed: %w", err)
+	}
+	if typ == "" || typ == "movie" {
+		movies := res.Movies()
+		if hasMagnets {
+			movies = result.FilterMoviesWithMagnets(movies)
+		}
+		if asJSON {
+			return writeJSON(streams.Out, map[string]any{"movies": movies})
+		}
+		return writeMovieRows(streams.Out, streams.Err, movies)
+	}
+	key := searchTypeKey(typ)
+	items := res.Named(key)
+	if asJSON {
+		return writeJSON(streams.Out, map[string]any{key: items})
+	}
+	return writeNamedRows(streams.Out, streams.Err, items)
+}
+
+// runImageSearch 执行以图搜番：读取并校验原始图片（路径/URL/stdin），调用
+// 公开 SDK 反搜+严格联动，输出候选、相似度、帧、匹配详情与逐项错误。
+// provider 顶层失败直接报错；候选部分失败在完成输出后返回非零。
+func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache, asJSON bool) error {
+	setup, err := client.NewReverseSearchClient(options, "", source)
+	if err != nil {
+		return err
+	}
+	imageBytes, err := readInputImage(arg, reader)
+	if err != nil {
+		return err
+	}
+	result, err := setup.Client.SearchByImage(context.Background(), javdb.ReverseSearchRequest{
+		Image:       imageBytes.Bytes,
+		Filename:    imageBytes.Filename,
+		Source:      setup.Source,
+		BypassCache: noCache,
+	}, javdb.ImageSearchOptions{})
+	if err != nil {
+		// provider 顶层失败：不伪造空结果。
+		return fmt.Errorf("reverse search failed: %w", err)
+	}
+	if asJSON {
+		if err := writeJSON(streams.Out, map[string]any{
+			"reverse_search": result.ReverseSearch,
+			"matches":        result.Matches,
+		}); err != nil {
+			return err
+		}
+	} else if err := writeImageSearchText(streams.Out, result); err != nil {
+		return err
+	}
+	if failures := countImageFailures(result); failures > 0 {
+		return fmt.Errorf("reverse search completed with %d of %d candidates failed", failures, len(result.Matches))
+	}
+	return nil
+}
+
+func readInputImage(arg string, reader *bufio.Reader) (*image.Image, error) {
+	if arg == "" {
+		return image.ReadStream(reader, "<stdin>")
+	}
+	if isHTTPURL(arg) {
+		return image.ReadURL(context.Background(), nil, arg)
+	}
+	return image.ReadFile(arg)
+}
+
+func countImageFailures(result javdb.ImageSearchResult) int {
+	failures := 0
+	for _, match := range result.Matches {
+		if match.Error != nil {
+			failures++
+		}
+	}
+	return failures
+}
+
+// writeImageSearchText 人类可读输出：候选行、相似度、帧、严格匹配详情与逐项错误。
+func writeImageSearchText(w io.Writer, searchResult javdb.ImageSearchResult) error {
+	for index, match := range searchResult.Matches {
+		candidate := match.Candidate
+		if match.Error != nil {
+			if _, err := fmt.Fprintf(w, "%d. %s (%.1f%%)  [失败: %s]\n", index+1, candidate.VideoCode, candidate.Similarity, match.Error.Message); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := fmt.Fprintf(w, "%d. %s (%.1f%%)\n", index+1, candidate.VideoCode, candidate.Similarity); err != nil {
+			return err
+		}
+		for _, frame := range candidate.Frames {
+			line := fmt.Sprintf("   帧 %s 相似度 %.1f%%", frame.Timestamp, frame.Similarity)
+			if frame.ThumbnailURL != "" {
+				line += "  " + frame.ThumbnailURL
+			}
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
+		if match.Movie != nil {
+			rows := result.ProjectMovies([]map[string]any{match.Movie})
+			for _, row := range rows {
+				if _, err := fmt.Fprintf(w, "   => %s\n", row.Line()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if len(searchResult.Matches) == 0 {
+		_, err := fmt.Fprintln(w, "(无候选)")
+		return err
+	}
+	return nil
 }
 
 // searchTypeKey 将 --type 映射为搜索响应 list key（movie/空 → movies）。

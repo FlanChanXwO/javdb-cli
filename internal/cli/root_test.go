@@ -36,6 +36,7 @@ Available Commands:
   actor       List movies for an actor (id or name)
   auth        Account login and multi-account management
   browse      Browse movies by content tags / year / month
+  cache       Inspect or clear the local reverse-search cache
   code        List movies for a code/prefix e.g. SSIS
   collections List a collection: actors|series|codes|makers|directors
   comments    List one page of movie reviews
@@ -122,16 +123,19 @@ Global Flags:
 		{"search", `Search movies (or other dimensions with --type)
 
 Usage:
-  javdb search KEYWORD [flags]
+  javdb search KEYWORD|IMAGE [flags]
 
 Flags:
       --filter-by string   can_play|magnets|subtitle|single
       --has-magnets        Drop movie rows with magnets_count == 0
   -h, --help               help for search
+      --image              Treat the argument as an image path or HTTP(S) URL
       --json               Machine-readable JSON
       --limit int          Page size (0 = server default)
+      --no-cache           Bypass the reverse-search response cache
       --page int           Page number (default 1)
       --sort string        relevance|release|score|update|hit
+      --source string      Reverse-search source (default: reverse_search.default_source)
       --type string        movie|code|series|actor|maker|director|list
       --zone string        censored|uncensored|western|fc2|all (default "censored")
 
@@ -292,7 +296,7 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"search"}, "accepts 1 arg(s), received 0"},
+		{[]string{"search"}, "keyword or an image"},
 		{[]string{"detail"}, "accepts 1 arg(s), received 0"},
 		{[]string{"mark"}, "accepts 1 arg(s), received 0"},
 		{[]string{"update", "--json"}, "--json is only supported with --check"},

@@ -4,12 +4,15 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	actorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/actor"
 	authcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/auth"
 	browsecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/browse"
+	cachecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/cache"
 	codecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/code"
 	collectionscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/collections"
 	commentscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/comments"
@@ -41,6 +44,10 @@ import (
 func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	options := &invocation.RootOptions{}
 	streams := invocation.NewStreams(stdin, stdout, stderr)
+	// 非 TTY stdin 是管道输入信号；探测只在 stdin 是真实终端时生效。
+	if file, ok := stdin.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
+		streams.InIsTerminal = true
+	}
 	command := &cobra.Command{
 		Use:           "javdb",
 		Short:         "JavDB app API command-line client",
@@ -53,6 +60,7 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	// 保持原 root.go 的 AddCommand 顺序，避免 help 与 completion 输出漂移。
 	command.AddCommand(authcmd.New(options, streams))
 	command.AddCommand(configcmd.New(streams))
+	command.AddCommand(cachecmd.New(streams))
 	command.AddCommand(searchcmd.New(options, streams))
 	command.AddCommand(detailcmd.New(options, streams))
 	command.AddCommand(commentscmd.New(options, streams))
