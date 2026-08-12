@@ -52,6 +52,41 @@ func TestResolveNormalizesEffectiveHost(t *testing.T) {
 	}
 }
 
+// TestResolveBlankProxyHandling 覆盖 config/env/flag 三条入口的空白 proxy 语义：config/env
+// 来源的空白规范为空串（与 validator 的"空即合法"一致），显式 flag 空白则直接报错，避免
+// 静默覆盖继承代理并直连绕过网络策略。
+func TestResolveBlankProxyHandling(t *testing.T) {
+	t.Setenv("JAVDB_HOST", HostMirror)
+
+	t.Run("file", func(t *testing.T) {
+		rt, err := Resolve(Settings{Host: HostMirror, HTTPSProxy: "   "}, "", "", nil)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if rt.Proxy != "" {
+			t.Fatalf("file proxy = %q, want empty", rt.Proxy)
+		}
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		t.Setenv("HTTPS_PROXY", "   ")
+		rt, err := Resolve(Settings{Host: HostMirror}, "", "", nil)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if rt.Proxy != "" {
+			t.Fatalf("env proxy = %q, want empty", rt.Proxy)
+		}
+	})
+
+	t.Run("flag", func(t *testing.T) {
+		t.Setenv("HTTPS_PROXY", "")
+		if _, err := Resolve(Settings{Host: HostMirror}, "", "   ", nil); err == nil {
+			t.Fatal("Resolve() accepted blank flag proxy")
+		}
+	})
+}
+
 func TestResolvePrecedence(t *testing.T) {
 	file := Settings{Host: HostMain, HTTPSProxy: "http://file", AutoRelogin: false}
 	t.Setenv("JAVDB_HOST", "mirror")

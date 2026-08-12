@@ -4,6 +4,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 
@@ -98,22 +99,41 @@ func resolveRuntime(options *invocation.RootOptions) (settings.Runtime, error) {
 	return runtimeConfig, nil
 }
 
-// validateProxy 无副作用地校验 proxy URL（不构造 transport、不写本机状态），与 transport
-// 的校验一致：必须是带 host 的绝对 http/https/socks5 代理 URL。
+// validateProxy 无副作用地校验 proxy URL（不构造 transport、不写本机状态），校验与
+// tls-client transport 的 newConnectDialer 对齐：scheme 支持 http/https/socks4/socks4a/
+// socks5/socks5h，host 必须非空；http/https 缺省端口由 transport 补齐，socks 拨号要求
+// 显式 host:port，显式端口需可被 net.Dial 解析。错误消息只含 Redacted() 后的 URL 或
+// 通用文本，绝不回显可能携带凭据的原始 proxy。
 func validateProxy(proxy string) error {
 	if strings.TrimSpace(proxy) == "" {
 		return nil
 	}
 	u, err := url.Parse(proxy)
-	if err != nil || !u.IsAbs() || u.Host == "" {
-		return fmt.Errorf("invalid proxy URL %q", proxy)
+	if err != nil {
+		// url.Parse 的错误会把完整输入（含 userinfo 凭据）带进消息，只能给通用文本。
+		return fmt.Errorf("invalid proxy URL: malformed")
+	}
+	redacted := u.Redacted()
+	if !u.IsAbs() || u.Hostname() == "" {
+		return fmt.Errorf("invalid proxy URL %q", redacted)
 	}
 	switch strings.ToLower(u.Scheme) {
-	case "http", "https", "socks5", "socks5h":
-		return nil
+	case "http", "https":
+		// transport 会对缺省端口补齐 80/443。
+	case "socks4", "socks4a", "socks5", "socks5h":
+		// transport 对 socks 不做端口默认，缺 host:port 会在请求阶段才失败。
+		if u.Port() == "" {
+			return fmt.Errorf("invalid proxy URL %q: socks proxy requires explicit port", redacted)
+		}
 	default:
 		return fmt.Errorf("unsupported proxy scheme %q", u.Scheme)
 	}
+	if u.Port() != "" {
+		if _, err := net.LookupPort("tcp", u.Port()); err != nil {
+			return fmt.Errorf("invalid proxy URL %q: invalid port", redacted)
+		}
+	}
+	return nil
 }
 
 // resolveBaseURL 对固定 host（mirror/main/URL）直接返回 runtime 的 BaseURL；对 auto 读取

@@ -17,7 +17,8 @@ func NewReleaseHTTPClient(proxy string) (*http.Client, error) {
 	if proxy != "" {
 		parsed, err := url.Parse(proxy)
 		if err != nil {
-			return nil, fmt.Errorf("parse update proxy: %w", err)
+			// url.Parse 的错误会把完整输入（可能含 userinfo 凭据）带进消息，只报通用文本。
+			return nil, fmt.Errorf("invalid update proxy URL")
 		}
 		if parsed.Scheme != "http" && parsed.Scheme != "https" {
 			return nil, fmt.Errorf("update proxy must use http or https, got %q", parsed.Scheme)

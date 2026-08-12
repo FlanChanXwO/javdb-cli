@@ -279,16 +279,27 @@ func TestResolveRuntimeReturnsDeviceUUIDError(t *testing.T) {
 	}
 }
 
-// TestResolveRuntimeRejectsProxyBeforeDeviceUUID 验证非法 proxy 在 device UUID provision
-// 之前完成无副作用校验：不留下 device_uuid 本机状态副作用。
+// TestResolveRuntimeRejectsProxyBeforeDeviceUUID 验证非法 proxy（malformed URL 与显式
+// flag 空白）在 device UUID provision 之前完成无副作用校验：不留下 device_uuid 本机状态。
 func TestResolveRuntimeRejectsProxyBeforeDeviceUUID(t *testing.T) {
-	home := isolateHome(t)
-	if _, err := resolveRuntime(&invocation.RootOptions{Host: settings.HostMirror, Proxy: "://bad"}); err == nil || !strings.Contains(err.Error(), "proxy") {
-		t.Fatalf("resolveRuntime error = %v, want proxy validation error", err)
-	}
-	devicePath := filepath.Join(home, ".javdb-cli", "device_uuid")
-	if _, statErr := os.Stat(devicePath); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("device_uuid created despite invalid proxy: %v", statErr)
+	for _, tc := range []struct {
+		name  string
+		proxy string
+	}{
+		{"malformed", "://bad"},
+		{"blank flag", "   "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := isolateHome(t)
+			opts := &invocation.RootOptions{Host: settings.HostMirror, Proxy: tc.proxy}
+			if _, err := resolveRuntime(opts); err == nil || !strings.Contains(err.Error(), "proxy") {
+				t.Fatalf("resolveRuntime error = %v, want proxy validation error", err)
+			}
+			devicePath := filepath.Join(home, ".javdb-cli", "device_uuid")
+			if _, statErr := os.Stat(devicePath); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("device_uuid created despite invalid proxy: %v", statErr)
+			}
+		})
 	}
 }
 
@@ -313,5 +324,69 @@ func TestResolveClientCreatesConfigBeforeSelection(t *testing.T) {
 	configPath := filepath.Join(home, ".javdb-cli", "config.toml")
 	if _, statErr := os.Stat(configPath); statErr != nil {
 		t.Fatalf("config.toml not created before failing selection: %v", statErr)
+	}
+}
+
+// TestValidateProxy 覆盖与 tls-client transport 对齐的 scheme/hostname/port 校验：
+// 全部合法 scheme（含 socks4/socks4a）放行，host 或端口缺失、非法端口、非法 scheme
+// 与 malformed URL 一律拒绝。
+func TestValidateProxy(t *testing.T) {
+	cases := []struct {
+		name  string
+		proxy string
+		want  bool
+	}{
+		{"empty", "", true},
+		{"blank", "   ", true},
+		{"http with port", "http://127.0.0.1:7890", true},
+		{"http without port", "http://proxy.example", true},
+		{"https with port", "https://proxy.example:8443", true},
+		{"https without port", "https://proxy.example", true},
+		{"socks5 with port", "socks5://127.0.0.1:1080", true},
+		{"socks5h with port", "socks5h://proxy.example:1080", true},
+		{"socks4 with port", "socks4://127.0.0.1:1080", true},
+		{"socks4a with port", "socks4a://proxy.example:1080", true},
+		{"scheme case insensitive", "SOCKS5://proxy.example:1080", true},
+		{"with credentials", "http://user:pass@proxy.example:7890", true},
+		{"ipv6 host", "http://[::1]:7890", true},
+		{"malformed", "://bad", false},
+		{"relative url", "proxy.example:7890", false},
+		{"missing scheme", "//proxy.example:7890", false},
+		{"unsupported scheme", "ftp://proxy.example:21", false},
+		{"empty host with port", "http://:8080", false},
+		{"empty socks host", "socks5://:1080", false},
+		{"socks missing port", "socks5://proxy.example", false},
+		{"socks4 missing port", "socks4://proxy.example", false},
+		{"non numeric port", "http://proxy.example:abc", false},
+		{"out of range port", "http://proxy.example:99999", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateProxy(tc.proxy)
+			if tc.want && err != nil {
+				t.Fatalf("validateProxy(%q) = %v, want nil", tc.proxy, err)
+			}
+			if !tc.want && err == nil {
+				t.Fatalf("validateProxy(%q) = nil, want error", tc.proxy)
+			}
+		})
+	}
+}
+
+// TestValidateProxyNeverLeaksCredentials 验证所有失败路径的错误消息都不含原始 proxy 中的
+// userinfo 凭据：既覆盖 Redacted() 后的 URL 回显路径，也覆盖 url.Parse 失败的通用文本路径。
+func TestValidateProxyNeverLeaksCredentials(t *testing.T) {
+	proxies := []string{
+		"http://review-user:review-secret@proxy.example:99999",
+		"http://review-user:review-secret@proxy.example:abc",
+		"socks5://review-user:review-secret@proxy.example",
+		"http://review-user:review-secret@host:badport",
+	}
+	for _, proxy := range proxies {
+		if err := validateProxy(proxy); err == nil {
+			t.Fatalf("validateProxy(%q) = nil, want error", proxy)
+		} else if strings.Contains(err.Error(), "review-secret") {
+			t.Fatalf("validateProxy(%q) leaks credentials: %v", proxy, err)
+		}
 	}
 }

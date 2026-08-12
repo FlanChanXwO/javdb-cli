@@ -363,6 +363,10 @@ func TestConfigCreationTriggerMatrix(t *testing.T) {
 		{"invalid config value no create", []string{"config", "set", "host", "bogus"}, false},
 		{"download without output flag no create", []string{"download", "ABC-123"}, false},
 		{"invalid proxy no create", []string{"search", "test", "--host", "mirror", "--proxy", "://bad"}, false},
+		{"blank proxy flag no create", []string{"search", "test", "--host", "mirror", "--proxy", "   "}, false},
+		{"invalid proxy empty host no create", []string{"search", "test", "--host", "mirror", "--proxy", "http://:8080"}, false},
+		{"invalid proxy socks missing port no create", []string{"search", "test", "--host", "mirror", "--proxy", "socks5://proxy.example"}, false},
+		{"socks4 proxy creates", []string{"search", "test", "--host", "mirror", "--proxy", "socks4://127.0.0.1:1"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

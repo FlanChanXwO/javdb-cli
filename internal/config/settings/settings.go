@@ -121,11 +121,20 @@ func Resolve(file Settings, flagHost, flagProxy string, flagAutoRelogin *bool) (
 		r.Host = flagHost
 	}
 	if flagProxy != "" {
+		// 显式传入的空白 proxy 直接报错：当前文档只定义 --proxy URL，若裁剪成空串会静默
+		// 覆盖继承代理并直连，绕过用户网络策略；config/env 来源的空白仍按空值规范。
+		if strings.TrimSpace(flagProxy) == "" {
+			return Runtime{}, fmt.Errorf("--proxy flag must be a non-empty URL, got %q", flagProxy)
+		}
 		r.Proxy = flagProxy
 	}
 	if flagAutoRelogin != nil {
 		r.AutoRelogin = *flagAutoRelogin
 	}
+
+	// 空白 proxy（config/env/flag 任一来源）规范为空串，避免 validator 视为"空"但 transport
+	// 仍收到原始空白而在请求阶段失败，且失败命令已留下本机状态。
+	r.Proxy = strings.TrimSpace(r.Proxy)
 
 	host, err := NormalizeHost(r.Host)
 	if err != nil {
