@@ -17,12 +17,16 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/update/manifest"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/model"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/process"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/release"
 )
 
-const checksumsAssetName = "checksums.txt"
+const (
+	manifestAssetName   = "release-manifest.json"
+	signaturesAssetName = "release-manifest.sig"
+)
 
 // Release 与 ReleaseAsset 保持 archive 包内部使用同一 wire model。
 type Release = model.Release
@@ -33,19 +37,13 @@ type ReleaseInstaller interface {
 	Install(context.Context, model.Release) error
 }
 
-// BinaryChecker aliases the process-level candidate validation contract.
-type BinaryChecker = process.BinaryChecker
-
-// BinaryCheckerFunc aliases the process-level test adapter.
-type BinaryCheckerFunc = process.BinaryCheckerFunc
-
 // ReleaseInstallerOptions injects system boundaries for deterministic tests.
 type ReleaseInstallerOptions struct {
 	HTTPClient        *http.Client
 	ExecutablePath    func() (string, error)
 	GOOS              string
 	GOARCH            string
-	BinaryChecker     process.BinaryChecker
+	Keyring           *manifest.Keyring
 	Replacer          func(string, string) error
 	AssetURLValidator func(model.Release, model.ReleaseAsset) error
 }
@@ -55,13 +53,14 @@ type releaseInstaller struct {
 	executablePath    func() (string, error)
 	goos              string
 	goarch            string
-	binaryChecker     BinaryChecker
+	keyring           *manifest.Keyring
 	replacer          func(string, string) error
 	assetURLValidator func(Release, ReleaseAsset) error
 }
 
 // NewReleaseInstaller creates the production archive updater. Every write is
-// delayed until the archive checksum and the embedded binary version both match.
+// delayed until the signed release manifest, its Ed25519 signatures, the
+// archive SHA-256 and the extracted binary SHA-256 all match.
 func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	httpClient := options.HTTPClient
 	if httpClient == nil {
@@ -79,9 +78,9 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
-	binaryChecker := options.BinaryChecker
-	if binaryChecker == nil {
-		binaryChecker = process.NewBinaryChecker()
+	keyring := options.Keyring
+	if keyring == nil {
+		keyring = manifest.DefaultKeyring()
 	}
 	replacer := options.Replacer
 	if replacer == nil {
@@ -96,14 +95,18 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 		executablePath:    executablePath,
 		goos:              goos,
 		goarch:            goarch,
-		binaryChecker:     binaryChecker,
+		keyring:           keyring,
 		replacer:          replacer,
 		assetURLValidator: assetURLValidator,
 	}
 }
 
 // Install obtains and verifies exactly one archive for the running platform.
-// On any failed validation the currently installed executable remains unchanged.
+// Verification order is fixed: official asset URLs, manifest signatures over
+// the raw manifest bytes, strict v1 manifest binding to this release and
+// platform, archive SHA-256, then binary SHA-256. The candidate binary is
+// never executed. On any failed validation the currently installed
+// executable remains unchanged.
 func (i *releaseInstaller) Install(ctx context.Context, candidateRelease Release) (resultErr error) {
 	if i == nil {
 		return fmt.Errorf("release installer is nil")
@@ -115,54 +118,62 @@ func (i *releaseInstaller) Install(ctx context.Context, candidateRelease Release
 	if err != nil {
 		return err
 	}
-	for _, asset := range []ReleaseAsset{assets.archive, assets.checksums} {
+	for _, asset := range []ReleaseAsset{assets.archive, assets.manifest, assets.signatures} {
 		if err := i.assetURLValidator(candidateRelease, asset); err != nil {
 			return err
 		}
 	}
-	checksums, err := i.download(ctx, assets.checksums)
+	manifestBytes, err := i.download(ctx, assets.manifest)
 	if err != nil {
-		return fmt.Errorf("download %s: %w", checksumsAssetName, err)
+		return fmt.Errorf("download %s: %w", manifestAssetName, err)
 	}
-	expectedChecksum, err := checksumForArchive(checksums, assets.archive.Name)
+	signatureBytes, err := i.download(ctx, assets.signatures)
+	if err != nil {
+		return fmt.Errorf("download %s: %w", signaturesAssetName, err)
+	}
+	signatures, err := manifest.ParseSignatures(signatureBytes)
 	if err != nil {
 		return err
+	}
+	if err := i.keyring.VerifySignatures(manifestBytes, signatures); err != nil {
+		return fmt.Errorf("verify release manifest signature: %w", err)
+	}
+	releaseManifest, err := manifest.ParseManifest(manifestBytes)
+	if err != nil {
+		return err
+	}
+	target, err := selectManifestTarget(releaseManifest, candidateRelease.TagName, i.goos, i.goarch)
+	if err != nil {
+		return err
+	}
+	if target.Archive != assets.archive.Name {
+		return fmt.Errorf("release manifest selects archive %q but release assets contain %q", target.Archive, assets.archive.Name)
 	}
 	archive, err := i.download(ctx, assets.archive)
 	if err != nil {
 		return fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
 	}
-	actualChecksum := sha256.Sum256(archive)
-	if hex.EncodeToString(actualChecksum[:]) != expectedChecksum {
-		return fmt.Errorf("release archive %q SHA-256 does not match checksums.txt", assets.archive.Name)
+	if err := matchSHA256(archive, target.ArchiveSHA256, "release archive "+assets.archive.Name); err != nil {
+		return err
 	}
-	target, err := i.executablePath()
+	binaryContent, err := ExtractBinaryBytes(archive, assets.archive.Name, target.Binary)
+	if err != nil {
+		return err
+	}
+	if err := matchSHA256(binaryContent, target.BinarySHA256, "release binary "+target.Binary); err != nil {
+		return err
+	}
+	executable, err := i.executablePath()
 	if err != nil {
 		return fmt.Errorf("locate current executable: %w", err)
 	}
-	target, err = process.ResolveExecutablePath(target)
+	executable, err = process.ResolveExecutablePath(executable)
 	if err != nil {
 		return err
 	}
-	workDirectory, err := os.MkdirTemp(filepath.Dir(target), ".javdb-update-")
+	staging, err := os.CreateTemp(filepath.Dir(executable), ".javdb-update-stage-")
 	if err != nil {
-		return fmt.Errorf("create update temporary directory beside %q: %w", target, err)
-	}
-	defer func() {
-		if cleanupErr := os.RemoveAll(workDirectory); cleanupErr != nil && resultErr == nil {
-			resultErr = fmt.Errorf("remove update temporary directory %q: %w", workDirectory, cleanupErr)
-		}
-	}()
-	candidate := filepath.Join(workDirectory, process.ExecutableName(i.goos))
-	if err := extractReleaseBinary(archive, assets.archive.Name, candidate, process.ExecutableName(i.goos)); err != nil {
-		return err
-	}
-	if err := i.binaryChecker.Check(ctx, candidate, candidateRelease.TagName); err != nil {
-		return fmt.Errorf("preflight downloaded executable %q: %w", candidate, err)
-	}
-	staging, err := os.CreateTemp(filepath.Dir(target), ".javdb-update-stage-")
-	if err != nil {
-		return fmt.Errorf("create staged update beside %q: %w", target, err)
+		return fmt.Errorf("create staged update beside %q: %w", executable, err)
 	}
 	stagingPath := staging.Name()
 	if err := staging.Close(); err != nil {
@@ -176,18 +187,53 @@ func (i *releaseInstaller) Install(ctx context.Context, candidateRelease Release
 	if err := os.Remove(stagingPath); err != nil {
 		return fmt.Errorf("prepare staged update %q: %w", stagingPath, err)
 	}
-	if err := os.Rename(candidate, stagingPath); err != nil {
-		return fmt.Errorf("stage verified update %q: %w", stagingPath, err)
+	if err := writeExtractedBinary(stagingPath, bytes.NewReader(binaryContent)); err != nil {
+		return err
 	}
-	if err := i.replacer(stagingPath, target); err != nil {
-		return fmt.Errorf("replace executable %q: %w", target, err)
+	if err := i.replacer(stagingPath, executable); err != nil {
+		return fmt.Errorf("replace executable %q: %w", executable, err)
+	}
+	return nil
+}
+
+// selectManifestTarget binds the signed manifest to the selected release tag
+// and the running platform. The manifest repository and stable SemVer tag are
+// already enforced by ParseManifest.
+func selectManifestTarget(releaseManifest *manifest.Manifest, tag, goos, goarch string) (*manifest.Target, error) {
+	if releaseManifest.Tag != tag {
+		return nil, fmt.Errorf("release manifest tag %q does not match release tag %q", releaseManifest.Tag, tag)
+	}
+	var selected *manifest.Target
+	for index := range releaseManifest.Targets {
+		target := &releaseManifest.Targets[index]
+		if target.GOOS != goos || target.GOARCH != goarch {
+			continue
+		}
+		if selected != nil {
+			return nil, fmt.Errorf("release manifest has duplicate target %s/%s", goos, goarch)
+		}
+		selected = target
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("release manifest has no target for platform %s/%s", goos, goarch)
+	}
+	return selected, nil
+}
+
+// matchSHA256 校验 content 与清单中声明的十六进制 SHA-256 一致。
+func matchSHA256(content []byte, expectedHex, description string) error {
+	sum := sha256.Sum256(content)
+	actualHex := hex.EncodeToString(sum[:])
+	if actualHex != expectedHex {
+		return fmt.Errorf("%s SHA-256 does not match the release manifest", description)
 	}
 	return nil
 }
 
 type selectedReleaseAssets struct {
-	archive   ReleaseAsset
-	checksums ReleaseAsset
+	archive    ReleaseAsset
+	manifest   ReleaseAsset
+	signatures ReleaseAsset
 }
 
 func selectReleaseAssets(release Release, archiveName string) (selectedReleaseAssets, error) {
@@ -199,20 +245,28 @@ func selectReleaseAssets(release Release, archiveName string) (selectedReleaseAs
 				return selectedReleaseAssets{}, fmt.Errorf("release contains duplicate archive asset %q", archiveName)
 			}
 			selected.archive = asset
-		case checksumsAssetName:
-			if selected.checksums.Name != "" {
-				return selectedReleaseAssets{}, fmt.Errorf("release contains duplicate asset %q", checksumsAssetName)
+		case manifestAssetName:
+			if selected.manifest.Name != "" {
+				return selectedReleaseAssets{}, fmt.Errorf("release contains duplicate asset %q", manifestAssetName)
 			}
-			selected.checksums = asset
+			selected.manifest = asset
+		case signaturesAssetName:
+			if selected.signatures.Name != "" {
+				return selectedReleaseAssets{}, fmt.Errorf("release contains duplicate asset %q", signaturesAssetName)
+			}
+			selected.signatures = asset
 		}
 	}
 	if selected.archive.Name == "" {
 		return selectedReleaseAssets{}, fmt.Errorf("release has no platform archive asset %q", archiveName)
 	}
-	if selected.checksums.Name == "" {
-		return selectedReleaseAssets{}, fmt.Errorf("release has no asset %q", checksumsAssetName)
+	if selected.manifest.Name == "" {
+		return selectedReleaseAssets{}, fmt.Errorf("release has no asset %q", manifestAssetName)
 	}
-	if selected.archive.DownloadURL == "" || selected.checksums.DownloadURL == "" {
+	if selected.signatures.Name == "" {
+		return selectedReleaseAssets{}, fmt.Errorf("release has no asset %q", signaturesAssetName)
+	}
+	if selected.archive.DownloadURL == "" || selected.manifest.DownloadURL == "" || selected.signatures.DownloadURL == "" {
 		return selectedReleaseAssets{}, fmt.Errorf("release asset download URL is empty")
 	}
 	return selected, nil
@@ -252,33 +306,6 @@ func (i *releaseInstaller) download(ctx context.Context, asset ReleaseAsset) ([]
 		return nil, fmt.Errorf("read asset %q: %w", asset.Name, err)
 	}
 	return body, nil
-}
-
-func checksumForArchive(checksums []byte, archiveName string) (string, error) {
-	var expected string
-	for _, line := range strings.Split(string(checksums), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != archiveName {
-			continue
-		}
-		if expected != "" {
-			return "", fmt.Errorf("checksums.txt has duplicate entry for %q", archiveName)
-		}
-		if len(fields[0]) != sha256.Size*2 || strings.ToLower(fields[0]) != fields[0] {
-			return "", fmt.Errorf("checksums.txt has invalid SHA-256 for %q", archiveName)
-		}
-		if _, err := hex.DecodeString(fields[0]); err != nil {
-			return "", fmt.Errorf("checksums.txt has invalid SHA-256 for %q: %w", archiveName, err)
-		}
-		expected = fields[0]
-	}
-	if expected == "" {
-		return "", fmt.Errorf("checksums.txt has no entry for %q", archiveName)
-	}
-	return expected, nil
 }
 
 // ExtractBinaryBytes 从发布归档中提取唯一预期二进制并返回其字节。
