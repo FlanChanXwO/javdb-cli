@@ -1,6 +1,7 @@
 package search
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/client"
@@ -19,9 +20,14 @@ func NewSearch(c *client.Client) *SearchEndpoint {
 
 // Search calls GET /api/v2/search.
 func (e *SearchEndpoint) Search(keyword string, opt SearchOptions) (model.SearchResult, error) {
+	return e.SearchContext(context.Background(), keyword, opt)
+}
+
+// SearchContext calls GET /api/v2/search with an explicit context.
+func (e *SearchEndpoint) SearchContext(ctx context.Context, keyword string, opt SearchOptions) (model.SearchResult, error) {
 	params := BuildSearchParams(keyword, opt)
 	var data map[string]json.RawMessage
-	if err := e.c.GetJSON("/api/v2/search", params, &data); err != nil {
+	if err := e.c.GetJSONContext(ctx, "/api/v2/search", params, &data); err != nil {
 		return nil, err
 	}
 	return model.SearchResult(data), nil

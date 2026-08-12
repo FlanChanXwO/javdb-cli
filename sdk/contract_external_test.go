@@ -183,3 +183,36 @@ func TestExternalReflectTypeOfAPIResultIsPointer(t *testing.T) {
 		t.Fatalf("API() reflect type = %v", got)
 	}
 }
+
+// ---- 反搜公开契约（编译期） ----
+var (
+	_ func(opts javdb.ReverseSearchOptions) javdb.Option = javdb.WithReverseSearch
+
+	_ javdb.ReverseSearchSource    = javdb.ReverseSearchSource{}
+	_ javdb.ReverseSearchRequest   = javdb.ReverseSearchRequest{}
+	_ javdb.ReverseSearchFrame     = javdb.ReverseSearchFrame{}
+	_ javdb.ReverseSearchCandidate = javdb.ReverseSearchCandidate{}
+	_ javdb.ReverseSearchResponse  = javdb.ReverseSearchResponse{}
+	_ javdb.ReverseSearchOptions   = javdb.ReverseSearchOptions{}
+	_ javdb.ImageSearchOptions     = javdb.ImageSearchOptions{}
+	_ javdb.ImageSearchError       = javdb.ImageSearchError{}
+	_ javdb.ImageSearchMatch       = javdb.ImageSearchMatch{}
+	_ javdb.ImageSearchResult      = javdb.ImageSearchResult{}
+
+	_ func(c *javdb.Client, ctx context.Context, req javdb.ReverseSearchRequest) (javdb.ReverseSearchResponse, error)                            = (*javdb.Client).ReverseSearch
+	_ func(c *javdb.Client, ctx context.Context, req javdb.ReverseSearchRequest, opts javdb.ImageSearchOptions) (javdb.ImageSearchResult, error) = (*javdb.Client).SearchByImage
+	_ func(c *javdb.Client, ctx context.Context, number string) (string, error)                                                                  = (*javdb.Client).ResolveMovieIDExact
+
+	// 反搜缓存接口：CLI 以该接口注入本机文件缓存，SDK 不读取 ~/.javdb-cli。
+	_ javdb.ReverseSearchCache = cacheAdapter{}
+)
+
+type cacheAdapter struct{}
+
+func (cacheAdapter) Get(context.Context, string) (javdb.ReverseSearchResponse, bool, error) {
+	return javdb.ReverseSearchResponse{}, false, nil
+}
+
+func (cacheAdapter) Put(context.Context, string, javdb.ReverseSearchResponse) error {
+	return nil
+}

@@ -215,8 +215,9 @@ if rg -n 'internal/javdb/(appapi/(client|model|codec|media|endpoint)|protocol)' 
 fi
 
 # 这些是基线已经存在的 facade/返回类型兼容依赖；新增 SDK internal 依赖必须先改变契约并更新门禁。
+# reversesearch/provider 是公开反搜方法的 wire 实现，SDK 只做类型映射，不暴露 internal 类型。
 sdk_internal_imports=$(rg -n 'github.com/FlanChanXwO/javdb-cli/internal/' "$repo_root/sdk" -g '*.go' || true)
-if [ -n "$sdk_internal_imports" ] && printf '%s\n' "$sdk_internal_imports" | rg -n -v 'github.com/FlanChanXwO/javdb-cli/internal/(config|javdb/appapi|storage/tags)(/|")'; then
+if [ -n "$sdk_internal_imports" ] && printf '%s\n' "$sdk_internal_imports" | rg -n -v 'github.com/FlanChanXwO/javdb-cli/internal/(config|javdb/appapi|storage/tags|reversesearch/provider)(/|")'; then
 	printf '%s\n' 'SDK imports an internal package outside the compatibility allowlist' >&2
 	exit 1
 fi

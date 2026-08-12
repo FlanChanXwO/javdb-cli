@@ -3,6 +3,9 @@ package javdb
 
 import (
 	"context"
+	"net/http"
+	"net/url"
+	"sync"
 	"time"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
@@ -18,18 +21,26 @@ const (
 // Client is a concrete app-API client.
 type Client struct {
 	api *appapi.Client
+	// proxy 是 WithProxy 的原始值，用于惰性装配反搜 HTTP client。
+	proxy string
+
+	reverseSearch ReverseSearchOptions
+	reverseHTTP   *http.Client
+	reverseOnce   sync.Once
+	reverseErr    error
 }
 
 // Option configures New.
 type Option func(*options)
 
 type options struct {
-	host       string
-	token      string
-	proxy      string
-	deviceUUID string
-	timeout    time.Duration
-	lang       string
+	host          string
+	token         string
+	proxy         string
+	deviceUUID    string
+	timeout       time.Duration
+	lang          string
+	reverseSearch ReverseSearchOptions
 }
 
 // WithHost sets logical host (mirror|main) or absolute base URL.
@@ -87,7 +98,25 @@ func New(opts ...Option) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{api: api}, nil
+	return &Client{api: api, proxy: o.proxy, reverseSearch: o.reverseSearch}, nil
+}
+
+// reverseHTTPClient 装配反搜 HTTP client；WithProxy 的最终代理同时用于图片
+// URL、provider 与 JavDB 请求。构建是惰性的，New 保持无网络。
+func (c *Client) reverseHTTPClient() (*http.Client, error) {
+	c.reverseOnce.Do(func() {
+		if c.proxy == "" {
+			c.reverseHTTP = http.DefaultClient
+			return
+		}
+		proxyURL, err := url.Parse(c.proxy)
+		if err != nil {
+			c.reverseErr = err
+			return
+		}
+		c.reverseHTTP = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+	})
+	return c.reverseHTTP, c.reverseErr
 }
 
 // Token returns the current bearer token.

@@ -1,6 +1,7 @@
 package movie
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 
@@ -22,8 +23,13 @@ func NewMovie(c *client.Client, search *search.SearchEndpoint) *MovieEndpoint {
 
 // MovieDetail returns the nested movie object from GET /api/v4/movies/{id}.
 func (e *MovieEndpoint) MovieDetail(movieID string) (map[string]any, error) {
+	return e.MovieDetailContext(context.Background(), movieID)
+}
+
+// MovieDetailContext returns the nested movie object with an explicit context.
+func (e *MovieEndpoint) MovieDetailContext(ctx context.Context, movieID string) (map[string]any, error) {
 	var data map[string]json.RawMessage
-	if err := e.c.GetJSON("/api/v4/movies/"+movieID, nil, &data); err != nil {
+	if err := e.c.GetJSONContext(ctx, "/api/v4/movies/"+movieID, nil, &data); err != nil {
 		return nil, err
 	}
 	if raw, ok := data["movie"]; ok && len(raw) > 0 && string(raw) != "null" {
