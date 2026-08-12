@@ -94,7 +94,9 @@ javdb unmark SSIS-589
 ```
 
 所有数据命令可加的全局参数只有本次调用生效：`--proxy URL` 与
-`--host auto|mirror|main|URL`。默认 `auto` 会先验证缓存线路，再从 startup 配置重选最快
+`--host auto|mirror|main|URL`。`--proxy` 支持 http/https/socks4/socks4a/socks5/socks5h，
+必须带 host（socks 还需显式端口）；显式传入的空白值会直接报错，而不是静默覆盖继承代理后直连。
+默认 `auto` 会先验证缓存线路，再从 startup 配置重选最快
 主机并持久化到 `~/.javdb-cli/route.json`；固定 `mirror`/`main`/绝对 URL 完全跳过线路发现。
 不要把未审阅的 URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `config.toml` > 默认值。
 
