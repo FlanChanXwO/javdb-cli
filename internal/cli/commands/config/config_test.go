@@ -127,3 +127,94 @@ func TestConfigSetInvalidHostValueErrorsWithoutCreating(t *testing.T) {
 		t.Fatalf("set host bogus created config: %v", statErr)
 	}
 }
+
+func TestConfigReverseSearchScalarRoundTrip(t *testing.T) {
+	isolateHome(t)
+	out, _, err := executeConfig(t, "set", "reverse_search.retries", "5")
+	if err != nil {
+		t.Fatalf("set retries: %v", err)
+	}
+	_ = out
+	out, _, err = executeConfig(t, "get", "reverse_search.retries")
+	if err != nil {
+		t.Fatalf("get retries: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "5" {
+		t.Errorf("get retries = %q, want 5", out.String())
+	}
+
+	if _, _, err := executeConfig(t, "set", "reverse_search.cache", "false"); err != nil {
+		t.Fatalf("set cache: %v", err)
+	}
+	out, _, err = executeConfig(t, "get", "reverse_search.cache")
+	if err != nil {
+		t.Fatalf("get cache: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "false" {
+		t.Errorf("get cache = %q, want false", out.String())
+	}
+
+	if _, _, err := executeConfig(t, "set", "reverse_search.default_source", "custom"); err != nil {
+		t.Fatalf("set default_source: %v", err)
+	}
+	out, _, err = executeConfig(t, "get", "reverse_search.default_source")
+	if err != nil {
+		t.Fatalf("get default_source: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "custom" {
+		t.Errorf("get default_source = %q", out.String())
+	}
+}
+
+func TestConfigReverseSearchUnsetFallsBackToDefaults(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "reverse_search.default_source", "custom"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := executeConfig(t, "unset", "reverse_search.default_source"); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := executeConfig(t, "get", "reverse_search.default_source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out.String()) != "builtin" {
+		t.Errorf("default_source after unset = %q, want builtin", out.String())
+	}
+}
+
+func TestConfigReverseSearchKeyValidation(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "reverse_search.retries", "abc"); err == nil {
+		t.Fatal("set retries accepted a non-integer")
+	}
+	if _, _, err := executeConfig(t, "set", "reverse_search.cache", "maybe"); err == nil {
+		t.Fatal("set cache accepted a non-boolean")
+	}
+	if _, _, err := executeConfig(t, "get", "reverse_search.unknown_key"); err == nil {
+		t.Fatal("get accepted an unknown reverse_search key")
+	}
+	if _, _, err := executeConfig(t, "set", "reverse_search.sources", "[]"); err == nil {
+		t.Fatal("set accepted the hand-edited sources array key")
+	}
+}
+
+func TestConfigGetListsReverseSearchScalars(t *testing.T) {
+	isolateHome(t)
+	out, _, err := executeConfig(t, "get")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	for _, line := range []string{
+		"reverse_search.default_source=builtin",
+		"reverse_search.cache=true",
+		"reverse_search.cache_ttl=720h",
+		"reverse_search.retries=3",
+		"reverse_search.retry_wait=30s",
+		"reverse_search.request_timeout=60s",
+	} {
+		if !strings.Contains(out.String(), line) {
+			t.Errorf("config get output lacks %q:\n%s", line, out.String())
+		}
+	}
+}

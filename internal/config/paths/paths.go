@@ -151,3 +151,12 @@ func TagTaxonomyPath(zone string) (string, error) {
 	}
 	return filepath.Join(dir, "tags-"+zone+".json"), nil
 }
+
+// ReverseSearchCacheDir 返回反搜响应缓存的目录（~/.javdb-cli/reverse-search-cache）。
+func ReverseSearchCacheDir() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "reverse-search-cache"), nil
+}

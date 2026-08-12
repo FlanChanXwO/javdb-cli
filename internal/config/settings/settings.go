@@ -27,11 +27,12 @@ var HostURLs = map[string]string{
 
 // Settings is the on-disk config.toml schema.
 type Settings struct {
-	Host        string `toml:"host"`
-	HTTPSProxy  string `toml:"https_proxy,omitempty"`
-	AutoRelogin bool   `toml:"auto_relogin"`
-	Lang        string `toml:"lang,omitempty"`
-	DeviceUUID  string `toml:"device_uuid,omitempty"` // optional override; else file/device_uuid
+	Host          string                `toml:"host"`
+	HTTPSProxy    string                `toml:"https_proxy,omitempty"`
+	AutoRelogin   bool                  `toml:"auto_relogin"`
+	Lang          string                `toml:"lang,omitempty"`
+	DeviceUUID    string                `toml:"device_uuid,omitempty"` // optional override; else file/device_uuid
+	ReverseSearch ReverseSearchSettings `toml:"reverse_search"`
 }
 
 // Defaults returns baseline settings.
@@ -59,19 +60,44 @@ func LoadFile(path string) (Settings, error) {
 	if s.Host == "" {
 		s.Host = HostAuto
 	}
+	s.ReverseSearch.applyDefaults()
 	return s, nil
 }
 
-// SaveFile writes settings sparsely to path (0600).
+// SaveFile writes settings sparsely to path (0600). 保存采用结构化合并：先读
+// 既有配置树，只覆盖已知顶层键，未修改的表、source 数组与未知键保持原样。
 func SaveFile(path string, s Settings) error {
 	if _, err := paths.EnsureDir(); err != nil {
 		return err
 	}
-	data, err := toml.Marshal(s)
+	document, err := LoadDocument(path)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	if err := document.Set("host", s.Host); err != nil {
+		return err
+	}
+	if s.HTTPSProxy != "" {
+		if err := document.Set("https_proxy", s.HTTPSProxy); err != nil {
+			return err
+		}
+	} else if err := document.Delete("https_proxy"); err != nil {
+		return err
+	}
+	if err := document.Set("auto_relogin", s.AutoRelogin); err != nil {
+		return err
+	}
+	if s.Lang != "" {
+		if err := document.Set("lang", s.Lang); err != nil {
+			return err
+		}
+	}
+	if s.DeviceUUID != "" {
+		if err := document.Set("device_uuid", s.DeviceUUID); err != nil {
+			return err
+		}
+	}
+	return document.Save(path)
 }
 
 // Runtime is the resolved config after flag > env > file > default.
