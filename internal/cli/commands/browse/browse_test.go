@@ -3,6 +3,7 @@ package browse
 import (
 	"bytes"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"strings"
 	"testing"
 )
@@ -24,9 +25,9 @@ func TestNewHelpListsFlags(t *testing.T) {
 	}
 }
 
-func TestWriteMovieRowsEmpty(t *testing.T) {
+func TestProducerMovieRowsEmpty(t *testing.T) {
 	var out, errb bytes.Buffer
-	if err := writeMovieRows(&out, &errb, nil); err != nil {
+	if err := pipeline.WriteMovieRowsText(&out, &errb, nil); err != nil {
 		t.Fatal(err)
 	}
 	if out.String() != "" || errb.String() != "(空列表)\n" {

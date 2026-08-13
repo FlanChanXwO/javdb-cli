@@ -49,17 +49,30 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if len(args) == 1 {
 				arg = args[0]
 			}
-			imageMode, err := decideImageMode(arg, asImage, reader, streams)
+			imageMode, inputs, err := classifySearchInput(arg, asImage, reader, streams)
 			if err != nil {
 				return err
 			}
 			if imageMode {
 				return runImageSearch(options, streams, arg, reader, source, noCache, mode)
 			}
-			if arg == "" {
+			if len(inputs) == 0 {
 				return fmt.Errorf("keyword or an image")
 			}
-			return runTextSearch(options, streams, arg, page, limit, zone, sort, filterBy, typ, hasMagnets, asJSON)
+			runner := &pipeline.BatchRunner{
+				Name:  "search",
+				Kinds: []pipeline.Kind{pipeline.KindMovie},
+				ClientFactory: func() (*javdb.Client, error) {
+					return client.New(options, "")
+				},
+				RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+					return runSearchOne(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
+				},
+				Legacy: func(args []string) error {
+					return runTextSearch(options, streams, args[0], page, limit, zone, sort, filterBy, typ, hasMagnets, asJSON)
+				},
+			}
+			return runner.ExecuteWithInputs(streams, inputs, mode)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page number")
@@ -78,46 +91,45 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	return cmd
 }
 
-// decideImageMode 决定本次调用是否进入图片模式：
-//   - --image 强制；参数是现有普通文件或 HTTP(S) URL 自动进入。
-//   - 无参数且 stdin 非 TTY 时按固定顺序分类（图片 magic → JSONL → 文本），
-//     本阶段只消费图片；JSONL/文本批处理由 pipeline 阶段接入。
+// classifySearchInput 一次性分类输入：返回图片模式标志与批处理输入。
+//   - --image 强制图片；参数是现有普通文件或 HTTP(S) URL 自动图片。
+//   - 无参数非 TTY stdin 按固定顺序分类（图片 magic → JSONL → 文本）。
 //   - 位置参数与非空 stdin 同时存在是歧义错误，绝不静默丢数据。
-func decideImageMode(arg string, forced bool, reader *bufio.Reader, streams *invocation.Streams) (bool, error) {
+func classifySearchInput(arg string, forced bool, reader *bufio.Reader, streams *invocation.Streams) (bool, []pipeline.Envelope, error) {
 	stdinHasContent := false
 	if !streams.InIsTerminal {
 		if _, err := reader.Peek(1); err == nil {
 			stdinHasContent = true
 		} else if !errors.Is(err, io.EOF) {
-			return false, fmt.Errorf("read stdin: %w", err)
+			return false, nil, fmt.Errorf("read stdin: %w", err)
 		}
 	}
 	if arg != "" && stdinHasContent {
-		return false, fmt.Errorf("ambiguous input: provide either a positional keyword/image or stdin, not both")
+		return false, nil, fmt.Errorf("ambiguous input: provide either a positional keyword/image or stdin, not both")
 	}
 	if arg != "" {
-		if forced {
-			return true, nil
+		if forced || isHTTPURL(arg) || isRegularFile(arg) {
+			return true, nil, nil
 		}
-		if isHTTPURL(arg) || isRegularFile(arg) {
-			return true, nil
-		}
-		return false, nil
+		return false, []pipeline.Envelope{pipeline.New("", arg, "")}, nil
 	}
-	if streams.InIsTerminal {
-		return false, nil
+	if streams.InIsTerminal || !stdinHasContent {
+		return false, nil, nil
 	}
-	if !stdinHasContent {
-		return false, fmt.Errorf("keyword or an image")
-	}
-	classification, _, err := pipeline.Classify(reader)
+	classification, content, err := pipeline.Classify(reader)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
-	if classification == pipeline.ClassificationImage {
-		return true, nil
+	switch classification {
+	case pipeline.ClassificationImage:
+		return true, nil, nil
+	case pipeline.ClassificationJSONL:
+		inputs, err := pipeline.ParseBatch(content, pipeline.KindJSONLInput)
+		return false, inputs, err
+	default:
+		inputs, err := pipeline.ParseBatch(content, pipeline.KindMovie)
+		return false, inputs, err
 	}
-	return false, fmt.Errorf("stdin is not a JPEG, PNG or WEBP image")
 }
 
 func isHTTPURL(value string) bool {
@@ -128,6 +140,46 @@ func isHTTPURL(value string) bool {
 func isRegularFile(value string) bool {
 	info, err := os.Stat(value)
 	return err == nil && info.Mode().IsRegular()
+}
+
+// runSearchOne 执行单个关键词搜索并返回管道信封：movie 类型 → kind movie，
+// 其他 --type → 对应实体 kind。
+func runSearchOne(c *javdb.Client, ctx context.Context, input pipeline.Envelope, page, limit int, zone, sort, filterBy, typ string, hasMagnets bool) (pipeline.Envelope, error) {
+	keyword := pipeline.ConsumerRef(input)
+	opt := javdb.SearchOptions{
+		Page:     page,
+		Limit:    limit,
+		Zone:     zone,
+		Sort:     sort,
+		FilterBy: filterBy,
+		Type:     typ,
+	}
+	res, err := c.Search(ctx, keyword, opt)
+	if err != nil {
+		return pipeline.Envelope{}, fmt.Errorf("search failed: %w", err)
+	}
+	if typ == "" || typ == "movie" {
+		movies := res.Movies()
+		if hasMagnets {
+			movies = result.FilterMoviesWithMagnets(movies)
+		}
+		movieID := ""
+		if len(movies) > 0 {
+			movieID = fmt.Sprint(movies[0]["id"])
+		}
+		envelope := pipeline.New(pipeline.KindMovie, keyword, movieID)
+		if len(movies) > 0 {
+			envelope = envelope.WithData(map[string]any{"movies": movies})
+		}
+		return envelope, nil
+	}
+	key := searchTypeKey(typ)
+	items := res.Named(key)
+	envelope := pipeline.New(pipeline.Kind(typ), keyword, "")
+	if len(items) > 0 {
+		envelope = envelope.WithData(map[string]any{key: items})
+	}
+	return envelope, nil
 }
 
 // runTextSearch 保持既有文本搜索行为。

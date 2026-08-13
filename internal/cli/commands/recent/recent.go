@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
@@ -17,23 +18,37 @@ import (
 // New builds the recently viewed movies command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var hasMagnets bool
+	var asJSON, asJSONL, asText bool
+	producer := &pipeline.MovieListProducer{
+		Name: "recent",
+		ClientFactory: func() (*javdb.Client, error) {
+			return client.NewWithDefaultToken(options)
+		},
+		Fetch: func(ctx context.Context, c *javdb.Client) ([]map[string]any, error) {
+			movies, err := c.RecentViewed(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if hasMagnets {
+				movies = result.FilterMoviesWithMagnets(movies)
+			}
+			return movies, nil
+		},
+		JSON: func(movies []map[string]any) (map[string]any, error) {
+			return map[string]any{"movies": movies}, nil
+		},
+	}
 	cmd := &cobra.Command{
 		Use:   "recent",
 		Short: "List recently viewed (最近浏览) movies",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
-				movies, err := c.RecentViewed(context.Background())
-				if err != nil {
-					return err
-				}
-				if hasMagnets {
-					movies = result.FilterMoviesWithMagnets(movies)
-				}
-				return writeMovies(streams.Out, streams.Err, movies)
-			})
+			return producer.Execute(streams, asJSONL, asText, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 	return cmd
 }
 

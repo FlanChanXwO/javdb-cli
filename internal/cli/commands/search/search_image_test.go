@@ -163,16 +163,11 @@ func TestSearchAmbiguousArgumentAndStdin(t *testing.T) {
 }
 
 func TestSearchStdinRejectsNonImage(t *testing.T) {
+	// 位置参数 + 非空 stdin → 歧义错误。
 	streams := invocation.NewStreams(strings.NewReader("plain text"), &bytes.Buffer{}, &bytes.Buffer{})
 	err := executeSearch(t, streams, &invocation.RootOptions{}, "keyword")
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("expected ambiguity error for keyword + stdin, got %v", err)
-	}
-
-	streams = invocation.NewStreams(strings.NewReader("plain text"), &bytes.Buffer{}, &bytes.Buffer{})
-	err = executeSearch(t, streams, &invocation.RootOptions{})
-	if err == nil || !strings.Contains(err.Error(), "not a JPEG, PNG or WEBP") {
-		t.Fatalf("expected stdin format error, got %v", err)
 	}
 }
 

@@ -10,33 +10,52 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // NewShow builds the lists show command.
 func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
-	var asJSON bool
-	cmd := &cobra.Command{
-		Use:   "show REF",
-		Short: "Show 合集 meta (movies: use list <id>)",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+	var asJSON, asJSONL, asText bool
+	runOne := func(c *javdb.Client, ctx context.Context, ref string) (string, map[string]any, error) {
+		eid, err := c.ResolveEntity(ctx, "list", ref, "censored")
+		if err != nil {
+			return "", nil, fmt.Errorf("lists show failed: %w", err)
+		}
+		data, err := c.ListInfo(ctx, eid)
+		if err != nil {
+			return "", nil, fmt.Errorf("lists show failed: %w", err)
+		}
+		return eid, data, nil
+	}
+	runner := &pipeline.BatchRunner{
+		Name:  "lists show",
+		Kinds: []pipeline.Kind{pipeline.KindList},
+		ClientFactory: func() (*javdb.Client, error) {
+			return client.New(options, "")
+		},
+		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+			eid, data, err := runOne(c, ctx, pipeline.ConsumerRef(input))
+			if err != nil {
+				return pipeline.Envelope{}, err
+			}
+			return pipeline.New(pipeline.KindList, input.Ref, eid).WithData(map[string]any{"list_info": data}), nil
+		},
+		Legacy: func(args []string) error {
 			c, err := client.New(options, "")
 			if err != nil {
 				return err
 			}
 			ctx := context.Background()
-			eid, err := c.ResolveEntity(ctx, "list", args[0], "censored")
+			eid, data, err := runOne(c, ctx, args[0])
 			if err != nil {
-				return fmt.Errorf("lists show failed: %w", err)
-			}
-			data, err := c.ListInfo(ctx, eid)
-			if err != nil {
-				return fmt.Errorf("lists show failed: %w", err)
+				return err
 			}
 			if asJSON {
 				return writeJSON(streams.Out, data)
 			}
+			_ = eid
 			meta, _ := data["list"].(map[string]any)
 			if meta == nil {
 				if m, ok := data["list"]; ok {
@@ -63,7 +82,17 @@ func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 			return nil
 		},
 	}
+	cmd := &cobra.Command{
+		Use:   "show REF",
+		Short: "Show 合集 meta (movies: use list <id>)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+		},
+	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 	return cmd
 }
 

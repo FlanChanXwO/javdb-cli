@@ -10,8 +10,8 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
-	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the personal and public list command tree.
@@ -19,30 +19,63 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	var page, limit int
 	var sortBy string
 	var asJSON bool
+	producer := &pipeline.Producer{
+		Name: "lists",
+		Produce: func(ctx context.Context) ([]pipeline.Envelope, error) {
+			c, err := client.NewWithDefaultToken(options)
+			if err != nil {
+				return nil, err
+			}
+			res, err := c.MyLists(ctx, page, limit, sortBy)
+			if err != nil {
+				return nil, fmt.Errorf("lists failed: %w", err)
+			}
+			items := res.Named("lists")
+			envelopes := make([]pipeline.Envelope, 0, len(items))
+			for _, item := range items {
+				envelopes = append(envelopes, pipeline.New(pipeline.KindList, display(item["name"]), display(item["id"])).WithData(map[string]any{"list": item}))
+			}
+			return envelopes, nil
+		},
+		RenderText: func(w io.Writer, envelopes []pipeline.Envelope) error {
+			items := make([]map[string]any, 0, len(envelopes))
+			for _, envelope := range envelopes {
+				if list, ok := envelope.Data["list"].(map[string]any); ok {
+					items = append(items, list)
+				}
+			}
+			return writeListRows(w, streams.Err, items)
+		},
+		LegacyJSON: func(w io.Writer) error {
+			c, err := client.NewWithDefaultToken(options)
+			if err != nil {
+				return err
+			}
+			res, err := c.MyLists(context.Background(), page, limit, sortBy)
+			if err != nil {
+				return fmt.Errorf("lists failed: %w", err)
+			}
+			items := res.Named("lists")
+			return writeJSON(w, map[string]any{
+				"lists":        items,
+				"current_page": jsonx.RawString(res["current_page"]),
+			})
+		},
+	}
+	var asJSONL, asText bool
 	cmd := &cobra.Command{
 		Use:   "lists",
 		Short: "My 合集; subcommands: show/search/related",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
-				res, err := c.MyLists(context.Background(), page, limit, sortBy)
-				if err != nil {
-					return fmt.Errorf("lists failed: %w", err)
-				}
-				items := res.Named("lists")
-				if asJSON {
-					return writeJSON(streams.Out, map[string]any{
-						"lists":        items,
-						"current_page": jsonx.RawString(res["current_page"]),
-					})
-				}
-				return writeListRows(streams.Out, streams.Err, items)
-			})
+			return producer.Execute(streams, asJSONL, asText, asJSON)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().StringVar(&sortBy, "sort-by", "created", "created|name|movies_count|views_count|updated|default")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 
 	cmd.AddCommand(NewShow(options, streams))
 	cmd.AddCommand(NewSearch(options, streams))

@@ -11,53 +11,77 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
-	"github.com/FlanChanXwO/javdb-cli/sdk"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the magnet listing and best-magnet selection command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
-		cnsub, hd, best, isID, asJSON bool
-		minSize                       string
+		cnsub, hd, best, isID   bool
+		asJSON, asJSONL, asText bool
+		minSize                 string
 	)
-	cmd := &cobra.Command{
-		Use:   "magnets NUMBER",
-		Short: "List magnet links for a movie",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool) (string, []map[string]any, error) {
+		mid := ref
+		var err error
+		if !useID {
+			mid, err = c.ResolveMovieID(ctx, ref)
+			if err != nil {
+				return "", nil, err
+			}
+		}
+		detail, err := c.MovieDetail(ctx, mid)
+		if err != nil {
+			return "", nil, fmt.Errorf("magnets failed: %w", err)
+		}
+		var items []map[string]any
+		if magnetCount(detail["magnets_count"]) == 0 {
+			items = nil
+		} else {
+			items, err = c.MovieMagnets(ctx, mid)
+			if err != nil {
+				return "", nil, fmt.Errorf("magnets failed: %w", err)
+			}
+		}
+		minMiB := 0
+		if minSize != "" {
+			minMiB, err = ParseSizeMiB(minSize)
+			if err != nil {
+				return "", nil, err
+			}
+		}
+		items = javdb.FilterMagnets(items, cnsub, hd, minMiB)
+		return mid, items, nil
+	}
+	runner := &pipeline.BatchRunner{
+		Name:  "magnets",
+		Kinds: []pipeline.Kind{pipeline.KindMovie},
+		ClientFactory: func() (*javdb.Client, error) {
+			return client.NewWithDefaultToken(options)
+		},
+		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+			ref := pipeline.ConsumerRef(input)
+			mid, items, err := fetch(c, ctx, ref, isID && input.ID == "")
+			if err != nil {
+				return pipeline.Envelope{}, err
+			}
+			data := map[string]any{"movie_id": mid, "magnets": items}
+			if best {
+				b := javdb.PickBestMagnet(items)
+				data["best"] = b
+				data["magnet_uri"] = javdb.MagnetURI(b)
+			}
+			return pipeline.New(pipeline.KindMagnet, input.Ref, mid).WithData(data), nil
+		},
+		Legacy: func(args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
-				var err error
 				ctx := context.Background()
-				mid := args[0]
-				if !isID {
-					mid, err = c.ResolveMovieID(ctx, args[0])
-					if err != nil {
-						return err
-					}
-				}
-				// optional early exit if magnets_count known zero
-				detail, err := c.MovieDetail(ctx, mid)
+				mid, items, err := fetch(c, ctx, args[0], isID)
 				if err != nil {
-					return fmt.Errorf("magnets failed: %w", err)
+					return err
 				}
-				var items []map[string]any
-				if magnetCount(detail["magnets_count"]) == 0 {
-					items = nil
-				} else {
-					items, err = c.MovieMagnets(ctx, mid)
-					if err != nil {
-						return fmt.Errorf("magnets failed: %w", err)
-					}
-				}
-				minMiB := 0
-				if minSize != "" {
-					minMiB, err = ParseSizeMiB(minSize)
-					if err != nil {
-						return err
-					}
-				}
-				items = javdb.FilterMagnets(items, cnsub, hd, minMiB)
 				if best {
 					b := javdb.PickBestMagnet(items)
 					if asJSON {
@@ -82,12 +106,22 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			})
 		},
 	}
+	cmd := &cobra.Command{
+		Use:   "magnets NUMBER",
+		Short: "List magnet links for a movie",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+		},
+	}
 	cmd.Flags().BoolVar(&cnsub, "cnsub", false, "Only magnets with Chinese subtitles")
 	cmd.Flags().BoolVar(&hd, "hd", false, "Only HD magnets")
 	cmd.Flags().StringVar(&minSize, "min-size", "", "Min size e.g. 2000, 4GB, 500MB")
 	cmd.Flags().BoolVar(&best, "best", false, "Pick single best magnet (cnsub > hd > size)")
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat NUMBER as internal movie id")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 	return cmd
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
@@ -19,36 +20,43 @@ import (
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var zone, year string
 	var startRank, page, limit int
-	var ignoreWatched, hasMagnets, asJSON bool
+	var ignoreWatched, hasMagnets bool
+	var asJSON, asJSONL, asText bool
+	var generatedAt string
+	producer := &pipeline.MovieListProducer{
+		Name: "top250",
+		ClientFactory: func() (*javdb.Client, error) {
+			return client.NewWithDefaultToken(options)
+		},
+		Fetch: func(ctx context.Context, c *javdb.Client) ([]map[string]any, error) {
+			res, err := c.Top250(ctx, zone, year, startRank, page, limit, ignoreWatched)
+			if err != nil {
+				return nil, fmt.Errorf("top250 failed: %w", err)
+			}
+			generatedAt = string(jsonx.RawString(res["generated_at"]))
+			movies := res.Movies()
+			if hasMagnets {
+				movies = result.FilterMoviesWithMagnets(movies)
+			}
+			return movies, nil
+		},
+		JSON: func(movies []map[string]any) (map[string]any, error) {
+			if movies == nil {
+				movies = []map[string]any{}
+			}
+			return map[string]any{"movies": movies}, nil
+		},
+		ErrNote: func(w io.Writer, movies []map[string]any) {
+			if generatedAt != "" {
+				fmt.Fprintf(w, "# generated_at=%s\n", generatedAt)
+			}
+		},
+	}
 	cmd := &cobra.Command{
 		Use:   "top250",
 		Short: "TOP250 list (needs login)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
-				res, err := c.Top250(context.Background(), zone, year, startRank, page, limit, ignoreWatched)
-				if err != nil {
-					return fmt.Errorf("top250 failed: %w", err)
-				}
-				if gen := jsonx.RawString(res["generated_at"]); gen != "" && !asJSON {
-					fmt.Fprintf(streams.Err, "# generated_at=%s\n", gen)
-				}
-				movies := res.Movies()
-				if hasMagnets {
-					movies = result.FilterMoviesWithMagnets(movies)
-				}
-				if asJSON {
-					if movies == nil {
-						movies = []map[string]any{}
-					}
-					b, err := jsonx.MarshalLine(map[string]any{"movies": movies})
-					if err != nil {
-						return err
-					}
-					_, err = streams.Out.Write(b)
-					return err
-				}
-				return writeRanked(streams.Out, streams.Err, movies)
-			})
+			return producer.Execute(streams, asJSONL, asText, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&zone, "zone", "", "censored|uncensored|western|fc2 (omit for all-site)")

@@ -30,7 +30,7 @@ func TestNewRequiresRef(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
 	cmd.SetArgs([]string{})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "accepts 1 arg(s), received 0") {
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "keyword or an image") {
 		t.Fatalf("expected arg error, got %v", err)
 	}
 }

@@ -9,18 +9,47 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
-	"github.com/FlanChanXwO/javdb-cli/sdk"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // New builds the movie detail command (graph ids for agent navigation).
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
-	var isID, withMagnets, asJSON bool
-	cmd := &cobra.Command{
-		Use:   "detail NUMBER",
-		Short: "Show movie detail (graph ids for agent navigation)",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+	var isID, withMagnets, asJSON, asJSONL, asText bool
+	runner := &pipeline.BatchRunner{
+		Name:  "detail",
+		Kinds: []pipeline.Kind{pipeline.KindMovie},
+		ClientFactory: func() (*javdb.Client, error) {
+			return client.NewWithDefaultToken(options)
+		},
+		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+			mid := input.ID
+			if mid == "" {
+				mid = input.Ref
+			}
+			var err error
+			if !isID && input.ID == "" {
+				mid, err = c.ResolveMovieID(ctx, mid)
+				if err != nil {
+					return pipeline.Envelope{}, err
+				}
+			}
+			movie, err := c.MovieDetail(ctx, mid)
+			if err != nil {
+				return pipeline.Envelope{}, fmt.Errorf("detail failed: %w", err)
+			}
+			envelope := pipeline.New(pipeline.KindMovie, input.Ref, mid).WithData(map[string]any{"movie": movie})
+			if withMagnets {
+				mags, err := c.MovieMagnets(ctx, mid)
+				if err != nil {
+					return pipeline.Envelope{}, fmt.Errorf("magnets failed: %w", err)
+				}
+				envelope.Data["magnets"] = mags
+			}
+			return envelope, nil
+		},
+		Legacy: func(args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				var err error
 				ctx := context.Background()
@@ -65,8 +94,18 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			})
 		},
 	}
+	cmd := &cobra.Command{
+		Use:   "detail NUMBER",
+		Short: "Show movie detail (graph ids for agent navigation)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+		},
+	}
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat argument as internal movie id")
 	cmd.Flags().BoolVar(&withMagnets, "magnets", false, "Also list magnet links")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 	return cmd
 }

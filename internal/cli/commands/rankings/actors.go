@@ -9,37 +9,54 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // NewActors builds the actor rankings command.
 func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var period string
-	var asJSON bool
+	var asJSON, asJSONL, asText bool
+	fetch := func(ctx context.Context, c *javdb.Client) ([]map[string]any, error) {
+		res, err := c.RankingsActors(ctx, period)
+		if err != nil {
+			return nil, fmt.Errorf("rankings failed: %w", err)
+		}
+		actors := res.Named("actors")
+		return actors, nil
+	}
+	producer := &pipeline.ListProducer{
+		Name: "rankings actors",
+		ClientFactory: func() (*javdb.Client, error) {
+			return client.New(options, "")
+		},
+		Fetch: fetch,
+		JSON: func(actors []map[string]any) (map[string]any, error) {
+			if actors == nil {
+				actors = []map[string]any{}
+			}
+			return map[string]any{"actors": actors}, nil
+		},
+		ItemKind: pipeline.KindActor,
+		ItemRef: func(item map[string]any) (string, string) {
+			return fmt.Sprint(item["name"]), fmt.Sprint(item["id"])
+		},
+		RowText: func(w, errW io.Writer, items []map[string]any) error {
+			return writeNamedNoCount(w, errW, items)
+		},
+	}
 	cmd := &cobra.Command{
 		Use:   "actors",
 		Short: "Actor rankings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := client.New(options, "")
-			if err != nil {
-				return err
-			}
-			res, err := c.RankingsActors(context.Background(), period)
-			if err != nil {
-				return fmt.Errorf("rankings failed: %w", err)
-			}
-			actors := res.Named("actors")
-			if asJSON {
-				if actors == nil {
-					actors = []map[string]any{}
-				}
-				return writeJSON(streams.Out, map[string]any{"actors": actors})
-			}
-			return writeNamedNoCount(streams.Out, streams.Err, actors)
+			return producer.Execute(streams, asJSONL, asText, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
 	return cmd
 }
 

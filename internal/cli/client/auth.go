@@ -115,3 +115,23 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 	}
 	return fn(c2)
 }
+
+// NewWithDefaultToken 解析运行时与默认账号 token 并构造公开 SDK client；
+// 供管道批处理调用方每次批量只构造一次。解析失败显式返回错误。
+func NewWithDefaultToken(options *invocation.RootOptions) (*javdb.Client, error) {
+	rt, err := resolveRuntime(options)
+	if err != nil {
+		return nil, err
+	}
+	token := ""
+	if _, store, err := authstore.Open(); err == nil {
+		if acc, aerr := store.Default(); aerr == nil {
+			token = acc.Token
+		}
+	}
+	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return nil, err
+	}
+	return buildClient(rt, baseURL, token)
+}

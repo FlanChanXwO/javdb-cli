@@ -154,7 +154,9 @@ Flags:
   -h, --help      help for detail
   -i, --id        Treat argument as internal movie id
       --json      Machine-readable JSON
+      --jsonl     Pipeline JSONL envelopes
       --magnets   Also list magnet links
+      --text      Plain text lines (default for TTY)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -172,7 +174,9 @@ Flags:
   -h, --help              help for magnets
   -i, --id                Treat NUMBER as internal movie id
       --json              Machine-readable JSON
+      --jsonl             Pipeline JSONL envelopes
       --min-size string   Min size e.g. 2000, 4GB, 500MB
+      --text              Plain text lines (default for TTY)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -209,9 +213,11 @@ Available Commands:
 Flags:
   -h, --help             help for lists
       --json             JSON output
+      --jsonl            Pipeline JSONL envelopes
       --limit int        Page size (default 20)
       --page int         Page (default 1)
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
+      --text             Plain text lines (default for TTY)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -299,7 +305,7 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 		want string
 	}{
 		{[]string{"search"}, "keyword or an image"},
-		{[]string{"detail"}, "accepts 1 arg(s), received 0"},
+		{[]string{"detail"}, "keyword or an image"},
 		{[]string{"mark"}, "accepts 1 arg(s), received 0"},
 		{[]string{"update", "--json"}, "--json is only supported with --check"},
 		{[]string{"frobnicate"}, `unknown command "frobnicate" for "javdb"`},
