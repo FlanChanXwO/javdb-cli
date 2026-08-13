@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,6 +57,9 @@ func TestNewRejectsWhitespaceOnlyOutput(t *testing.T) {
 // TestDownloadBatchRequiresPlaceholders 批量下载目标必须包含 {number}/{id}。
 func TestDownloadBatchRequiresPlaceholders(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	streams := invocation.NewStreams(strings.NewReader("SSIS-589\nHZGD-246\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{}, streams)
 	cmd.SetArgs([]string{"--thumbnail", "/tmp/out.jpg"})
@@ -68,6 +72,9 @@ func TestDownloadBatchRequiresPlaceholders(t *testing.T) {
 // TestDownloadBatchPreflightRejectsDuplicateTargets 全量展开后重复目标在写入前失败。
 func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/api/v2/search":

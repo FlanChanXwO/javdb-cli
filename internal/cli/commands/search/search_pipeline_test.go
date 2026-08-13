@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,6 +16,9 @@ import (
 // 输出 movie 信封，顺序保持。
 func TestSearchTextStdinBatchConsumesKeywords(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		keyword := request.URL.Query().Get("q")
 		_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
@@ -50,6 +54,9 @@ func TestSearchTextStdinBatchConsumesKeywords(t *testing.T) {
 // TestSearchJSONLBatchRejectsWrongKind JSONL 批处理：不兼容 kind 原位错误。
 func TestSearchJSONLBatchRejectsWrongKind(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{"movies": []map[string]any{}}})
 	}))

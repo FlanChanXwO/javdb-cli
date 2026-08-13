@@ -70,14 +70,15 @@ func TestGetIsolatedBySource(t *testing.T) {
 }
 
 func TestTTLExpiryIsNormalMiss(t *testing.T) {
-	store := New(t.TempDir(), 20*time.Millisecond)
+	// TTL 窗口要远大于调度抖动：fresh 命中与过期 miss 都依赖真实时钟。
+	store := New(t.TempDir(), 500*time.Millisecond)
 	if err := store.Put("builtin", stringsRepeatHex("d"), sampleResponse()); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, err := store.Get("builtin", stringsRepeatHex("d")); err != nil || !ok {
 		t.Fatalf("fresh entry should hit: ok=%v err=%v", ok, err)
 	}
-	time.Sleep(60 * time.Millisecond)
+	time.Sleep(700 * time.Millisecond)
 	_, ok, err := store.Get("builtin", stringsRepeatHex("d"))
 	if err != nil {
 		t.Fatalf("expired entry must be a normal miss, got error: %v", err)

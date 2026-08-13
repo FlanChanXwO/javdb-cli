@@ -6,6 +6,7 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -48,6 +49,9 @@ func TestSearchTypeKey(t *testing.T) {
 // TestExecuteMoviesJSONHasMagnetsFilter 覆盖 movie 分支 JSON + has-magnets 过滤。
 func TestExecuteMoviesJSONHasMagnetsFilter(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true,"data":{"movies":[
@@ -76,6 +80,9 @@ func TestExecuteMoviesJSONHasMagnetsFilter(t *testing.T) {
 // TestExecuteNamedText 覆盖 --type actor 命名分支文本输出。
 func TestExecuteNamedText(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true,"data":{"actors":[
