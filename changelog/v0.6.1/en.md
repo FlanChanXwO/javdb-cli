@@ -12,5 +12,6 @@
 ## Maintenance
 
 - Document the Ed25519 release-key runbook: generation, rotation with dual signatures, revocation, and the lifecycle of the `JAVDB_RELEASE_ED25519_PRIVATE_KEYS` secret in the protected GitHub release environment. ([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061))
+- Release audit records direct commits in the report for manual review instead of hard-failing, so bridge releases pushed without pull requests can still be published. ([`895fef2`](https://github.com/FlanChanXwO/javdb-cli/commit/895fef2))
 
 **Full Changelog**: [v0.6.0...v0.6.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.6.0...v0.6.1)
