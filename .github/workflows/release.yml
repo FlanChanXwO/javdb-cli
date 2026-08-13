@@ -120,11 +120,12 @@ jobs:
             args+=(--previous "$previous")
           fi
           go run ./scripts/releasenotes "${args[@]}"
+          # 直接 push 的 commit 没有 PR 归属；audit 报告会逐条列出，由 release-prep
+          # 人工核对。require-classified 只对 PR 来源强制，v0.7 起 feature 走 PR 流程。
           go run ./scripts/releasenotes audit \
             --repo "$GITHUB_REPOSITORY" \
             --from "$previous" \
             --to "$RELEASE_TAG" \
-            --require-classified \
             --output "$RUNNER_TEMP/release-notes-audit.json"
           args+=(--audit "$RUNNER_TEMP/release-notes-audit.json")
           go run ./scripts/releasenotes "${args[@]}"
