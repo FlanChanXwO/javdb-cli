@@ -101,6 +101,13 @@ func New(opts ...Option) (*Client, error) {
 	return &Client{api: api, proxy: o.proxy, reverseSearch: o.reverseSearch}, nil
 }
 
+// ReverseHTTPClient 返回装配了最终代理的 HTTP client（惰性构建，New 保持
+// 无网络）；图片 URL 读取与 provider 请求共用该 client。
+func (c *Client) ReverseHTTPClient() *http.Client {
+	client, _ := c.reverseHTTPClient()
+	return client
+}
+
 // reverseHTTPClient 装配反搜 HTTP client；WithProxy 的最终代理同时用于图片
 // URL、provider 与 JavDB 请求。构建是惰性的，New 保持无网络。
 func (c *Client) reverseHTTPClient() (*http.Client, error) {

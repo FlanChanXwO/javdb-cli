@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/image"
 	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/provider"
 )
 
@@ -108,12 +110,12 @@ func (c *Client) ReverseSearch(ctx context.Context, request ReverseSearchRequest
 	if c == nil || c.api == nil {
 		return ReverseSearchResponse{}, errNilClient()
 	}
-	if len(request.Image) == 0 {
-		return ReverseSearchResponse{}, errEmptyImage()
+	if err := validateReverseSearchImage(request.Image); err != nil {
+		return ReverseSearchResponse{}, err
 	}
+	cacheKey := reverseSearchCacheKey(request, request.Image)
 	if c.reverseSearch.Cache != nil && !request.BypassCache {
-		key := imageCacheKey(request.Image)
-		cached, hit, err := c.reverseSearch.Cache.Get(ctx, key)
+		cached, hit, err := c.reverseSearch.Cache.Get(ctx, cacheKey)
 		if err != nil {
 			return ReverseSearchResponse{}, err
 		}
@@ -151,7 +153,7 @@ func (c *Client) ReverseSearch(ctx context.Context, request ReverseSearchRequest
 	}
 	normalized := mapReverseSearchResponse(response)
 	if c.reverseSearch.Cache != nil && !request.BypassCache {
-		if err := c.reverseSearch.Cache.Put(ctx, imageCacheKey(request.Image), normalized); err != nil {
+		if err := c.reverseSearch.Cache.Put(ctx, cacheKey, normalized); err != nil {
 			return ReverseSearchResponse{}, err
 		}
 	}
@@ -214,12 +216,33 @@ func imageCacheKey(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// reverseSearchCacheKey 返回缓存键：source 名称 + 原图 SHA-256。
+// source 隔离是硬性要求：不同 provider 对同一图片不得共享缓存。
+func reverseSearchCacheKey(request ReverseSearchRequest, raw []byte) string {
+	sourceName := request.Source.Name
+	if sourceName == "" {
+		sourceName = "builtin"
+	}
+	return sourceName + ":" + imageCacheKey(raw)
+}
+
 func errNilClient() error {
 	return errors.New("javdb client is nil")
 }
 
-func errEmptyImage() error {
-	return errors.New("reverse search image bytes are empty")
+// validateReverseSearchImage 执行公开契约规定的图片校验：JPEG/PNG/WEBP
+// magic 且不超过 8 MiB，与 CLI 共用同一判定逻辑；在进入缓存与上传前执行。
+func validateReverseSearchImage(raw []byte) error {
+	if len(raw) == 0 {
+		return errors.New("reverse search image bytes are empty")
+	}
+	if len(raw) > image.MaxSize {
+		return fmt.Errorf("reverse search image exceeds the 8 MiB limit")
+	}
+	if image.DetectFormat(raw) == image.Unknown {
+		return errors.New("reverse search image is not JPEG, PNG or WEBP")
+	}
+	return nil
 }
 
 func mapReverseSearchResponse(response *provider.Response) ReverseSearchResponse {

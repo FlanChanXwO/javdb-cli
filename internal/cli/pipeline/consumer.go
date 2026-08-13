@@ -54,7 +54,8 @@ func (c *Consumer) Execute(streams *invocation.Streams, args []string, jsonl, te
 // RunInputs 按输出模式处理已收集的输入；单项失败原位错误信封并继续。
 // 调用方（如 search）可自行完成图片分类后复用本方法。
 func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
-	if mode == OutputJSON && len(inputs) == 1 && c.LegacyJSON != nil {
+	// legacy JSON shape 只适用于纯文本 ref 输入；JSONL 信封先过 kind 校验。
+	if mode == OutputJSON && len(inputs) == 1 && inputs[0].Kind == "" && c.LegacyJSON != nil {
 		output, err := c.RunOne(context.Background(), inputs[0])
 		if err != nil {
 			if legacyErr := c.LegacyJSON(streams.Out, ErrorEnvelope(inputs[0], c.Name, "batch", "item", err.Error())); legacyErr != nil {

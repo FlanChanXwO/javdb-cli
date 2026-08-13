@@ -122,8 +122,8 @@ func TestConsumerSingleJSONLegacyShape(t *testing.T) {
 			return err
 		},
 	}
-	// 构造显式 --json 单输入路径：直接调用 RunInputs。
-	inputs := []Envelope{New(KindMovie, "SSIS-589", "")}
+	// 构造显式 --json 单输入路径：文本 ref（无 kind）才走 legacy shape。
+	inputs := []Envelope{New("", "SSIS-589", "")}
 	if err := consumer.RunInputs(streams, inputs, OutputJSON); err != nil {
 		t.Fatalf("RunInputs: %v", err)
 	}
@@ -165,5 +165,53 @@ func TestListProducerJSONLOutput(t *testing.T) {
 	}
 	if first.Kind != KindMovie || first.Ref != "SSIS-589" || first.ID != "id-a" {
 		t.Errorf("envelope = %+v", first)
+	}
+}
+
+// TestConsumerSingleJSONLEnvelopeStillChecksKind 单条 JSONL 信封在显式
+// --text/--json 下也必须经过 kind 校验，且保留 id 语义（legacy 路径只
+// 服务于纯文本 ref 输入）。
+func TestConsumerSingleJSONLEnvelopeStillChecksKind(t *testing.T) {
+	streams, out := testStreams("", false)
+	consumer := &Consumer{
+		Name:          "detail",
+		AcceptedKinds: []Kind{KindMovie},
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			if input.Ref == "actor-ref" {
+				return Envelope{}, testError("RunOne must not run for incompatible kinds")
+			}
+			// id 语义：使用信封的 id 而不是 ref。
+			return New(KindMovie, input.Ref, input.ID).WithData(map[string]any{"movie_id": input.ID}), nil
+		},
+		LegacyJSON: func(w io.Writer, envelope Envelope) error {
+			return testError("legacy JSON must not run for JSONL envelopes")
+		},
+	}
+	// 显式 --json 单条 actor 信封 → kind 校验失败（原位 error），不落 legacy。
+	inputs := []Envelope{{Schema: Schema, Kind: KindActor, Ref: "actor-ref", ID: "actor-id"}}
+	err := consumer.RunInputs(streams, inputs, OutputJSON)
+	if err == nil {
+		t.Fatal("expected kind mismatch failure summary")
+	}
+	if !strings.Contains(out.String(), `"kind":"error"`) || !strings.Contains(out.String(), "unsupported kind") {
+		t.Errorf("kind error envelope missing: %s", out.String())
+	}
+
+	// 单条 movie 信封（带 id）+ --text → 走 RunOne 并保留 id。
+	streams2, out2 := testStreams("", false)
+	consumer2 := &Consumer{
+		Name:          "detail",
+		AcceptedKinds: []Kind{KindMovie},
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			return New(KindMovie, input.Ref, input.ID).WithData(map[string]any{"movie_id": input.ID}), nil
+		},
+	}
+	movieInputs := []Envelope{{Schema: Schema, Kind: KindMovie, Ref: "SSIS-589", ID: "9DGB5X"}}
+	if err := consumer2.RunInputs(streams2, movieInputs, OutputText); err != nil {
+		t.Fatalf("RunInputs text: %v", err)
+	}
+	// --text 输出使用人类稳定引用（ref）；消费侧（RunOne）保留 id 语义。
+	if strings.TrimSpace(out2.String()) != "SSIS-589" {
+		t.Errorf("text output = %q, want ref SSIS-589", out2.String())
 	}
 }

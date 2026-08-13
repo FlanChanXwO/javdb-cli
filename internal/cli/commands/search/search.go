@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 
@@ -226,7 +227,7 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 	if err != nil {
 		return err
 	}
-	imageBytes, err := readInputImage(arg, reader)
+	imageBytes, err := readInputImage(arg, reader, setup.HTTPClient)
 	if err != nil {
 		return err
 	}
@@ -275,12 +276,14 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 	return nil
 }
 
-func readInputImage(arg string, reader *bufio.Reader) (*image.Image, error) {
+func readInputImage(arg string, reader *bufio.Reader, httpClient *http.Client) (*image.Image, error) {
 	if arg == "" {
 		return image.ReadStream(reader, "<stdin>")
 	}
 	if isHTTPURL(arg) {
-		return image.ReadURL(context.Background(), nil, arg)
+		// 复用最终代理配置（与 provider/JavDB 请求一致）；nil 时 image 包回退
+		// http.DefaultClient。
+		return image.ReadURL(context.Background(), httpClient, arg)
 	}
 	return image.ReadFile(arg)
 }

@@ -121,11 +121,11 @@ func TestReverseSearchCacheHitSkipsProvider(t *testing.T) {
 		Filename: "frame.jpg",
 		Source:   javdb.ReverseSearchSource{Name: "test", URL: server.URL},
 	}
-	// 预填充缓存（缓存 key 是原图 SHA-256，与 provider 无关）。
+	// 预填充缓存：key 必须含 source 前缀（source + 原图 SHA-256 隔离契约）。
 	expected := javdb.ReverseSearchResponse{Source: "test", Candidates: []javdb.ReverseSearchCandidate{
 		{VideoCode: "SSIS-589"},
 	}}
-	_ = cache.Put(context.Background(), sha256Hex(t, testJPEG), expected)
+	_ = cache.Put(context.Background(), "test:"+sha256Hex(t, testJPEG), expected)
 
 	response, err := client.ReverseSearch(context.Background(), request)
 	if err != nil {
@@ -292,4 +292,81 @@ func sha256Hex(t *testing.T, raw []byte) string {
 	t.Helper()
 	sum := sha256.Sum256(raw)
 	return fmt.Sprintf("%x", sum)
+}
+
+// TestReverseSearchCacheIsolatedBySource 同一 Client + 同一缓存实例切换
+// provider 时，第二个 source 不得命中第一个 source 的缓存。
+func TestReverseSearchCacheIsolatedBySource(t *testing.T) {
+	cache := newMemoryCache()
+	first := providerServer(t, `{"results":[{"video_code":"SSIS-589","best_similarity":95.2,"frames":[]}]}`)
+	defer first.Close()
+	second := providerServer(t, `{"results":[{"video_code":"HZGD-246","best_similarity":90.0,"frames":[]}]}`)
+	defer second.Close()
+
+	client, err := javdb.New(javdb.WithReverseSearch(javdb.ReverseSearchOptions{
+		Cache:   cache,
+		Retries: 1,
+	}))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	request := func(sourceURL, name string) javdb.ReverseSearchRequest {
+		return javdb.ReverseSearchRequest{
+			Image:    testJPEG,
+			Filename: "frame.jpg",
+			Source:   javdb.ReverseSearchSource{Name: name, URL: sourceURL},
+		}
+	}
+	firstResult, err := client.ReverseSearch(context.Background(), request(first.URL, "src-a"))
+	if err != nil {
+		t.Fatalf("first ReverseSearch: %v", err)
+	}
+	if firstResult.Candidates[0].VideoCode != "SSIS-589" {
+		t.Fatalf("first source result = %+v", firstResult.Candidates)
+	}
+	// 同一图片 + 不同 source：必须真正请求第二个 provider，不得命中缓存。
+	secondResult, err := client.ReverseSearch(context.Background(), request(second.URL, "src-b"))
+	if err != nil {
+		t.Fatalf("second ReverseSearch: %v", err)
+	}
+	if secondResult.Candidates[0].VideoCode != "HZGD-246" {
+		t.Fatalf("second source leaked the first source cache: %+v", secondResult.Candidates)
+	}
+	// 同一 source 再次请求应命中缓存：不产生新的 Put（entries 不增长）。
+	cache.mu.Lock()
+	entriesBefore := len(cache.entries)
+	cache.mu.Unlock()
+	if _, err := client.ReverseSearch(context.Background(), request(first.URL, "src-a")); err != nil {
+		t.Fatalf("cached ReverseSearch: %v", err)
+	}
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if len(cache.entries) != entriesBefore {
+		t.Errorf("same-source repeat should hit cache without writing a new entry")
+	}
+}
+
+// TestReverseSearchRejectsInvalidImages SDK 必须拒绝空/未知格式/超限图片，
+// 与 CLI 共用同一校验契约，且在缓存与上传之前执行。
+func TestReverseSearchRejectsInvalidImages(t *testing.T) {
+	client, err := javdb.New(javdb.WithReverseSearch(javdb.ReverseSearchOptions{Retries: 1}))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	oversize := make([]byte, 8<<20+1)
+	copy(oversize, testJPEG)
+	for _, tc := range []struct {
+		name string
+		raw  []byte
+	}{
+		{name: "empty", raw: nil},
+		{name: "plain text", raw: []byte("not an image")},
+		{name: "oversize", raw: oversize},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := client.ReverseSearch(context.Background(), javdb.ReverseSearchRequest{Image: tc.raw}); err == nil {
+				t.Fatal("ReverseSearch accepted invalid image bytes")
+			}
+		})
+	}
 }

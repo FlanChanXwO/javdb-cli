@@ -53,8 +53,10 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, jsonl,
 
 // ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
-	if len(inputs) == 1 && (mode == OutputText || mode == OutputJSON) {
-		// 单项 TTY 文本或显式 --json：既有路径，保持 shape 与认证语义。
+	// 单项 TTY 文本或显式 --json 且输入是纯文本 ref（无 kind）时走既有路径，
+	// 保持 shape 与认证语义；JSONL 信封即使只有一条也必须经过 kind 校验并
+	// 保留 id 语义，绝不绕过消费者检查。
+	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || mode == OutputJSON) {
 		return b.Legacy([]string{pipelineConsumerRef(inputs[0])})
 	}
 	if b.Preflight != nil {

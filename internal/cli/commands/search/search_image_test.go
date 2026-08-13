@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -191,5 +193,43 @@ func TestSearchTextKeywordStillWorksWithTTYStdin(t *testing.T) {
 	}
 	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") {
 		t.Errorf("text search output lost movies")
+	}
+}
+
+// TestSearchImageURLGoesThroughProxy URL 图片读取必须走最终代理配置
+// （与 provider/JavDB 共用），而不是直连目标域名。
+func TestSearchImageURLGoesThroughProxy(t *testing.T) {
+	provider, javdbServer := imageSearchFixture(t)
+	defer provider.Close()
+	defer javdbServer.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	var proxySawRequest bool
+	upstream, _ := url.Parse(provider.URL)
+	providerProxy := httputil.NewSingleHostReverseProxy(upstream)
+	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			// 图片 URL 读取必须经代理到达这里。
+			proxySawRequest = true
+			_, _ = writer.Write(testJPEG)
+			return
+		}
+		// provider 的 multipart POST 也走同一代理，转发给真实 provider。
+		providerProxy.ServeHTTP(writer, request)
+	}))
+	defer proxy.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	streams.InIsTerminal = true
+	err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL, Proxy: proxy.URL},
+		"--image", "http://upstream.invalid/frame.jpg", "--source", "test")
+	if err == nil {
+		t.Fatal("partial candidate failure must exit non-zero")
+	}
+	if !proxySawRequest {
+		t.Fatal("image URL request did not go through the configured proxy")
+	}
+	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") {
+		t.Errorf("proxy image result missing candidate")
 	}
 }

@@ -376,3 +376,32 @@ func TestResponsePreservesAllFramesInOrder(t *testing.T) {
 		t.Errorf("explicit timestamp lost: %q", frames[1].Timestamp)
 	}
 }
+
+// TestResponseCarriesSourceName provider 响应必须填充实际 source 名称，
+// 供 SDK/CLI 保留本次调用来源（meta.reverse_search.source 等）。
+func TestResponseCarriesSourceName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write(okResponseJSON())
+	}))
+	defer server.Close()
+	builtin := NewBuiltin(Options{HTTPClient: server.Client(), Endpoint: server.URL, Retries: 1})
+	response, err := builtin.Search(context.Background(), Request{Image: testImage, Filename: "f.jpg"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if response.Source != BuiltinName {
+		t.Errorf("builtin response source = %q, want %q", response.Source, BuiltinName)
+	}
+
+	external, err := New(Source{Name: "custom", URL: server.URL}, Options{HTTPClient: server.Client(), Retries: 1})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	response, err = external.Search(context.Background(), Request{Image: testImage, Filename: "f.jpg"})
+	if err != nil {
+		t.Fatalf("Search external: %v", err)
+	}
+	if response.Source != "custom" {
+		t.Errorf("external response source = %q, want custom", response.Source)
+	}
+}

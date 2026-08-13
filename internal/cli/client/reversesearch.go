@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
@@ -20,6 +21,9 @@ type ReverseSearchSetup struct {
 	Source javdb.ReverseSearchSource
 	// CacheEnabled 反映配置与 --no-cache 之外的缓存开关。
 	CacheEnabled bool
+	// HTTPClient 是装配了最终代理配置的 HTTP client，供图片 URL 读取与
+	// provider 请求共用（图片 URL、provider、JavDB 共用同一代理契约）。
+	HTTPClient *http.Client
 }
 
 // NewReverseSearchClient 解析反搜配置（含环境 header 展开）、装配本机文件
@@ -82,6 +86,7 @@ func NewReverseSearchClient(options *invocation.RootOptions, token, explicitSour
 		Client:       sdkClient,
 		Source:       selected,
 		CacheEnabled: resolved.Cache,
+		HTTPClient:   sdkClient.ReverseHTTPClient(),
 	}, nil
 }
 

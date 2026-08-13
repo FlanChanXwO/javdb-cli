@@ -224,6 +224,7 @@ func (p *httpProvider) postOnce(ctx context.Context, body []byte, contentType st
 	if err != nil {
 		return nil, err
 	}
+	decoded.Source = p.source.Name
 	if p.deriveBuiltin {
 		deriveBuiltinFrames(decoded)
 	}
