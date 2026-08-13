@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/update/archive"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/manifest"
 )
 
@@ -443,5 +444,108 @@ func TestRunGenerateChecksumsSatisfyLegacyUpdaterContract(t *testing.T) {
 		if lookedUp != hex.EncodeToString(sum[:]) {
 			t.Errorf("checksums.txt entry for %q does not match archive bytes", name)
 		}
+	}
+}
+
+// TestReleaseAssetFixtureSatisfiesLegacyAndSignedContracts 是三条升级路径的
+// 资产级 fixture 测试：
+//   - v0.6.0 → 更新：只需 checksums.txt + archive（旧契约，由清单派生）。
+//   - v0.6.1/v0.7 → 更新：manifest 验签 + 归档/解包二进制双哈希（新契约）。
+//
+// 同一资产集必须同时满足两者，保证 v0.6.0 可直接验证并安装后续版本。
+func TestReleaseAssetFixtureSatisfiesLegacyAndSignedContracts(t *testing.T) {
+	const version = "0.7.0"
+	dir := writeReleaseDir(t, version)
+	checksumsPath := filepath.Join(dir, "checksums.txt")
+	err := runGenerate(generateOptions{
+		version:     version,
+		releaseDate: "2026-08-12",
+		dir:         dir,
+		outputDir:   dir,
+		checksums:   checksumsPath,
+		getenv: func(string) string {
+			return fixtureSeedsJSON(t, [][]byte{fixtureSeedA})
+		},
+		stdout: io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+
+	// 旧契约（v0.6.0 更新器）：checksums.txt 每个归档恰好一条且哈希匹配。
+	checksums, err := os.ReadFile(checksumsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(dir, "release-manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signatureBytes, err := os.ReadFile(filepath.Join(dir, "release-manifest.sig"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, platform := range releasePlatforms {
+		extension := ".tar.gz"
+		if platform.goos == "windows" {
+			extension = ".zip"
+		}
+		name := "javdb-cli_" + version + "_" + platform.goos + "_" + platform.goarch + extension
+		archiveBytes, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("archive %q missing from fixture: %v", name, err)
+		}
+		sum := sha256.Sum256(archiveBytes)
+		legacy := legacyChecksumLookup(t, checksums, name)
+		if legacy != hex.EncodeToString(sum[:]) {
+			t.Errorf("legacy contract hash mismatch for %s", name)
+		}
+	}
+
+	// 新契约（v0.6.1/v0.7 更新器）：验签 + 双哈希。
+	releaseManifest, err := manifest.ParseManifest(manifestBytes)
+	if err != nil {
+		t.Fatalf("ParseManifest: %v", err)
+	}
+	if len(releaseManifest.Targets) != 6 {
+		t.Fatalf("manifest targets = %d, want six-platform set", len(releaseManifest.Targets))
+	}
+	signatures, err := manifest.ParseSignatures(signatureBytes)
+	if err != nil {
+		t.Fatalf("ParseSignatures: %v", err)
+	}
+	ring := manifest.NewKeyring()
+	if err := ring.Add(ed25519PublicKey(t, fixtureSeedA)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ring.VerifySignatures(manifestBytes, signatures); err != nil {
+		t.Fatalf("VerifySignatures: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, target := range releaseManifest.Targets {
+		platform := target.GOOS + "/" + target.GOARCH
+		if seen[platform] {
+			t.Fatalf("duplicate target %s", platform)
+		}
+		seen[platform] = true
+		archiveBytes, err := os.ReadFile(filepath.Join(dir, target.Archive))
+		if err != nil {
+			t.Fatalf("manifest archive %q missing: %v", target.Archive, err)
+		}
+		archiveSum := sha256.Sum256(archiveBytes)
+		if target.ArchiveSHA256 != hex.EncodeToString(archiveSum[:]) {
+			t.Errorf("archive hash mismatch for %s", target.Archive)
+		}
+		binary, err := archive.ExtractBinaryBytes(archiveBytes, target.Archive, target.Binary)
+		if err != nil {
+			t.Fatalf("extract %s: %v", target.Archive, err)
+		}
+		binarySum := sha256.Sum256(binary)
+		if target.BinarySHA256 != hex.EncodeToString(binarySum[:]) {
+			t.Errorf("binary hash mismatch for %s", target.Binary)
+		}
+	}
+	if len(seen) != 6 {
+		t.Fatalf("target set = %d, want 6", len(seen))
 	}
 }
