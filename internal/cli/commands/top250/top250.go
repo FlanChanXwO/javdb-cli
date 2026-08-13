@@ -46,6 +46,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			return map[string]any{"movies": movies}, nil
 		},
+		RowText: writeRanked,
 		ErrNote: func(w io.Writer, movies []map[string]any) {
 			if generatedAt != "" {
 				fmt.Fprintf(w, "# generated_at=%s\n", generatedAt)
