@@ -26,10 +26,20 @@ javdb config set KEY VALUE
 javdb config unset KEY
 ```
 
-Supported keys are `host`, `https_proxy` (or `proxy`), `auto_relogin`, and
-`lang`. `auto_relogin` is disabled by default. When explicitly enabled, an
-expired JWT can trigger one re-login using the password already stored for the
-default account.
+Supported keys are `host`, `https_proxy` (or `proxy`), `auto_relogin`,
+`lang`, and the `reverse_search` scalars (`reverse_search.default_source`,
+`reverse_search.cache`, `reverse_search.cache_ttl`,
+`reverse_search.retries`, `reverse_search.retry_wait`,
+`reverse_search.request_timeout`). `auto_relogin` is disabled by default. When
+explicitly enabled, an expired JWT can trigger one re-login using the password
+already stored for the default account.
+
+With no key, `config get` prints the common keys on a TTY and reads a batch of
+keys from stdin otherwise. `config get`/`config unset` also accept piped
+`config_key` envelopes or plain key lines. `config set` always takes two
+explicit arguments and never reads stdin. Reverse-search sources are
+hand-edited TOML under `[[reverse_search.sources]]`; see
+[Reverse image search](#reverse-image-search).
 
 The first real command on a fresh machine creates `~/.javdb-cli/config.toml`
 with only the common keys shown above; help, bare/parent commands, `version`,
@@ -67,13 +77,14 @@ TOP250 and personal-list commands require the default account.
 ## Read-only discovery
 
 ```bash
-javdb search KEYWORD [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
-  [--type TYPE] [--page N] [--limit N] [--has-magnets] [--json]
-javdb detail NUMBER [--id] [--magnets] [--json]
-javdb comments NUMBER [--id] [--page N] [--limit N] [--json]
-javdb tags [--zone ZONE] [--refresh]
+javdb search KEYWORD|IMAGE [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
+  [--type TYPE] [--page N] [--limit N] [--has-magnets] \
+  [--image] [--source NAME] [--no-cache] [--json|--jsonl|--text]
+javdb detail NUMBER [--id] [--magnets] [--json|--jsonl|--text]
+javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--jsonl|--text]
+javdb tags [--zone ZONE] [--refresh] [--json|--jsonl|--text]
 javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
-  [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json]
+  [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json|--jsonl|--text]
 ```
 
 `search` accepts `censored`, `uncensored`, `western`, `fc2`, or `all` for
@@ -81,6 +92,9 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
 `director`, or `list`. `detail --json` includes graph IDs that can be passed to
 entity commands. `tags --refresh` downloads and rewrites the local public tag
 cache, so it is not read-only local behavior.
+
+See [Pipeline protocol](#pipeline-protocol) for the `--jsonl`/`--text` output
+contract shared by the commands above and below.
 
 `browse --tag` accepts a tag ID, English name, or Chinese name. Repeat
 `--main` for server-side category masks. Use `--json` for programs; human output
@@ -105,10 +119,85 @@ the complete HLS preview stream to the given path, including AES-128 decryption
 when the playlist requires it. Use a `.ts` path for the current transport-stream
 previews.
 
+Output paths support the `{number}` and `{id}` placeholders; a piped batch of
+movie refs must use them (all expanded targets are preflighted for uniqueness,
+existing files, and missing parent directories before anything is written).
 The command creates new files only: it refuses an existing output path and does
 not create missing parent directories. It accepts completed single-media HLS
 playlists; master playlists, byte-range media, fragmented-MP4 media, and
 unfinished/live playlists fail explicitly instead of producing a partial file.
+
+## Reverse image search
+
+```bash
+javdb search IMAGE|URL|--image [--source NAME] [--no-cache] [--json|--jsonl|--text]
+javdb cache reverse-search [--source NAME] [--clear]
+```
+
+`javdb search` accepts a local JPEG/PNG/WEBP file (up to 8 MiB), an HTTP(S)
+image URL, or binary image bytes on stdin; `--image` forces image mode, and an
+existing file or HTTP(S) URL argument is auto-detected. The image is uploaded
+as-is to the configured source: the built-in AVScan provider
+(`https://avscan.cc/search`) or a declared external source, with at most three
+total requests and 30s/60s backoff for HTTP 429, per-request timeouts, and
+transient transport errors. Every candidate is linked to JavDB with strict
+case-insensitive exact number matching (no first-hit fallback) and full detail
+is returned; partial candidate failures finish the output and exit non-zero.
+
+Configuration lives in `config.toml`:
+
+```toml
+[reverse_search]
+default_source = "builtin"
+cache = true
+cache_ttl = "720h"
+retries = 3
+retry_wait = "30s"
+request_timeout = "60s"
+
+[[reverse_search.sources]]
+name = "custom"
+url = "https://example.test/search"
+
+[reverse_search.sources.headers]
+Authorization = "Bearer ${ENV:REVERSE_SEARCH_TOKEN}"
+```
+
+Header values only support static text plus `${ENV:NAME}` references; missing
+variables are reported by name only, never with their value. Source names are
+unique and limited to letters, digits, `-`, and `_`; `builtin` is reserved.
+Responses are cached under `~/.javdb-cli/reverse-search-cache` (mode `0600`,
+keyed by source + image SHA-256, 30-day TTL); the cache never stores the
+original image, auth headers, or JavDB details. `javdb cache reverse-search
+--clear [--source NAME]` removes only reverse-search cache entries.
+
+Privacy: reverse search uploads your image to the configured provider (built-in
+AVScan by default). Image URLs may point to private networks; embedded SDK users
+must enforce their own network boundary.
+
+## Pipeline protocol
+
+Commands that take a single positional ref also accept a non-TTY stdin batch.
+Input is classified in fixed order: image magic, `javdb.pipeline/v1` JSONL
+envelopes, then plain text lines. Providing both a positional argument and
+non-empty stdin is an ambiguity error.
+
+```json
+{"schema":"javdb.pipeline/v1","kind":"movie","ref":"SSIS-589","id":"9DGB5X","data":{},"meta":{}}
+```
+
+Stable kinds: `movie`, `actor`, `series`, `maker`, `director`, `code`, `list`,
+`account`, `comment`, `magnet`, `download`, `config_key`, `tag`, `error`.
+Consumers check the kind strictly and prefer a valid `id`; incompatible input
+becomes an in-place `error` envelope. Batch processing preserves input order,
+continues after item failures, and exits non-zero with a summary on stderr.
+
+Output defaults to human text on a TTY and one JSONL envelope per line
+otherwise. `--jsonl`, `--text`, and `--json` are mutually exclusive. Explicit
+`--json` keeps the legacy single-item shape and emits a JSON array of envelopes
+for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
+`top250`, `watched`, `want`, `recent`) never read stdin; on non-TTY stdout they
+emit one envelope per record.
 
 ## Entity and list navigation
 
@@ -127,7 +216,7 @@ javdb lists related NUMBER [--id] [--page N] [--limit N] [--json]
 ```
 
 Entity options include zone, repeated tag/main filters, sorting, page/limit,
-`--has-magnets`, and JSON output. `lists` without a subcommand reads the
+`--has-magnets`, and JSON/pipeline output (`--json`, `--jsonl`, or `--text`). `lists` without a subcommand reads the
 authenticated user's lists; `list REF` is the entity-filmography command for a
 public or user list.
 
@@ -163,11 +252,11 @@ magnet set; it does not download anything. `mark` and `unmark` change remote
 watch/want state. `mark` requires exactly one of `--watched` or `--want`; obtain
 confirmation before running either command for another person or account.
 
-## Update and version
+## Version and update
 
 ```bash
+javdb --version
 javdb update [--check] [--prerelease] [--json]
-javdb version [--json]
 ```
 
 `update` is explicit: it never runs in the background. `update --check` only
@@ -176,27 +265,30 @@ queries GitHub Releases and reports `source`, `current_version`,
 with `--check` for that machine-readable result. Without `--check`, it installs
 only when a newer selected release exists.
 
+`javdb --version` prints a release build as two lines
+(`javdb version 0.7.0 (2026-08-12)` plus the Release URL, without the leading
+`v`) and a development build as one line; development builds never show a
+Release URL. The legacy `javdb version --json` shim still exists for older
+updaters but is hidden from help and completion.
+
 The command preserves the installation channel: Homebrew uses its Formula,
 `go install` re-runs the exact release tag, and a Release archive downloads only
-the matching platform asset. Archive installation verifies the asset SHA-256
-from that Release's `checksums.txt` and runs the downloaded binary's
-`version --json` before replacement. `--prerelease` includes prerelease tags;
-Homebrew installations cannot install those tags. `update` resolves `--proxy`
-and proxy configuration independently for GitHub requests. It ignores `--host`,
-`JAVDB_HOST`, and the configured JavDB host because it never contacts the App API.
+the matching platform asset. Archive installation verifies the Release's
+`release-manifest.json` Ed25519 signature, binds repository/tag/platform, and
+checks both the archive and the extracted binary SHA-256 against the manifest;
+the downloaded binary is never executed. `--prerelease` includes prerelease
+tags; Homebrew installations cannot install those tags. `update` resolves
+`--proxy` and proxy configuration independently for GitHub requests. It ignores
+`--host`, `JAVDB_HOST`, and the configured JavDB host because it never contacts
+the App API.
 
 Development builds (`version=dev`) deliberately refuse self-update. Install a
 published release first. On Windows, a successful replacement leaves the prior
 binary as a temporary `.old` file, which javdb removes on its next startup.
 
-```bash
-javdb version [--json]
-```
-
-`version --json` emits `version`, `commit`, and `build_date`. Commands that
-support `--json` reserve stdout for a JSON result. A failed request returns a
-non-zero exit status and a diagnostic on stderr; an upstream failure is not
-represented as a fabricated empty result.
+Commands that support `--json` reserve stdout for a JSON result. A failed
+request returns a non-zero exit status and a diagnostic on stderr; an upstream
+failure is not represented as a fabricated empty result.
 
 ## Safe automation flow
 

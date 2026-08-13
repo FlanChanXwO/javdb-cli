@@ -127,6 +127,27 @@ JWT，任何调用路径都不得将其输出到日志、错误、JSON 或文档
 保存 linker 注入的版本、提交和构建时间。开发构建保留明确的默认值，不伪造
 发布版本。
 
+### `internal/reversesearch`
+
+独立反搜 domain，分为四层：`image`（本地路径/URL/stdin 的原始图片读取，
+JPEG/PNG/WEBP magic 与 8 MiB 流式边界，错误分 input/download/status/
+format/size/cancel stage）、`provider`（内置 AVScan 与声明式外部 HTTP
+adapter，统一 multipart `file` 响应协议、三次总请求与 30/60s 退避）、
+`cache`（本机文件缓存，source + 原图 SHA-256 key、30 天 TTL、原子 0600、
+损坏显错）、以及 SDK 层的严格番号联动（`ResolveMovieIDExact`）。CLI 负责
+解析 `config.toml` 的 `[reverse_search]`（含 `${ENV:NAME}` header 展开与
+脱敏）并以 `javdb.ReverseSearchCache` 接口注入本机缓存；SDK 不读取
+`~/.javdb-cli`。
+
+### `internal/cli/pipeline`
+
+`javdb.pipeline/v1` 机器协议核心：typed envelope（schema/kind/ref/id/data/
+meta）、严格 JSONL 与逐行文本解码、输入分类（图片 magic → JSONL → 文本）、
+输出模式（TTY 文本 / 非 TTY JSONL / 显式 --jsonl/--text/--json 互斥，单/批
+JSON cardinality）、批处理执行（顺序保持、原位错误信封、最终非零），以及
+Consumer/BatchRunner/ListProducer 三件套把只读/状态命令统一接入。命令不
+复制解析逻辑；`auth login` 与密码提示排除通用 stdin。
+
 ### `internal/update`
 
 根包只保留 `Coordinator`、其最小依赖接口（`interfaces.go`）与测试，不再 alias

@@ -169,3 +169,42 @@ The public package is the supported integration boundary. `internal/` paths,
 wire payloads, signing details, and the `Client.API` escape hatch are not a
 stable external contract. Pin a module version and use documented methods and
 types in integrations.
+
+## Reverse image search
+
+The SDK exposes image reverse search with strict JavDB linking through the same
+`Client`:
+
+```go
+result, err := client.SearchByImage(ctx, javdb.ReverseSearchRequest{
+    Image:    imageBytes, // raw JPEG/PNG/WEBP, ≤ 8 MiB
+    Filename: "frame.jpg",
+    Source:   javdb.ReverseSearchSource{Name: "builtin"}, // or a custom HTTP source
+}, javdb.ImageSearchOptions{})
+if err != nil {
+    // Top-level provider failure; never a fabricated empty result.
+}
+for _, match := range result.Matches {
+    // match.Candidate.VideoCode, match.MovieID, match.Movie, match.Error
+}
+```
+
+- `ReverseSearch` uploads the raw image to the selected source (built-in AVScan
+  or a declared external HTTP(S) source) and returns normalized candidates and
+  frames. Sources use the fixed multipart field `file`.
+- `SearchByImage` runs strict, case-insensitive, full-equality number matching
+  (`ResolveMovieIDExact` — no first-hit fallback) for every candidate
+  concurrently and restores provider order; per-candidate failures are
+  `ImageSearchError` values and never abort the batch.
+- `ReverseSearchCache` is an injectable interface (`Get`/`Put` keyed by the
+  image SHA-256); the SDK never reads `~/.javdb-cli`. A cache hit skips the
+  provider; `BypassCache` disables it per request. The cache must never store
+  the original image, auth headers, or JavDB details.
+- `ReverseSearchOptions` configures retries (3 total requests), the 30s/60s
+  backoff, and the 60s per-request timeout. `WithReverseSearch` injects them;
+  `javdb.New` itself never touches the network.
+- `WithProxy`'s proxy is reused for provider requests.
+
+Privacy and network boundary: reverse search uploads your image to the
+configured provider (AVScan by default), and image URLs may target private
+networks. Embedding servers must enforce their own egress boundary.

@@ -113,6 +113,19 @@ javdb unmark SSIS-589
 9. `download NUMBER` 也默认解析番号。`--thumbnail` 保存缩略图；`--preview-image` 只取 `preview_images[0]`，不会选择后续图片；`--preview-video` 需要已结束的单媒体 HLS 预览流。下载失败时如实报告，不能把已包装的图片字节或不完整视频当作成功结果。
 10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。
 
+## 以图搜番与管道
+
+1. 以图搜番：`javdb search IMAGE|URL [--source NAME] [--no-cache]`。只接受 JPEG/PNG/WEBP
+   （≤ 8 MiB）；图片会上传到内置 AVScan 或已配置的外部 source，向用户说明这一隐私影响后再执行。
+   候选按严格番号精确匹配联动 JavDB 详情；某候选失败时输出会继续并以非零退出，不要把它当成
+   "无结果"。
+2. 反搜缓存：默认启用（30 天，按 source + 原图 SHA-256）。`javdb cache reverse-search
+   [--source NAME] [--clear]` 只清理反搜缓存；`--no-cache` 按次绕过。
+3. 管道：多数命令接受非 TTY stdin 批处理并默认输出 `javdb.pipeline/v1` JSONL 信封
+   （`--jsonl`/`--text`/`--json` 互斥）。例如
+   `javdb search SSIS --jsonl | javdb detail`。位置参数与非空 stdin 同时出现是歧义错误。
+   `auth login`、`config set` 与密码提示不使用管道 stdin。
+
 ## 路由
 
 | 任务 | 读取 |

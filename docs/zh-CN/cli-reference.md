@@ -24,8 +24,16 @@ javdb config set KEY VALUE
 javdb config unset KEY
 ```
 
-支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`。默认关闭
+支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`，以及
+`reverse_search` 标量（`reverse_search.default_source`、
+`reverse_search.cache`、`reverse_search.cache_ttl`、`reverse_search.retries`、
+`reverse_search.retry_wait`、`reverse_search.request_timeout`）。默认关闭
 `auto_relogin`；显式开启后，过期 JWT 才可能使用默认账号已保存的密码重登一次。
+
+`config get` 无 key 时在 TTY 打印常用键，非 TTY 从 stdin 读取 key 批处理；
+`config get`/`config unset` 也接受管道传入的 `config_key` 信封或纯文本 key 行。
+`config set` 始终使用两个显式参数，绝不读 stdin。反搜 source 由用户在 TOML
+`[[reverse_search.sources]]` 手工编辑，见「以图搜番」。
 
 全新机器上第一个真实命令会创建 `~/.javdb-cli/config.toml`，只包含上述常用键；help、
 裸/父命令、`version`、completion、参数校验失败以及缺失配置上的 `config unset` 都不会创建
@@ -56,13 +64,14 @@ token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令�
 ## 只读发现
 
 ```bash
-javdb search KEYWORD [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
-  [--type TYPE] [--page N] [--limit N] [--has-magnets] [--json]
-javdb detail NUMBER [--id] [--magnets] [--json]
-javdb comments NUMBER [--id] [--page N] [--limit N] [--json]
-javdb tags [--zone ZONE] [--refresh]
+javdb search KEYWORD|IMAGE [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
+  [--type TYPE] [--page N] [--limit N] [--has-magnets] \
+  [--image] [--source NAME] [--no-cache] [--json|--jsonl|--text]
+javdb detail NUMBER [--id] [--magnets] [--json|--jsonl|--text]
+javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--jsonl|--text]
+javdb tags [--zone ZONE] [--refresh] [--json|--jsonl|--text]
 javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
-  [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json]
+  [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json|--jsonl|--text]
 ```
 
 `search --zone` 可用 `censored`、`uncensored`、`western`、`fc2`、`all`；`--type`
@@ -90,6 +99,66 @@ HLS 预览流写入指定路径，playlist 使用 AES-128 时会解密。当前�
 命令只创建新文件：目标已存在会明确失败，也不会创建缺失的父目录。它接受已结束的单媒体 HLS
 playlist；master playlist、byte-range 媒体、fragmented MP4 媒体，以及未结束/直播 playlist 都会
 明确失败，不会写出不完整文件。
+
+## 以图搜番
+
+```bash
+javdb search IMAGE|URL|--image [--source NAME] [--no-cache] [--json|--jsonl|--text]
+javdb cache reverse-search [--source NAME] [--clear]
+```
+
+`javdb search` 接受本地 JPEG/PNG/WEBP 图片（最大 8 MiB）、HTTP(S) 图片 URL 或 stdin
+的二进制图片字节；`--image` 强制图片模式，现有文件或 HTTP(S) URL 参数自动识别。图片按原样上传
+到已配置的 source：内置 AVScan provider（`https://avscan.cc/search`）或声明式外部 source，
+最多三次总请求，对 HTTP 429、单次超时与临时传输错误按 30s/60s 退避。每个候选以大小写不敏感的
+严格番号精确匹配联动 JavDB 并返回完整详情（不回退首项）；候选部分失败会完成全部输出后以非零退出。
+
+配置位于 `config.toml`：
+
+```toml
+[reverse_search]
+default_source = "builtin"
+cache = true
+cache_ttl = "720h"
+retries = 3
+retry_wait = "30s"
+request_timeout = "60s"
+
+[[reverse_search.sources]]
+name = "custom"
+url = "https://example.test/search"
+
+[reverse_search.sources.headers]
+Authorization = "Bearer ${ENV:REVERSE_SEARCH_TOKEN}"
+```
+
+header 值只支持静态文本加 `${ENV:NAME}` 引用；缺失变量只按名字报告，绝不携带值。source 名
+唯一且只允许字母、数字、`-` 与 `_`；`builtin` 为保留名。响应缓存于
+`~/.javdb-cli/reverse-search-cache`（`0600`，键为 source + 原图 SHA-256，TTL 30 天）；
+缓存不保存原图、鉴权 header 或 JavDB 详情。`javdb cache reverse-search --clear [--source NAME]`
+只清理反搜缓存。
+
+隐私：反搜会把你的图片上传到已配置的 provider（默认内置 AVScan）。图片 URL 允许指向私网；
+SDK 嵌入方必须自行施加网络边界。
+
+## 管道协议
+
+接受单个位置 ref 的命令也接受非 TTY stdin 批处理。输入按固定顺序分类：图片 magic、
+`javdb.pipeline/v1` JSONL 信封、逐行纯文本。位置参数与非空 stdin 同时存在是歧义错误。
+
+```json
+{"schema":"javdb.pipeline/v1","kind":"movie","ref":"SSIS-589","id":"9DGB5X","data":{},"meta":{}}
+```
+
+稳定 kinds：`movie`、`actor`、`series`、`maker`、`director`、`code`、`list`、
+`account`、`comment`、`magnet`、`download`、`config_key`、`tag`、`error`。
+消费者严格检查 kind 并优先使用合法 `id`；不兼容输入生成原位 `error` 信封。批处理保持输入
+顺序、单项失败继续执行，最终非零并在 stderr 输出汇总。
+
+输出默认：TTY 人类文本，非 TTY 每行一个 JSONL 信封。`--jsonl`、`--text` 与 `--json`
+互斥。显式 `--json` 单项保持既有 shape，多项输出信封数组。生产者命令（如 `browse`、
+`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）不读 stdin；
+非 TTY stdout 逐条输出信封。
 
 ## 实体与合集导航
 
@@ -140,22 +209,27 @@ javdb unmark NUMBER [--id]
 `mark`/`unmark` 会改写远程的看过/想看状态；`mark` 必须且只能传入
 `--watched` 或 `--want` 之一。替他人或其他账号操作前必须确认。
 
-## 更新与版本
+## 版本与更新
 
 ```bash
+javdb --version
 javdb update [--check] [--prerelease] [--json]
-javdb version [--json]
 ```
+
+`javdb --version` 对正式版输出两行（`javdb version 0.7.0 (2026-08-12)` 与 Release
+URL，展示版本不带 `v`），开发版输出单行且不显示 Release URL。旧的
+`javdb version --json` shim 仍保留供旧版更新器调用，但已从 help 与 completion 隐藏。
 
 `update` 只在用户显式调用时执行，不会后台自动更新。`update --check` 只查询 GitHub Releases，
 输出 `source`、`current_version`、`latest_version`、`latest_prerelease` 与 `update_available`。
 只有 `--check` 可组合 `--json`，以获得该机器可读结果；不加 `--check` 时，仅在存在更高的所选版本后安装。
 
 命令会保留安装渠道：Homebrew 使用 Formula，`go install` 使用精确 Release tag 重新安装，Release
-压缩包只下载匹配平台的资产。压缩包安装先按同一 Release 的 `checksums.txt` 校验 SHA-256，再运行下载
-二进制的 `version --json`，两者通过后才替换。`--prerelease` 会纳入预发布 tag；Homebrew 安装无法
-安装该类 tag。`update` 会为 GitHub 请求独立解析 `--proxy` 与代理配置，并忽略 `--host`、
-`JAVDB_HOST` 和已配置的 JavDB host，因为它不会访问 App API。
+压缩包只下载匹配平台的资产。压缩包安装先校验该 Release `release-manifest.json` 的 Ed25519
+签名并绑定仓库/tag/平台，再按清单校验归档与解包二进制的 SHA-256，全部通过后才替换；下载的候选
+二进制绝不执行。`--prerelease` 会纳入预发布 tag；Homebrew 安装无法安装该类 tag。`update` 会为
+GitHub 请求独立解析 `--proxy` 与代理配置，并忽略 `--host`、`JAVDB_HOST` 和已配置的 JavDB
+host，因为它不会访问 App API。
 
 开发构建（`version=dev`）会明确拒绝自更新，应先安装已发布版本。Windows 成功替换后会暂存旧二进制
 为 `.old`，下一次启动 javdb 时自动清理。

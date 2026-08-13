@@ -1,0 +1,52 @@
+{
+  "version": "0.7.0",
+  "previous_tag": "v0.6.1",
+  "compare_url": "https://github.com/FlanChanXwO/javdb-cli/compare/v0.6.1...v0.7.0",
+  "entries": [
+    {
+      "category": "Added",
+      "breaking": false,
+      "english": "Add reverse image search: accept JPEG/PNG/WEBP images up to 8 MiB from local paths, HTTP(S) URLs or binary stdin; upload original bytes to the built-in AVScan provider or a declarative external HTTP source; return normalized candidates and frames; and link every candidate to full JavDB detail through strict case-insensitive exact number matching. Responses are cached locally for 30 days keyed by source and image SHA-256, and `javdb cache reverse-search` inspects or clears only that cache.",
+      "zh_cn": "新增以图搜番：接受本地路径、HTTP(S) URL 或二进制 stdin 的 JPEG/PNG/WEBP 图片（最大 8 MiB）；把原始字节上传到内置 AVScan provider 或声明式外部 HTTP source；返回规范化候选与帧；并以大小写不敏感的严格番号精确匹配把每个候选联动到完整 JavDB 详情。响应按 source 与原图 SHA-256 本地缓存 30 天，`javdb cache reverse-search` 只查看或清理该缓存。",
+      "sources": [
+        "https://github.com/FlanChanXwO/javdb-cli/commit/4e30ba7",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/9d25d4f",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/e4ba213",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/9ab06b7",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/0b59fdf"
+      ]
+    },
+    {
+      "category": "Added",
+      "breaking": true,
+      "english": "Add the composable javdb.pipeline/v1 protocol: most single-ref commands accept non-TTY stdin batches classified as image magic, JSONL envelopes, or plain text; batch output defaults to one JSONL envelope per line off-TTY; `--jsonl`, `--text` and `--json` are mutually exclusive; batch `--json` emits an array of envelopes; consumers check kinds strictly, keep input order, continue after item failures, and exit non-zero. Producers never read stdin.",
+      "zh_cn": "新增可组合的 javdb.pipeline/v1 协议：多数单 ref 命令接受非 TTY stdin 批处理，输入按图片 magic、JSONL 信封、纯文本顺序分类；非 TTY 输出默认每行一个 JSONL 信封；`--jsonl`、`--text` 与 `--json` 互斥；批量 `--json` 输出信封数组；消费者严格检查 kind、保持输入顺序、单项失败继续执行并最终非零。生产者命令不读 stdin。",
+      "sources": [
+        "https://github.com/FlanChanXwO/javdb-cli/commit/389c487",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/b58ebce",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/e0926f3"
+      ]
+    },
+    {
+      "category": "Changed",
+      "breaking": true,
+      "english": "Switch the public version interface to the root `javdb --version` (gh style: release builds print two lines without a leading v plus the Release URL; development builds print one line) and hide the legacy `version --json` shim from help and completion while keeping it for older updaters.",
+      "zh_cn": "公开版本接口切换为根 `javdb --version`（gh 风格：正式版两行且不带 v 前缀并附 Release URL；开发版一行），并隐藏旧 `version --json` shim（仍保留供旧版更新器调用，但不再出现在 help/completion）。",
+      "sources": [
+        "https://github.com/FlanChanXwO/javdb-cli/commit/febc1fd"
+      ]
+    },
+    {
+      "category": "Changed",
+      "breaking": false,
+      "english": "Release archives are now published with a signed release-manifest.json and release-manifest.sig generated only from verified production archives in the protected release environment; checksums.txt is derived from the manifest. The updater verifies the Ed25519 signature, repository/tag/platform binding, and archive plus extracted binary SHA-256 without ever executing the downloaded candidate.",
+      "zh_cn": "Release 压缩包现在随发布提供 release-manifest.json 与 release-manifest.sig（只由受保护 release environment 中已验证的 production archives 生成）；checksums.txt 由清单派生。更新器校验 Ed25519 签名、仓库/tag/平台绑定与归档及解包二进制的 SHA-256，绝不执行下载的候选二进制。",
+      "sources": [
+        "https://github.com/FlanChanXwO/javdb-cli/commit/7b86f8a",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/258148a"
+      ]
+    }
+  ],
+  "new_contributors": []
+}

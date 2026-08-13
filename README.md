@@ -25,8 +25,12 @@ terms and the laws that apply to you.
 
 - **CLI and public Go SDK** — the CLI and importable `javdb` package cover search, detail,
   review pages, selected thumbnail/preview downloads, tags, browsing, entity
-  filmographies, magnets, rankings, TOP250, collections, and authenticated
-  watch/want data.
+  filmographies, magnets, rankings, TOP250, collections, authenticated
+  watch/want data, and reverse image search with strict number linking
+  (`javdb search IMAGE`, `javdb cache reverse-search`).
+- **Composable pipelines** — most commands accept non-TTY stdin batches and
+  speak `javdb.pipeline/v1` JSONL envelopes, so command output can feed the
+  next command (`javdb search --jsonl | javdb detail`).
 - **API client, not a scraper** — commands use the App JSON API with explicit
   host and proxy selection; failures remain visible rather than becoming
   fabricated empty results.
@@ -77,7 +81,7 @@ To build the checkout, install the Go version declared in `go.mod` and run:
 
 ```bash
 sh scripts/build.sh
-./build/javdb version --json
+./build/javdb --version
 ```
 
 The release contract covers macOS, Linux, and Windows on amd64 and arm64. See

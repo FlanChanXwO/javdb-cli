@@ -151,3 +151,36 @@ if errors.As(err, &apiError) {
 
 公开包才是支持的集成边界。`internal/` 路径、wire payload、签名细节和 `Client.API` escape hatch
 都不是稳定外部契约；集成方应钉住模块版本并只使用已记录的方法与类型。
+
+## 以图搜番
+
+SDK 通过同一个 `Client` 暴露图片反搜与严格 JavDB 联动：
+
+```go
+result, err := client.SearchByImage(ctx, javdb.ReverseSearchRequest{
+    Image:    imageBytes, // 原始 JPEG/PNG/WEBP，≤ 8 MiB
+    Filename: "frame.jpg",
+    Source:   javdb.ReverseSearchSource{Name: "builtin"}, // 或声明式外部 HTTP source
+}, javdb.ImageSearchOptions{})
+if err != nil {
+    // provider 顶层失败；绝不伪造空结果。
+}
+for _, match := range result.Matches {
+    // match.Candidate.VideoCode、match.MovieID、match.Movie、match.Error
+}
+```
+
+- `ReverseSearch` 把原始图片上传到所选 source（内置 AVScan 或声明式外部
+  HTTP(S) source），返回规范化候选与帧；multipart 字段固定为 `file`。
+- `SearchByImage` 对每个候选并发执行大小写不敏感、完整相等的严格番号匹配
+  （`ResolveMovieIDExact`，不回退首项）并恢复 provider 顺序；单候选失败是
+  `ImageSearchError`，绝不中止整批。
+- `ReverseSearchCache` 是可注入接口（按原图 SHA-256 作为 key 的 `Get`/`Put`）；
+  SDK 绝不读取 `~/.javdb-cli`。缓存命中跳过 provider，`BypassCache` 按请求禁用。
+  缓存不得保存原图、鉴权 header 或 JavDB 详情。
+- `ReverseSearchOptions` 配置重试（最多三次总请求）、30s/60s 退避与 60s 单请求
+  超时；`WithReverseSearch` 注入，`javdb.New` 本身不联网。
+- `WithProxy` 的代理同时用于 provider 请求。
+
+隐私与网络边界：反搜会把你的图片上传到已配置的 provider（默认 AVScan），图片
+URL 可能指向私网；服务端嵌入方必须自行施加出口边界。
