@@ -4,10 +4,10 @@ package javdb
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/common/proxyutil"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi"
 )
@@ -101,27 +101,27 @@ func New(opts ...Option) (*Client, error) {
 	return &Client{api: api, proxy: o.proxy, reverseSearch: o.reverseSearch}, nil
 }
 
-// ReverseHTTPClient 返回装配了最终代理的 HTTP client（惰性构建，New 保持
-// 无网络）；图片 URL 读取与 provider 请求共用该 client。
-func (c *Client) ReverseHTTPClient() *http.Client {
-	client, _ := c.reverseHTTPClient()
-	return client
-}
-
 // reverseHTTPClient 装配反搜 HTTP client；WithProxy 的最终代理同时用于图片
 // URL、provider 与 JavDB 请求。构建是惰性的，New 保持无网络。
+// transport 使用 httpx（tls-client），与 JavDB transport 一样支持 CLI 接受的
+// http/https/socks4/socks4a/socks5/socks5h 全部代理 scheme；该 client 只供
+// SDK 内部使用，不通过公开方法暴露。
 func (c *Client) reverseHTTPClient() (*http.Client, error) {
 	c.reverseOnce.Do(func() {
 		if c.proxy == "" {
 			c.reverseHTTP = http.DefaultClient
 			return
 		}
-		proxyURL, err := url.Parse(c.proxy)
+		transport, err := proxyutil.Transport(c.proxy)
 		if err != nil {
 			c.reverseErr = err
 			return
 		}
-		c.reverseHTTP = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+		if transport == nil {
+			c.reverseHTTP = http.DefaultClient
+			return
+		}
+		c.reverseHTTP = &http.Client{Transport: transport}
 	})
 	return c.reverseHTTP, c.reverseErr
 }

@@ -51,8 +51,10 @@ type ReverseSearchResponse struct {
 	Candidates []ReverseSearchCandidate `json:"candidates"`
 }
 
-// ReverseSearchCache 是 SDK 可注入的响应缓存。key 是原图 SHA-256 十六进制；
-// 实现不得保存图片、鉴权 header 或 JavDB 详情。CLI 以本接口注入本机文件缓存。
+// ReverseSearchCache 是 SDK 可注入的响应缓存。key 是
+// "<source>:<原图 SHA-256 十六进制>"（source 隔离是硬性要求，不同 provider
+// 对同一图片不得共享缓存）；实现不得保存图片、鉴权 header 或 JavDB 详情。
+// CLI 以本接口注入本机文件缓存。
 type ReverseSearchCache interface {
 	Get(context.Context, string) (ReverseSearchResponse, bool, error)
 	Put(context.Context, string, ReverseSearchResponse) error

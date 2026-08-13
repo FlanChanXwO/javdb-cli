@@ -20,6 +20,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"strings"
@@ -111,8 +112,8 @@ func New(source Source, options Options) (Provider, error) {
 		return nil, fmt.Errorf("reverse search source name is required")
 	}
 	parsed, err := url.Parse(source.URL)
-	if err != nil || !isHTTPScheme(parsed.Scheme) {
-		return nil, fmt.Errorf("reverse search source %q URL must be HTTP(S), got %q", source.Name, source.URL)
+	if err != nil || !isHTTPScheme(parsed.Scheme) || parsed.Host == "" {
+		return nil, fmt.Errorf("reverse search source %q URL must be absolute HTTP(S), got %q", source.Name, source.URL)
 	}
 	return &httpProvider{
 		source:  source,
@@ -288,11 +289,15 @@ func isHTTPScheme(scheme string) bool {
 	return scheme == "http" || scheme == "https"
 }
 
-// buildMultipartBody 构建固定字段 file 的 multipart body，上传原始字节。
+// buildMultipartBody 构建固定字段 file 的 multipart body，上传原始字节；
+// part 内联 Content-Type 按真实 magic 声明（image/jpeg|png|webp）。
 func buildMultipartBody(raw []byte, filename string, format image.Format) ([]byte, string, error) {
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
-	part, err := writer.CreateFormFile("file", filename)
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, filename))
+	header.Set("Content-Type", partContentType(format))
+	part, err := writer.CreatePart(header)
 	if err != nil {
 		return nil, "", newError(StageRequest, "create", "create multipart body: %v", err)
 	}
@@ -303,6 +308,20 @@ func buildMultipartBody(raw []byte, filename string, format image.Format) ([]byt
 		return nil, "", newError(StageRequest, "create", "close multipart body: %v", err)
 	}
 	return buffer.Bytes(), writer.FormDataContentType(), nil
+}
+
+// partContentType 把检测到的格式映射为 MIME 类型；未知格式返回 octet-stream。
+func partContentType(format image.Format) string {
+	switch format {
+	case image.JPEG:
+		return "image/jpeg"
+	case image.PNG:
+		return "image/png"
+	case image.WEBP:
+		return "image/webp"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // wireResponse 是统一响应协议（builtin 与外部 source 共用）。

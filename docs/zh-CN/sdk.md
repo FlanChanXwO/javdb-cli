@@ -175,9 +175,10 @@ for _, match := range result.Matches {
 - `SearchByImage` 对每个候选并发执行大小写不敏感、完整相等的严格番号匹配
   （`ResolveMovieIDExact`，不回退首项）并恢复 provider 顺序；单候选失败是
   `ImageSearchError`，绝不中止整批。
-- `ReverseSearchCache` 是可注入接口（按原图 SHA-256 作为 key 的 `Get`/`Put`）；
-  SDK 绝不读取 `~/.javdb-cli`。缓存命中跳过 provider，`BypassCache` 按请求禁用。
-  缓存不得保存原图、鉴权 header 或 JavDB 详情。
+- `ReverseSearchCache` 是可注入接口（`Get`/`Put` 的 key 为
+  `"<source>:<原图 SHA-256>"`，不同 provider 永不共享条目）；SDK 绝不读取
+  `~/.javdb-cli`。缓存命中跳过 provider，`BypassCache` 按请求禁用。缓存不得
+  保存原图、鉴权 header 或 JavDB 详情。
 - `ReverseSearchOptions` 配置重试（最多三次总请求）、30s/60s 退避与 60s 单请求
   超时；`WithReverseSearch` 注入，`javdb.New` 本身不联网。
 - `WithProxy` 的代理同时用于 provider 请求。

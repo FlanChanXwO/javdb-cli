@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/common/proxyutil"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/cache"
@@ -65,6 +66,18 @@ func NewReverseSearchClient(options *invocation.RootOptions, token, explicitSour
 		store := cache.New(cacheDir, resolved.CacheTTL)
 		cacheAdapter = sdkCacheAdapter{store: store, source: sourceName}
 	}
+	// 图片 URL 读取 client：与 JavDB/provider transport 一样使用 httpx，
+	// 支持全部既有代理 scheme（http/https/socks4/socks4a/socks5/socks5h）。
+	imageHTTPClient := http.DefaultClient
+	if rt.Proxy != "" {
+		transport, err := proxyutil.Transport(rt.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("create image HTTP client: %w", err)
+		}
+		if transport != nil {
+			imageHTTPClient = &http.Client{Transport: transport}
+		}
+	}
 
 	sdkClient, err := javdb.New(
 		javdb.WithHost(baseURL),
@@ -86,7 +99,7 @@ func NewReverseSearchClient(options *invocation.RootOptions, token, explicitSour
 		Client:       sdkClient,
 		Source:       selected,
 		CacheEnabled: resolved.Cache,
-		HTTPClient:   sdkClient.ReverseHTTPClient(),
+		HTTPClient:   imageHTTPClient,
 	}, nil
 }
 
@@ -108,7 +121,8 @@ func selectResolvedSource(resolved settings.ResolvedReverseSearch, sourceName st
 }
 
 // sdkCacheAdapter 把本机文件缓存适配为公开 SDK 缓存接口；source 由本次调用
-// 固定，key 仍是原图 SHA-256。
+// 固定，SDK key 已含 source 前缀（"<source>:<SHA-256>"），文件 store 再按
+// source 分文件隔离。
 type sdkCacheAdapter struct {
 	store  *cache.Store
 	source string

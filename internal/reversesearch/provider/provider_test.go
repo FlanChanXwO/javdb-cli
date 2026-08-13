@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/image"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -403,5 +404,39 @@ func TestResponseCarriesSourceName(t *testing.T) {
 	}
 	if response.Source != "custom" {
 		t.Errorf("external response source = %q, want custom", response.Source)
+	}
+}
+
+// TestRejectsAbsoluteURLWithoutHost http:/... 这类非绝对 URL 在构造期拒绝。
+func TestRejectsAbsoluteURLWithoutHost(t *testing.T) {
+	for _, raw := range []string{"http:/search", "https:/", "http://"} {
+		if _, err := New(Source{Name: "custom", URL: raw}, testOptions()); err == nil {
+			t.Errorf("New accepted non-absolute URL %q", raw)
+		}
+	}
+}
+
+// TestMultipartPartContentTypeByMagic part 内联 Content-Type 按真实格式声明。
+func TestMultipartPartContentTypeByMagic(t *testing.T) {
+	body, _, err := buildMultipartBody([]byte{0xFF, 0xD8, 0xFF}, "f.jpg", image.JPEG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("Content-Type: image/jpeg")) {
+		t.Errorf("jpeg part header missing image/jpeg:\n%s", body)
+	}
+	body, _, err = buildMultipartBody([]byte{0x89, 'P', 'N', 'G'}, "f.png", image.PNG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("Content-Type: image/png")) {
+		t.Errorf("png part header missing image/png:\n%s", body)
+	}
+	body, _, err = buildMultipartBody([]byte("RIFF....WEBP"), "f.webp", image.WEBP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("Content-Type: image/webp")) {
+		t.Errorf("webp part header missing image/webp:\n%s", body)
 	}
 }

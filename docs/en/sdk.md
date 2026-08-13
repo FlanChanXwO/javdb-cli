@@ -196,10 +196,11 @@ for _, match := range result.Matches {
   (`ResolveMovieIDExact` — no first-hit fallback) for every candidate
   concurrently and restores provider order; per-candidate failures are
   `ImageSearchError` values and never abort the batch.
-- `ReverseSearchCache` is an injectable interface (`Get`/`Put` keyed by the
-  image SHA-256); the SDK never reads `~/.javdb-cli`. A cache hit skips the
-  provider; `BypassCache` disables it per request. The cache must never store
-  the original image, auth headers, or JavDB details.
+- `ReverseSearchCache` is an injectable interface (`Get`/`Put` keyed by
+  `"<source>:<image SHA-256>"` so different providers never share entries);
+  the SDK never reads `~/.javdb-cli`. A cache hit skips the provider;
+  `BypassCache` disables it per request. The cache must never store the
+  original image, auth headers, or JavDB details.
 - `ReverseSearchOptions` configures retries (3 total requests), the 30s/60s
   backoff, and the 60s per-request timeout. `WithReverseSearch` injects them;
   `javdb.New` itself never touches the network.

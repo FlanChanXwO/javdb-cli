@@ -216,9 +216,10 @@ fi
 
 # 这些是基线已经存在的 facade/返回类型兼容依赖；新增 SDK internal 依赖必须先改变契约并更新门禁。
 # reversesearch/provider 是公开反搜方法的 wire 实现，SDK 只做类型映射，不暴露 internal 类型；
-# reversesearch/image 提供 CLI 与 SDK 共用的格式/大小校验入口。
+# reversesearch/image 提供 CLI 与 SDK 共用的格式/大小校验入口；
+# common/proxyutil 提供 SDK 内部使用的全 scheme 代理 transport（不对外暴露）。
 sdk_internal_imports=$(rg -n 'github.com/FlanChanXwO/javdb-cli/internal/' "$repo_root/sdk" -g '*.go' || true)
-if [ -n "$sdk_internal_imports" ] && printf '%s\n' "$sdk_internal_imports" | rg -n -v 'github.com/FlanChanXwO/javdb-cli/internal/(config|javdb/appapi|storage/tags|reversesearch/provider|reversesearch/image)(/|")'; then
+if [ -n "$sdk_internal_imports" ] && printf '%s\n' "$sdk_internal_imports" | rg -n -v 'github.com/FlanChanXwO/javdb-cli/internal/(config|common/proxyutil|javdb/appapi|storage/tags|reversesearch/provider|reversesearch/image)(/|")'; then
 	printf '%s\n' 'SDK imports an internal package outside the compatibility allowlist' >&2
 	exit 1
 fi
