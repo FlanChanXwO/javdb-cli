@@ -24,10 +24,12 @@
     {
       "category": "Changed",
       "breaking": false,
-      "english": "Publish each release with release-manifest.json and release-manifest.sig generated only from the verified production archives in the protected release environment, and derive the compatible checksums.txt from the manifest for Homebrew, v0.6.0 updaters and manual verification.",
-      "zh_cn": "每次发布新增由已验证 production archives 在受保护的 release environment 中生成的 release-manifest.json 与 release-manifest.sig，并由清单派生兼容的 checksums.txt 供 Homebrew、v0.6.0 更新器与人工校验使用。",
+      "english": "Publish each release with release-manifest.json and release-manifest.sig generated only from the verified production archives in the protected release environment, and derive the compatible checksums.txt from the manifest for Homebrew, v0.6.0 updaters and manual verification. The release signing key is embedded in the client keyring.",
+      "zh_cn": "每次发布新增由已验证 production archives 在受保护的 release environment 中生成的 release-manifest.json 与 release-manifest.sig，并由清单派生兼容的 checksums.txt 供 Homebrew、v0.6.0 更新器与人工校验使用。 发布签名密钥内置在客户端公钥环中。",
       "sources": [
-        "https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061"
+        "https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/258148a",
+        "https://github.com/FlanChanXwO/javdb-cli/commit/c7f1c97"
       ]
     },
     {

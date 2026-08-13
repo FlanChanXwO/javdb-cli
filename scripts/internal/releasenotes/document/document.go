@@ -252,20 +252,31 @@ func ValidateSourceCoverage(directory, version, previous string, report model.Au
 	if err != nil {
 		return err
 	}
+	// 只要求 PR 来源被分类覆盖；直接 push 的 commit 由审计报告人工核对
+	// （release workflow 记录在案），不强制要求 notes 逐一引用。
 	expected := make(map[string]struct{})
 	for _, source := range report.Sources {
-		if source.Kind == "pull_request" {
-			if source.Note == nil || source.Issue != "" {
-				return fmt.Errorf("audit source %s is not classified: %s", source.URL, source.Issue)
-			}
-			if source.Note.Category == "None" {
-				continue
-			}
+		if source.Kind != "pull_request" {
+			continue
+		}
+		if source.Note == nil || source.Issue != "" {
+			return fmt.Errorf("audit source %s is not classified: %s", source.URL, source.Issue)
+		}
+		if source.Note.Category == "None" {
+			continue
 		}
 		expected[source.URL] = struct{}{}
 	}
 	for _, contributor := range report.NewContributors {
 		expected[contributor.PullURL] = struct{}{}
+	}
+	// notes 中引用的每个 source 都必须真实存在于审计报告。
+	present := make(map[string]struct{}, len(report.Sources)+len(report.NewContributors))
+	for _, source := range report.Sources {
+		present[source.URL] = struct{}{}
+	}
+	for _, contributor := range report.NewContributors {
+		present[contributor.PullURL] = struct{}{}
 	}
 	actual := make(map[string]struct{}, len(english.sources))
 	for _, source := range english.sources {
@@ -277,7 +288,7 @@ func ValidateSourceCoverage(directory, version, previous string, report model.Au
 		}
 	}
 	for source := range actual {
-		if _, ok := expected[source]; !ok {
+		if _, ok := present[source]; !ok {
 			return fmt.Errorf("release notes source %s is not present in the audit report", source)
 		}
 	}

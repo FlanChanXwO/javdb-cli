@@ -7,7 +7,7 @@
 ## Changed
 
 - Verify release updates with the signed manifest instead of executing the candidate binary: bind repository, release tag and platform, check the archive and the extracted binary SHA-256, and keep the current executable unchanged on any failure. The candidate binary is never executed. ([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061))
-- Publish each release with `release-manifest.json` and `release-manifest.sig` generated only from the verified production archives in the protected release environment, and derive the compatible `checksums.txt` from the manifest for Homebrew, v0.6.0 updaters and manual verification. ([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061))
+- Publish each release with `release-manifest.json` and `release-manifest.sig` generated only from the verified production archives in the protected release environment, and derive the compatible `checksums.txt` from the manifest for Homebrew, v0.6.0 updaters and manual verification. The release signing key is embedded in the client keyring. ([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061), [`258148a`](https://github.com/FlanChanXwO/javdb-cli/commit/258148a), [`c7f1c97`](https://github.com/FlanChanXwO/javdb-cli/commit/c7f1c97))
 
 ## Maintenance
 
