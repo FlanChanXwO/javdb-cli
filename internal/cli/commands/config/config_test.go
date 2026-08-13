@@ -27,6 +27,7 @@ func executeConfig(t *testing.T, args ...string) (bytes.Buffer, bytes.Buffer, er
 	t.Helper()
 	var out, errb bytes.Buffer
 	streams := invocation.NewStreams(strings.NewReader(""), &out, &errb)
+	streams.InIsTerminal = true
 	command := New(streams)
 	command.SetOut(&out)
 	command.SetErr(&errb)
@@ -216,5 +217,69 @@ func TestConfigGetListsReverseSearchScalars(t *testing.T) {
 		if !strings.Contains(out.String(), line) {
 			t.Errorf("config get output lacks %q:\n%s", line, out.String())
 		}
+	}
+}
+
+// TestConfigGetStdinBatch 无 key + 非 TTY stdin：key 批处理输出 config_key 信封。
+func TestConfigGetStdinBatch(t *testing.T) {
+	isolateHome(t)
+	streams := invocation.NewStreams(strings.NewReader("host\nlang\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	command := New(streams)
+	command.SetArgs([]string{"get"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	out := streams.Out.(*bytes.Buffer).String()
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], `"kind":"config_key"`) || !strings.Contains(lines[0], `"ref":"host"`) {
+		t.Errorf("first envelope = %s", lines[0])
+	}
+	if !strings.Contains(lines[0], `"value":"auto"`) {
+		t.Errorf("first envelope lacks value: %s", lines[0])
+	}
+}
+
+// TestConfigGetBatchRedactsProxyCredentials 管道信封不得泄漏 proxy 凭据。
+func TestConfigGetBatchRedactsProxyCredentials(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "https_proxy", "http://user:secret@proxy.example:8080"); err != nil {
+		t.Fatal(err)
+	}
+	streams := invocation.NewStreams(strings.NewReader("https_proxy\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	command := New(streams)
+	command.SetArgs([]string{"get"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	out := streams.Out.(*bytes.Buffer).String()
+	if strings.Contains(out, "secret") {
+		t.Fatalf("pipeline envelope leaks proxy credentials: %s", out)
+	}
+	if !strings.Contains(out, `"value":"***"`) {
+		t.Errorf("proxy value should be redacted: %s", out)
+	}
+}
+
+// TestConfigUnsetStdinBatch 非 TTY stdin key 批处理 unset。
+func TestConfigUnsetStdinBatch(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "lang", "zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	streams := invocation.NewStreams(strings.NewReader("lang\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	command := New(streams)
+	command.SetArgs([]string{"unset"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("unset batch: %v", err)
+	}
+	out, _, err := executeConfig(t, "get", "lang")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out.String()) != "en" {
+		t.Errorf("lang after batch unset = %q, want en", out.String())
 	}
 }

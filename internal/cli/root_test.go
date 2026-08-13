@@ -191,7 +191,10 @@ Flags:
       --content string   Optional review text
   -h, --help             help for mark
   -i, --id               Treat NUMBER as internal movie id
+      --json             Machine-readable JSON
+      --jsonl            Pipeline JSONL envelopes
       --score int        Optional score
+      --text             Plain text lines (default for TTY)
       --want             Mark as 想看
       --watched          Mark as 看過
 
@@ -306,7 +309,7 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 	}{
 		{[]string{"search"}, "keyword or an image"},
 		{[]string{"detail"}, "keyword or an image"},
-		{[]string{"mark"}, "accepts 1 arg(s), received 0"},
+		{[]string{"mark"}, "keyword or an image"},
 		{[]string{"update", "--json"}, "--json is only supported with --check"},
 		{[]string{"frobnicate"}, `unknown command "frobnicate" for "javdb"`},
 	}
@@ -407,7 +410,7 @@ func TestConfigSetPersistsHostValue(t *testing.T) {
 	}
 	out.Reset()
 	errb.Reset()
-	code = Run([]string{"config", "get", "host"}, strings.NewReader(""), &out, &errb)
+	code = Run([]string{"config", "get", "host", "--text"}, strings.NewReader(""), &out, &errb)
 	if code != 0 {
 		t.Fatalf("config get exit=%d stderr=%q", code, errb.String())
 	}

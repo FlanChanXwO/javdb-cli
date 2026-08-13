@@ -1,16 +1,20 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
 	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // configKey 描述一个可 set/unset/get 的配置键及其值的 Go 类型。
@@ -93,37 +97,7 @@ func New(streams *invocation.Streams) *cobra.Command {
 			return nil
 		},
 	})
-	command.AddCommand(&cobra.Command{
-		Use:   "get [key]",
-		Short: "Print config (or one key)",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(command *cobra.Command, args []string) error {
-			if len(args) == 1 && !knownConfigKey(args[0]) {
-				return fmt.Errorf("unknown key %q", args[0])
-			}
-			if err := paths.EnsureDefaultConfigFile(); err != nil {
-				return err
-			}
-			path, err := paths.ConfigPath()
-			if err != nil {
-				return err
-			}
-			cfg, err := settings.LoadFile(path)
-			if err != nil {
-				return err
-			}
-			if len(args) == 0 {
-				printAll(streams, cfg)
-				return nil
-			}
-			value, err := lookupKey(cfg, args[0])
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(streams.Out, value)
-			return nil
-		},
-	})
+	command.AddCommand(newGet(streams))
 	command.AddCommand(&cobra.Command{
 		Use:   "set <key> <value>",
 		Short: "Set a config key",
@@ -159,37 +133,158 @@ func New(streams *invocation.Streams) *cobra.Command {
 			return document.Save(path)
 		},
 	})
-	command.AddCommand(&cobra.Command{
-		Use:   "unset <key>",
-		Short: "Clear a config key to default",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(command *cobra.Command, args []string) error {
-			// 未知 key 必须先报错（即使配置缺失），不能伪装成成功。
+	command.AddCommand(newUnset(streams))
+	return command
+}
+
+// newGet 构建 config get：一个 key 或无 key 时的非 TTY stdin 批处理。
+func newGet(streams *invocation.Streams) *cobra.Command {
+	var asJSON, asJSONL, asText bool
+	load := func() (settings.Settings, string, error) {
+		if err := paths.EnsureDefaultConfigFile(); err != nil {
+			return settings.Settings{}, "", err
+		}
+		path, err := paths.ConfigPath()
+		if err != nil {
+			return settings.Settings{}, "", err
+		}
+		cfg, err := settings.LoadFile(path)
+		if err != nil {
+			return settings.Settings{}, "", err
+		}
+		return cfg, path, nil
+	}
+	runner := &pipeline.BatchRunner{
+		Name:          "config get",
+		Kinds:         []pipeline.Kind{pipeline.KindConfigKey},
+		ClientFactory: nil,
+		RunOne: func(_ *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+			key := pipeline.ConsumerRef(input)
+			if !knownConfigKey(key) {
+				return pipeline.Envelope{}, fmt.Errorf("unknown key %q", key)
+			}
+			cfg, _, err := load()
+			if err != nil {
+				return pipeline.Envelope{}, err
+			}
+			value, err := lookupKey(cfg, key)
+			if err != nil {
+				return pipeline.Envelope{}, err
+			}
+			return pipeline.New(pipeline.KindConfigKey, key, "").
+				WithData(map[string]any{"value": redactSensitiveValue(key, value)}), nil
+		},
+		Legacy: func(args []string) error {
 			if !knownConfigKey(args[0]) {
 				return fmt.Errorf("unknown key %q", args[0])
 			}
-			path, err := paths.ConfigPath()
+			cfg, _, err := load()
 			if err != nil {
 				return err
 			}
-			// 缺失配置上的合法 key unset 是 no-op：默认值已经生效，不创建文件。
-			if _, err := os.Stat(path); err != nil {
-				if errors.Is(err, os.ErrNotExist) {
+			value, err := lookupKey(cfg, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(streams.Out, value)
+			return nil
+		},
+	}
+	cmd := &cobra.Command{
+		Use:   "get [key]",
+		Short: "Print config (or one key)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if len(args) == 1 && !knownConfigKey(args[0]) {
+				return fmt.Errorf("unknown key %q", args[0])
+			}
+			if len(args) == 0 {
+				// 无 key：TTY 打印全部；非 TTY 从 stdin 读取 key 批处理。
+				cfg, _, err := load()
+				if err != nil {
+					return err
+				}
+				if streams.InIsTerminal {
+					printAll(streams, cfg)
 					return nil
 				}
-				return err
 			}
-			document, err := settings.LoadDocument(path)
-			if err != nil {
-				return err
-			}
-			if err := document.Delete(args[0]); err != nil {
-				return err
-			}
-			return document.Save(path)
+			return runner.Execute(streams, args, asJSONL, asText, asJSON)
 		},
-	})
-	return command
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	return cmd
+}
+
+// newUnset 构建 config unset：一个 key 或非 TTY stdin key 批处理。
+func newUnset(streams *invocation.Streams) *cobra.Command {
+	var asJSON, asJSONL, asText bool
+	runOne := func(key string) error {
+		if !knownConfigKey(key) {
+			return fmt.Errorf("unknown key %q", key)
+		}
+		path, err := paths.ConfigPath()
+		if err != nil {
+			return err
+		}
+		// 缺失配置上的合法 key unset 是 no-op：默认值已经生效，不创建文件。
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		document, err := settings.LoadDocument(path)
+		if err != nil {
+			return err
+		}
+		if err := document.Delete(key); err != nil {
+			return err
+		}
+		return document.Save(path)
+	}
+	runner := &pipeline.BatchRunner{
+		Name:          "config unset",
+		Kinds:         []pipeline.Kind{pipeline.KindConfigKey},
+		ClientFactory: nil,
+		RunOne: func(_ *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+			key := pipeline.ConsumerRef(input)
+			if err := runOne(key); err != nil {
+				return pipeline.Envelope{}, err
+			}
+			return pipeline.New(pipeline.KindConfigKey, key, "").WithData(map[string]any{"unset": true}), nil
+		},
+		Legacy: func(args []string) error {
+			return runOne(args[0])
+		},
+	}
+	cmd := &cobra.Command{
+		Use:   "unset <key>",
+		Short: "Clear a config key to default",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
+	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	return cmd
+}
+
+// redactSensitiveValue 对可能携带凭据的 proxy 值做脱敏：包含 userinfo 时
+// 值以 "***" 替代，避免管道信封泄漏 secret。
+func redactSensitiveValue(key, value string) string {
+	if key != "https_proxy" && key != "proxy" {
+		return value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User == nil {
+		return value
+	}
+	return "***"
 }
 
 func printAll(streams *invocation.Streams, cfg settings.Settings) {

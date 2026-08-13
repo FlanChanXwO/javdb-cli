@@ -25,6 +25,9 @@ type BatchRunner struct {
 	RunOne func(*javdb.Client, context.Context, Envelope) (Envelope, error)
 	// Legacy 处理单项既有路径（args 为位置参数列表）。
 	Legacy func(args []string) error
+	// Preflight 在批处理路径开始前校验全部输入（如 download 的全量目标展开
+	// 与冲突检查）；返回错误时整个批处理失败，不做任何写入。
+	Preflight func([]Envelope) error
 }
 
 // Execute 是命令 RunE 的通用实现。
@@ -54,9 +57,18 @@ func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []En
 		// 单项 TTY 文本或显式 --json：既有路径，保持 shape 与认证语义。
 		return b.Legacy([]string{pipelineConsumerRef(inputs[0])})
 	}
-	client, err := b.ClientFactory()
-	if err != nil {
-		return err
+	if b.Preflight != nil {
+		if err := b.Preflight(inputs); err != nil {
+			return err
+		}
+	}
+	var client *javdb.Client
+	if b.ClientFactory != nil {
+		var err error
+		client, err = b.ClientFactory()
+		if err != nil {
+			return err
+		}
 	}
 	consumer := &Consumer{
 		Name:          b.Name,
