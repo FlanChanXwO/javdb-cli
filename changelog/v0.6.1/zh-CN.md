@@ -12,5 +12,6 @@
 ## 维护
 
 - 补充 Ed25519 发布密钥 runbook：生成、双签轮换、撤销，以及 `JAVDB_RELEASE_ED25519_PRIVATE_KEYS` 在受保护 GitHub release environment 中的生命周期说明。([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061))
+- 发布审计把直接 commit 记录在报告中供人工核对，不再硬性失败，使未经过 PR 的 bridge 发布仍可发布。([`895fef2`](https://github.com/FlanChanXwO/javdb-cli/commit/895fef2))
 
 **完整变更记录**：[v0.6.0...v0.6.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.6.0...v0.6.1)
