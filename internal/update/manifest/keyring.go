@@ -65,17 +65,21 @@ func (k *Keyring) VerifySignatures(message []byte, signatures *Signatures) error
 
 // DefaultKeyring 返回生产发布签名的受信公钥环。
 //
-// 当前仓库尚未产生生产密钥；首个公钥在维护者按 runbook 生成密钥并把 seed
-// 放入 GitHub release environment secret 后由本文件登记。空环保持 fail-closed，
-// 任何远程清单都不能通过验证。
+// 生产公钥在维护者按 runbook（docs/maintainers/development.md）生成密钥并把
+// seed 放入 GitHub release environment secret 后登记。禁止提交测试之外任何
+// 私钥；轮换时新旧公钥同时登记，过渡期清单由新旧私钥双签。
 func DefaultKeyring() *Keyring {
-	// 生产公钥登记示例（禁止提交测试之外任何私钥；runbook 见
-	// docs/maintainers/development.md）：
-	//
-	//	ring := NewKeyring()
-	//	if err := ring.Add(productionPublicKey); err != nil { ... }
-	//	return ring
-	//
-	// 添加首个生产公钥前，release 验证将显式失败（fail-closed）。
-	return NewKeyring()
+	ring := NewKeyring()
+	// 生产公钥（2026-08-13 首次发布登记；对应 seed 位于 GitHub release
+	// environment 的 JAVDB_RELEASE_ED25519_PRIVATE_KEYS）。
+	if err := ring.Add(productionKey0); err != nil {
+		panic(err)
+	}
+	return ring
+}
+
+// productionKey0 是首个生产 Ed25519 公钥（key_id fffb9cd1...）。
+var productionKey0 = ed25519.PublicKey{
+	0x96, 0x93, 0x25, 0x97, 0xb8, 0xbb, 0x1e, 0x8d, 0x44, 0x3c, 0xcd, 0xa3, 0x05, 0x4f, 0x21, 0x25,
+	0x2b, 0xf5, 0x83, 0x8d, 0x32, 0xb2, 0xaf, 0x8b, 0x37, 0x45, 0xd9, 0x63, 0x0e, 0x0e, 0x71, 0x45,
 }
