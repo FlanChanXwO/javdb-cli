@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
 	actorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/actor"
 	authcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/auth"
 	browsecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/browse"
@@ -37,6 +39,7 @@ import (
 	wantcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/want"
 	watchedcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/watched"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/update/model"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/process"
 )
 
@@ -53,7 +56,9 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		Short:         "JavDB app API command-line client",
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		Version:       rootVersionLine(),
 	}
+	command.SetVersionTemplate("{{.Version}}\n")
 	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", "Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)")
 	command.PersistentFlags().StringVar(&options.Host, "host", "", "auto|mirror|main|URL (default: config or auto)")
 
@@ -104,4 +109,25 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// rootVersionLine 构造根 `--version` 的展示行：
+//   - 正式版（带 ReleaseDate）：`javdb version 0.7.0 (2026-08-12)` 两行，
+//     第二行为 Release URL，展示版本不带 v。
+//   - 开发版：单行 `javdb version dev (commit <commit>, built <timestamp>)`，
+//     不显示 Release URL。
+func rootVersionLine() string {
+	info := buildinfo.Current()
+	if info.IsDevelopment() {
+		return fmt.Sprintf("javdb version dev (commit %s, built %s)", info.Commit, info.BuildDate)
+	}
+	displayVersion := strings.TrimPrefix(info.Version, "v")
+	line := fmt.Sprintf("javdb version %s", displayVersion)
+	if info.ReleaseDate != "" {
+		line += fmt.Sprintf(" (%s)", info.ReleaseDate)
+	}
+	if info.ReleaseDate != "" && !info.IsDevelopment() {
+		line += "\n" + "https://github.com/" + model.GitHubRepository + "/releases/tag/" + info.Version
+	}
+	return line
 }

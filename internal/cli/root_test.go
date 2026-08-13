@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
 )
 
 // isolateHome 把 HOME 指向临时目录，避免配置创建测试污染真实本机状态。
@@ -59,7 +61,6 @@ Available Commands:
   top250      TOP250 list (needs login)
   unmark      Remove watched/want mark for a movie
   update      Check for or install updates
-  version     Print version
   want        List want-to-watch (想看) movies
   watched     List watched (看過) movies
 
@@ -67,6 +68,7 @@ Flags:
   -h, --help           help for javdb
       --host string    auto|mirror|main|URL (default: config or auto)
       --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+  -v, --version        version for javdb
 
 Use "javdb [command] --help" for more information about a command.
 `
@@ -441,4 +443,98 @@ func TestHelpCompletionAndZeroArgCommandsDoNotReadStdin(t *testing.T) {
 			t.Fatalf("%v: code=%d err=%s", args, code, errb.String())
 		}
 	}
+}
+
+// 保存原值以便恢复，避免污染其他测试。
+func withBuildInfo(t *testing.T, version, commit, buildDate, releaseDate string) {
+	t.Helper()
+	original := buildinfo.Info{Version: buildinfo.Version, Commit: buildinfo.Commit, BuildDate: buildinfo.BuildDate, ReleaseDate: buildinfo.ReleaseDate}
+	buildinfo.Version = version
+	buildinfo.Commit = commit
+	buildinfo.BuildDate = buildDate
+	buildinfo.ReleaseDate = releaseDate
+	t.Cleanup(func() {
+		buildinfo.Version = original.Version
+		buildinfo.Commit = original.Commit
+		buildinfo.BuildDate = original.BuildDate
+		buildinfo.ReleaseDate = original.ReleaseDate
+	})
+}
+
+func TestRootVersionReleaseTwoLines(t *testing.T) {
+	withBuildInfo(t, "0.7.0", "abc1234", "2026-08-13T00:00:00Z", "2026-08-12")
+	var out, errb bytes.Buffer
+	code := Run([]string{"--version"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+	want := "javdb version 0.7.0 (2026-08-12)\nhttps://github.com/FlanChanXwO/javdb-cli/releases/tag/v0.7.0\n"
+	if out.String() != want {
+		t.Fatalf("release --version output:\n--- want ---\n%q\n--- got ---\n%q", want, out.String())
+	}
+}
+
+func TestRootVersionDevelopmentSingleLine(t *testing.T) {
+	withBuildInfo(t, "dev", "abc1234", "2026-08-13T10:00:00Z", "")
+	var out, errb bytes.Buffer
+	code := Run([]string{"--version"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+	got := out.String()
+	if !strings.HasPrefix(got, "javdb version dev (commit abc1234, built 2026-08-13T10:00:00Z)") {
+		t.Fatalf("dev --version output = %q", got)
+	}
+	if strings.Contains(got, "releases/tag") {
+		t.Fatalf("dev build must not show a Release URL: %q", got)
+	}
+	if strings.Count(got, "\n") != 1 {
+		t.Fatalf("dev build must be a single line: %q", got)
+	}
+}
+
+func TestRootVersionUnknownMetadata(t *testing.T) {
+	// unknown metadata：非 dev 但无 ReleaseDate → 单行且无 URL。
+	withBuildInfo(t, "0.7.0", "unknown", "unknown", "")
+	var out, errb bytes.Buffer
+	code := Run([]string{"--version"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	got := out.String()
+	if strings.Contains(got, "releases/tag") {
+		t.Fatalf("unknown-metadata --version output = %q", got)
+	}
+	if !strings.HasPrefix(got, "javdb version 0.7.0") {
+		t.Fatalf("unknown-metadata --version output = %q", got)
+	}
+}
+
+func TestHiddenVersionShimKeepsJSONContract(t *testing.T) {
+	withBuildInfo(t, "0.7.0", "abc1234", "2026-08-13T00:00:00Z", "2026-08-12")
+	var out, errb bytes.Buffer
+	code := Run([]string{"version", "--json"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("shim code=%d stderr=%q", code, errb.String())
+	}
+	got := strings.TrimSpace(out.String())
+	// 旧契约：version 带 v 前缀，供 v0.6.x 更新器/Homebrew 断言。
+	if !strings.Contains(got, `"version":"v0.7.0"`) {
+		t.Fatalf("shim JSON = %q", got)
+	}
+	// shim 不出现于 help/completion。
+	helpOut, _ := runHelp(t)
+	if strings.Contains(helpOut, "version     Print version") {
+		t.Fatalf("hidden shim leaked into help:\n%s", helpOut)
+	}
+}
+
+func runHelp(t *testing.T) (string, string) {
+	t.Helper()
+	var out, errb bytes.Buffer
+	code := Run([]string{"--help"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("help code=%d", code)
+	}
+	return out.String(), errb.String()
 }

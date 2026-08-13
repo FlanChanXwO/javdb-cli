@@ -9,12 +9,15 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 )
 
-// New builds the version command.
+// New builds the hidden version shim. 公开入口已切换为根 `--version`；
+// 本命令保留隐藏 `version --json` 供 v0.6.x 更新器与 Homebrew 兼容调用，
+// 不出现在 help/completion，v0.7 之后按发布策略移除。
 func New() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print version",
+		Use:    "version",
+		Short:  "Print version",
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info := buildinfo.Current()
 			if asJSON {

@@ -216,8 +216,11 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='dist/javdb.exe'
           fi
+          release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
+          test -n "$release_date"
           sh scripts/build-release.sh \
             --version "$VERSION" \
+            --release-date "$release_date" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --output "$binary"
           sh scripts/package-release.sh \
@@ -233,8 +236,9 @@ jobs:
           else
             tar -xzf "${archive}.tar.gz" -C smoke
           fi
-          "./$smoked_binary" version --json | tee "$RUNNER_TEMP/javdb-version.json"
-          grep -F "\"version\":\"v${VERSION}\"" "$RUNNER_TEMP/javdb-version.json"
+          # 公开版本契约是根 --version 文本；version --json 只是隐藏升级 shim。
+          "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
+          grep -F "javdb version ${VERSION} (" "$RUNNER_TEMP/javdb-version.txt"
 
   # 在全新 runner 上从同一不可变 tag 重建。测试 job 的临时状态不会进入发布产物。
   build_production:
@@ -304,8 +308,11 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='dist/javdb.exe'
           fi
+          release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
+          test -n "$release_date"
           sh scripts/build-release.sh \
             --version "$VERSION" \
+            --release-date "$release_date" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --output "$binary"
           sh scripts/package-release.sh \
@@ -560,7 +567,7 @@ jobs:
                 tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
                 cp /staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
                 brew install --formula javdb-cli-release/staging/javdb-cli
-                javdb version --json | brew ruby -rjson -e "actual = JSON.parse(STDIN.read).fetch(\"version\"); expected = ARGV.fetch(0); abort(\"version #{actual.inspect} != #{expected.inspect}\") unless actual == expected" "$RELEASE_TAG"
+                javdb --version | grep -F "javdb version ${RELEASE_TAG#v} ("
               '
           else
             brew tap-new javdb-cli-release/staging --no-git
@@ -568,7 +575,7 @@ jobs:
             tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
             cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
             brew install --formula javdb-cli-release/staging/javdb-cli
-            javdb version --json | python3 -c 'import json, sys; actual = json.load(sys.stdin)["version"]; expected = sys.argv[1]; assert actual == expected, f"version {actual!r} != {expected!r}"' "$RELEASE_TAG"
+            javdb --version | grep -F "javdb version ${RELEASE_TAG#v} ("
           fi
 
   # 默认跳过：只有显式设置仓库变量 HOMEBREW_TAP_DEPLOY_ENABLED=true 才允许使用 protected

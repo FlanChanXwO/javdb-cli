@@ -3,16 +3,18 @@ package buildinfo
 
 var (
 	// Overridden via -ldflags -X at release build time.
-	Version   = "dev"
-	Commit    = "unknown"
-	BuildDate = "unknown"
+	Version     = "dev"
+	Commit      = "unknown"
+	BuildDate   = "unknown"
+	ReleaseDate = ""
 )
 
 // Info is safe-to-print build metadata.
 type Info struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuildDate string `json:"build_date"`
+	Version     string `json:"version"`
+	Commit      string `json:"commit"`
+	BuildDate   string `json:"build_date"`
+	ReleaseDate string `json:"release_date,omitempty"`
 }
 
 // Current returns embedded build metadata.
@@ -20,9 +22,10 @@ type Info struct {
 // without one, so brew tests can assert `version_info["version"] == "v#{version}"`.
 func Current() Info {
 	return Info{
-		Version:   NormalizeVersion(Version),
-		Commit:    Commit,
-		BuildDate: BuildDate,
+		Version:     NormalizeVersion(Version),
+		Commit:      Commit,
+		BuildDate:   BuildDate,
+		ReleaseDate: ReleaseDate,
 	}
 }
 
