@@ -7,7 +7,7 @@
 ## 变更
 
 - 发布更新改用签名清单验证，不再执行候选二进制：绑定仓库、Release tag 与平台，校验归档与解包二进制的 SHA-256，任何失败都保持现有可执行文件不变；候选二进制绝不执行。([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061))
-- 每次发布新增由已验证 production archives 在受保护的 release environment 中生成的 `release-manifest.json` 与 `release-manifest.sig`，并由清单派生兼容的 `checksums.txt` 供 Homebrew、v0.6.0 更新器与人工校验使用。([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061))
+- 每次发布新增由已验证 production archives 在受保护的 release environment 中生成的 `release-manifest.json` 与 `release-manifest.sig`，并由清单派生兼容的 `checksums.txt` 供 Homebrew、v0.6.0 更新器与人工校验使用。发布签名密钥内置在客户端公钥环中。([`7e2c061`](https://github.com/FlanChanXwO/javdb-cli/commit/7e2c061)、[`258148a`](https://github.com/FlanChanXwO/javdb-cli/commit/258148a)、[`c7f1c97`](https://github.com/FlanChanXwO/javdb-cli/commit/c7f1c97))
 
 ## 维护
 
