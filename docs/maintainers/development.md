@@ -226,7 +226,8 @@ environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt
    skill 的 `version` metadata 遗漏同步，可在修复 PR 合并后手动启用
    `backfill_from_default_branch`：workflow 只接受已属于默认分支且位于原 tag 之后的提交，并要求
    `skills/javdb-cli/` 相对该 tag 的唯一差异是 `SKILL.md` 的版本字段；补发仍使用既有 Release 版本，
-   不修改 tag 或二进制资产。
+   不修改 tag 或二进制资产。手动补发时填写既有 `release_tag`、启用
+   `backfill_from_default_branch`，并保持 `verify_only` 关闭。
 
 历史 Release 回写、GitHub description 修改、release-prep PR 合并、创建 tag 与发布均是外部写入。
 在当前会话取得目标版本、范围和影响的明确授权后，先 dry-run，再使用 `sync-history --apply` 或
