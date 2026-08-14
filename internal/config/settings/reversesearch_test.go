@@ -339,7 +339,6 @@ func TestSensitiveHeaderValueFormat(t *testing.T) {
 		{"Authorization": "Bearer ${ENV:TOKEN}"},
 		{"Authorization": "${ENV:TOKEN}"},
 		{"Authorization": "${ENV:A}${ENV:B}"},
-		{"Authorization": "Bearer ${ENV:A} extra"},
 		{"Cookie": "session=${ENV:SESSION}; csrf=${ENV:CSRF}"},
 		{"X-Api-Key": "Token ${ENV:KEY}"},
 		{"X-Access-Token": "${ENV:AT}"},
@@ -354,10 +353,12 @@ func TestSensitiveHeaderValueFormat(t *testing.T) {
 	rejected := []map[string]string{
 		{"Authorization": "Bearer plaintext-secret"},
 		{"Authorization": "${ENV:DUMMY} plaintext-secret"},
+		{"Authorization": "Bearer ${ENV:A} extra"},
 		{"Authorization": "Bearer superlongplaintextsecret"},
 		{"Cookie": "session=plaintext"},
 		{"X-Access-Token": "averylongplaintextsecret"},
 		{"X-Secret-Key": "short-secret"},
+		{"X-Access-Token": "${ENV:D}plaintext-secret"},
 	}
 	for _, headers := range rejected {
 		if _, err := ResolveReverseSearch(build(headers), func(string) string { return "v" }); err == nil {

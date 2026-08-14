@@ -222,26 +222,29 @@ func isSensitiveHeaderName(name string) bool {
 // envReferencePattern 匹配 ${ENV:NAME} 引用（已在文件顶部定义）。
 var sensitiveHeaderValuePattern = regexp.MustCompile(`\$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}`)
 
-// validateSensitiveHeaderValue 校验敏感 header 值：至少包含一个 ${ENV:NAME}
-// 引用（文档契约：静态文本与引用可任意组合，如
-// "session=${ENV:SESSION}; csrf=${ENV:CSRF}"），且不存在疑似明文 secret 的
-// 独立长 token（无空白/逗号/分号分隔、长度 >= 10 的非引用片段会被拒绝，
-// 如 "${ENV:DUMMY} plaintext-secret" 与 "Bearer real-secret-12345"）。
-// 错误消息只描述规则，绝不回显被拒绝的值。
+// sensitiveStaticFragmentPattern 允许非引用静态片段为：空、已知 scheme 前缀
+// （bearer/basic/token/digest/api-key），或 "key=" 键值头形式。任何其它
+// 静态文本（无论长度）都视为疑似明文 secret，因为无法证明其非凭据。
+// 该结构规则不依赖长度阈值，与文档契约（静态文本+${ENV:} 引用）一致：
+// "session=${ENV:SESSION}; csrf=${ENV:CSRF}" 通过，而
+// "${ENV:DUMMY}plaintext-secret" 与 "Bearer ${ENV:X} short" 被拒绝。
+var sensitiveStaticFragmentPattern = regexp.MustCompile(`(?i)^(bearer|basic|token|digest|api[-_]?key)\s*$|^[a-z0-9_-]+=\s*$`)
+
+// validateSensitiveHeaderValue 校验敏感 header 值：至少一个 ${ENV:NAME}
+// 引用；按引用切分后每个非引用静态片段必须为空、已知 scheme 前缀或
+// "key=" 形式。错误消息只描述规则，绝不回显被拒绝的值。
 func validateSensitiveHeaderValue(value string) error {
 	if !sensitiveHeaderValuePattern.MatchString(value) {
 		return fmt.Errorf("sensitive header must reference ${ENV:NAME} instead of storing a plaintext secret")
 	}
-	for _, token := range strings.FieldsFunc(value, func(character rune) bool {
-		return character == ' ' || character == '\t' || character == ',' || character == ';'
-	}) {
-		token = strings.TrimSpace(token)
-		if token == "" || sensitiveHeaderValuePattern.MatchString(token) {
+	parts := sensitiveHeaderValuePattern.Split(value, -1)
+	for _, part := range parts {
+		// 分号/逗号是键值片段之间的合法分隔符，先剥离再校验。
+		trimmed := strings.Trim(part, " \t;,")
+		if trimmed == "" || sensitiveStaticFragmentPattern.MatchString(trimmed) {
 			continue
 		}
-		if len(token) >= 10 {
-			return fmt.Errorf("sensitive header contains a suspicious plaintext secret; use ${ENV:NAME} references only")
-		}
+		return fmt.Errorf("sensitive header contains static text that is not a known scheme prefix or key= fragment; use ${ENV:NAME} references for secrets")
 	}
 	return nil
 }
