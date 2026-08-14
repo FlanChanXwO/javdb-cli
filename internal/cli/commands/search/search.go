@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
+	magnetspkg "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
@@ -34,6 +36,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		asImage       bool
 		source        string
 		noCache       bool
+		magnets       int
+		cnsub, hd     bool
+		minSize       string
 	)
 	cmd := &cobra.Command{
 		Use:   "search KEYWORD|IMAGE",
@@ -43,6 +48,15 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
 			if err != nil {
 				return err
+			}
+			// --magnets 仅支持 movie 搜索。
+			if magnets > 0 || cmd.Flags().Changed("magnets") {
+				if typ != "" && typ != "movie" {
+					return fmt.Errorf("--magnets is only supported for movie search (got --type %q)", typ)
+				}
+				if !cmd.Flags().Changed("cnsub") && !cmd.Flags().Changed("hd") && !cmd.Flags().Changed("min-size") && magnets == 0 {
+					// --magnets 0 不配合筛选 flag 时仍允许（返回全部磁力）。
+				}
 			}
 			reader := bufio.NewReader(streams.In)
 			arg := ""
@@ -54,10 +68,16 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				return err
 			}
 			if imageMode {
+				if cmd.Flags().Changed("magnets") {
+					return runImageSearchMagnets(options, streams, arg, reader, source, noCache, mode, magnets, cnsub, hd, minSize)
+				}
 				return runImageSearch(options, streams, arg, reader, source, noCache, mode)
 			}
 			if len(inputs) == 0 {
 				return fmt.Errorf("keyword or an image")
+			}
+			if cmd.Flags().Changed("magnets") {
+				return runSearchMagnets(options, streams, inputs, mode, page, limit, zone, sort, filterBy, hasMagnets, magnets, cnsub, hd, minSize)
 			}
 			runner := &pipeline.BatchRunner{
 				Name:       "search",
@@ -91,6 +111,10 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&asImage, "image", false, "Treat the argument as an image path or HTTP(S) URL")
 	cmd.Flags().StringVar(&source, "source", "", "Reverse-search source (default: reverse_search.default_source)")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Bypass the reverse-search response cache")
+	cmd.Flags().IntVar(&magnets, "magnets", 0, "Fetch magnets for each result: 0=all, N=top N by best rule")
+	cmd.Flags().BoolVar(&cnsub, "cnsub", false, "Only magnets with Chinese subtitles (requires --magnets)")
+	cmd.Flags().BoolVar(&hd, "hd", false, "Only HD magnets (requires --magnets)")
+	cmd.Flags().StringVar(&minSize, "min-size", "", "Min magnet size e.g. 2000, 4GB, 500MB (requires --magnets)")
 	return cmd
 }
 
@@ -433,4 +457,241 @@ func writeJSON(w io.Writer, value any) error {
 	}
 	_, err = w.Write(b)
 	return err
+}
+
+// runSearchMagnets 执行关键词搜索并对每部影片获取磁力：筛选 → 排序 → 截取 N。
+// 结果按搜索结果顺序（影片）和磁力排序顺序输出。
+func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Streams, inputs []pipeline.Envelope, mode pipeline.OutputMode, page, limit int, zone, sort, filterBy string, hasMagnets bool, magnetsCount int, cnsub, hd bool, minSize string) error {
+	c, err := client.New(options, "")
+	if err != nil {
+		return err
+	}
+	minMiB := 0
+	if minSize != "" {
+		minMiB, err = magnetspkg.ParseSizeMiB(minSize)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 收集所有搜索结果影片（保留输入顺序）。
+	var allMovies []map[string]any
+	for _, input := range inputs {
+		keyword := pipeline.ConsumerRef(input)
+		opt := javdb.SearchOptions{
+			Page: page, Limit: limit, Zone: zone, Sort: sort, FilterBy: filterBy, Type: "movie",
+		}
+		res, err := c.Search(context.Background(), keyword, opt)
+		if err != nil {
+			return fmt.Errorf("search failed: %w", err)
+		}
+		movies := res.Movies()
+		if hasMagnets {
+			movies = result.FilterMoviesWithMagnets(movies)
+		}
+		allMovies = append(allMovies, movies...)
+	}
+
+	// 并发获取每部影片的磁力。
+	type magnetResult struct {
+		movie   map[string]any
+		magnets []map[string]any
+		err     error
+	}
+	results := make([]magnetResult, len(allMovies))
+	var wait sync.WaitGroup
+	for i := range allMovies {
+		wait.Add(1)
+		go func(i int) {
+			defer wait.Done()
+			mid := fmt.Sprint(allMovies[i]["id"])
+			mags, err := c.MovieMagnets(context.Background(), mid)
+			if err != nil {
+				results[i] = magnetResult{movie: allMovies[i], err: err}
+				return
+			}
+			mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
+			mags = javdb.RankMagnets(mags, magnetsCount)
+			results[i] = magnetResult{movie: allMovies[i], magnets: mags}
+		}(i)
+	}
+	wait.Wait()
+
+	// 输出。
+	failures := 0
+	switch mode {
+	case pipeline.OutputJSON:
+		moviesOut := make([]map[string]any, 0, len(results))
+		for _, r := range results {
+			entry := map[string]any{
+				"number":  r.movie["number"],
+				"id":      r.movie["id"],
+				"magnets": r.magnets,
+			}
+			if r.err != nil {
+				entry["error"] = r.err.Error()
+			}
+			moviesOut = append(moviesOut, entry)
+		}
+		return writeJSON(streams.Out, map[string]any{"movies": moviesOut})
+	case pipeline.OutputNDJSON:
+		writer := pipeline.NewWriter(streams.Out, pipeline.OutputNDJSON)
+		for _, r := range results {
+			ref := fmt.Sprint(r.movie["number"])
+			id := fmt.Sprint(r.movie["id"])
+			if r.err != nil {
+				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMagnet, ref, id), "search", "magnets", "fetch", r.err.Error())); err != nil {
+					return err
+				}
+				failures++
+				continue
+			}
+			envelope := pipeline.New(pipeline.KindMagnet, ref, id).
+				WithData(map[string]any{"movie": r.movie, "magnets": r.magnets})
+			if err := writer.Write(envelope); err != nil {
+				return err
+			}
+		}
+	default:
+		// 文本/人类模式：逐磁力 URI 输出，失败项写 stderr。
+		for _, r := range results {
+			if r.err != nil {
+				failures++
+				fmt.Fprintf(streams.Err, "search: %s\n", r.err.Error())
+				continue
+			}
+			for _, m := range r.magnets {
+				uri := javdb.MagnetURI(m)
+				if uri != "" {
+					fmt.Fprintln(streams.Out, uri)
+				}
+			}
+		}
+	}
+	if failures > 0 {
+		return fmt.Errorf("search --magnets completed with %d of %d movies failed", failures, len(results))
+	}
+	return nil
+}
+
+// runImageSearchMagnets 执行以图搜番并直接获取磁力：使用 SkipMovieDetail 跳过
+// 完整详情，仅做番号→ID→磁力。结果按 provider 候选顺序输出。
+func runImageSearchMagnets(options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode, magnetsCount int, cnsub, hd bool, minSize string) error {
+	setup, err := client.NewReverseSearchClient(options, "", source)
+	if err != nil {
+		return err
+	}
+	imageBytes, err := readInputImage(arg, reader, setup.HTTPClient)
+	if err != nil {
+		return err
+	}
+	result, err := setup.Client.SearchByImage(context.Background(), javdb.ReverseSearchRequest{
+		Image:       imageBytes.Bytes,
+		Filename:    imageBytes.Filename,
+		Source:      setup.Source,
+		BypassCache: noCache,
+	}, javdb.ImageSearchOptions{SkipMovieDetail: true})
+	if err != nil {
+		return fmt.Errorf("reverse search failed: %w", err)
+	}
+
+	minMiB := 0
+	if minSize != "" {
+		minMiB, err = magnetspkg.ParseSizeMiB(minSize)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 并发获取每个候选的磁力。
+	type magnetResult struct {
+		match   javdb.ImageSearchMatch
+		magnets []map[string]any
+		err     error
+	}
+	results := make([]magnetResult, len(result.Matches))
+	var wait sync.WaitGroup
+	for i := range result.Matches {
+		wait.Add(1)
+		go func(i int) {
+			defer wait.Done()
+			match := result.Matches[i]
+			if match.Error != nil {
+				results[i] = magnetResult{match: match, err: fmt.Errorf("%s", match.Error.Message)}
+				return
+			}
+			if match.MovieID == "" {
+				results[i] = magnetResult{match: match, err: fmt.Errorf("no movie id")}
+				return
+			}
+			mags, err := setup.Client.MovieMagnets(context.Background(), match.MovieID)
+			if err != nil {
+				results[i] = magnetResult{match: match, err: err}
+				return
+			}
+			mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
+			mags = javdb.RankMagnets(mags, magnetsCount)
+			results[i] = magnetResult{match: match, magnets: mags}
+		}(i)
+	}
+	wait.Wait()
+
+	failures := 0
+	switch mode {
+	case pipeline.OutputJSON:
+		matchesOut := make([]map[string]any, 0, len(results))
+		for _, r := range results {
+			entry := map[string]any{
+				"video_code": r.match.Candidate.VideoCode,
+				"movie_id":   r.match.MovieID,
+				"magnets":    r.magnets,
+			}
+			if r.err != nil {
+				entry["error"] = r.err.Error()
+			}
+			matchesOut = append(matchesOut, entry)
+		}
+		return writeJSON(streams.Out, map[string]any{"reverse_search": result.ReverseSearch, "matches": matchesOut})
+	case pipeline.OutputNDJSON:
+		writer := pipeline.NewWriter(streams.Out, pipeline.OutputNDJSON)
+		for _, r := range results {
+			ref := r.match.Candidate.VideoCode
+			id := r.match.MovieID
+			if r.err != nil {
+				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMagnet, ref, id), "search", "magnets", "fetch", r.err.Error())); err != nil {
+					return err
+				}
+				failures++
+				continue
+			}
+			envelope := pipeline.New(pipeline.KindMagnet, ref, id).
+				WithData(map[string]any{
+					"movie":      map[string]any{"id": r.match.MovieID},
+					"magnets":    r.magnets,
+					"similarity": r.match.Candidate.Similarity,
+				}).
+				WithMeta(map[string]any{"reverse_search": map[string]any{"source": result.ReverseSearch.Source, "candidates": result.ReverseSearch.Candidates}})
+			if err := writer.Write(envelope); err != nil {
+				return err
+			}
+		}
+	default:
+		for _, r := range results {
+			if r.err != nil {
+				failures++
+				fmt.Fprintf(streams.Err, "search: %s\n", r.err.Error())
+				continue
+			}
+			for _, m := range r.magnets {
+				uri := javdb.MagnetURI(m)
+				if uri != "" {
+					fmt.Fprintln(streams.Out, uri)
+				}
+			}
+		}
+	}
+	if failures > 0 {
+		return fmt.Errorf("search --magnets completed with %d of %d candidates failed", failures, len(results))
+	}
+	return nil
 }
