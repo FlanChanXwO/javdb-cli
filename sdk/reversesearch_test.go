@@ -233,6 +233,46 @@ func TestSearchByImagePartialFailureKeepsOrder(t *testing.T) {
 	}
 }
 
+// TestSearchByImageSkipMovieDetail SkipMovieDetail=true 时仅做番号→ID 解析，
+// 不请求完整详情；Match.MovieID 有值，Match.Movie 为 nil。
+func TestSearchByImageSkipMovieDetail(t *testing.T) {
+	provider := providerServer(t, `{"results":[
+		{"video_code":"SSIS-589","best_similarity":95.2,"frames":[]}]}`)
+	defer provider.Close()
+
+	javdbServer := javdbServer(t,
+		[]map[string]any{{"number": "SSIS-589", "id": "id-a"}},
+		map[string]map[string]any{"id-a": {"number": "SSIS-589"}},
+	)
+	defer javdbServer.Close()
+
+	client, err := javdb.New(javdb.WithHost(javdbServer.URL), javdb.WithReverseSearch(javdb.ReverseSearchOptions{Retries: 1}))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	result, err := client.SearchByImage(context.Background(), javdb.ReverseSearchRequest{
+		Image:    testJPEG,
+		Filename: "frame.jpg",
+		Source:   javdb.ReverseSearchSource{Name: "test", URL: provider.URL},
+	}, javdb.ImageSearchOptions{SkipMovieDetail: true})
+	if err != nil {
+		t.Fatalf("SearchByImage: %v", err)
+	}
+	if len(result.Matches) != 1 {
+		t.Fatalf("matches = %d, want 1", len(result.Matches))
+	}
+	match := result.Matches[0]
+	if match.Error != nil {
+		t.Fatalf("unexpected error: %v", match.Error)
+	}
+	if match.MovieID != "id-a" {
+		t.Errorf("MovieID = %q, want id-a", match.MovieID)
+	}
+	if match.Movie != nil {
+		t.Errorf("Movie should be nil when SkipMovieDetail is true, got %+v", match.Movie)
+	}
+}
+
 func TestResolveMovieIDExactCaseInsensitive(t *testing.T) {
 	javdbServer := javdbServer(t,
 		[]map[string]any{{"number": "midv-854", "id": "id-c"}},
