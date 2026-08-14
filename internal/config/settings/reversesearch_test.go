@@ -290,3 +290,34 @@ func TestExpandEnvValueRejectsMultipleMissing(t *testing.T) {
 		t.Fatal("ExpandEnvValue accepted missing variables")
 	}
 }
+
+// TestResolveReverseSearchRejectsPlaintextSensitiveHeaders 鉴权 header 必须
+// 引用 ${ENV:NAME}，明文 secret 不得写入配置。
+func TestResolveReverseSearchRejectsPlaintextSensitiveHeaders(t *testing.T) {
+	base := ReverseSearchSettings{
+		DefaultSource: "builtin",
+		Sources: []ReverseSearchSource{{
+			Name: "custom",
+			URL:  "https://example.test/search",
+			Headers: map[string]string{
+				"Authorization": "Bearer plaintext-secret",
+			},
+		}},
+	}
+	settings := Defaults()
+	settings.ReverseSearch = base
+	_, err := ResolveReverseSearch(settings, func(string) string { return "x" })
+	if err == nil {
+		t.Fatal("ResolveReverseSearch accepted a plaintext Authorization header")
+	}
+	if !strings.Contains(err.Error(), "ENV") {
+		t.Errorf("error should suggest ${ENV:NAME}: %v", err)
+	}
+
+	// 非敏感 header 的纯静态值仍然允许。
+	base.Sources[0].Headers = map[string]string{"X-Static": "static-value"}
+	settings.ReverseSearch = base
+	if _, err := ResolveReverseSearch(settings, func(string) string { return "x" }); err != nil {
+		t.Fatalf("static non-sensitive header rejected: %v", err)
+	}
+}

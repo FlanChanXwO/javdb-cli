@@ -168,6 +168,9 @@ func ResolveReverseSearch(s Settings, getenv func(string) string) (ResolvedRever
 		if len(source.Headers) > 0 {
 			expanded.Headers = make(map[string]string, len(source.Headers))
 			for name, value := range source.Headers {
+				if isSensitiveHeaderName(name) && !envReferencePattern.MatchString(value) {
+					return ResolvedReverseSearch{}, fmt.Errorf("reverse_search source %q header %q must reference ${ENV:NAME} instead of storing a plaintext secret", source.Name, name)
+				}
 				expandedValue, err := ExpandEnvValue(value, getenv)
 				if err != nil {
 					return ResolvedReverseSearch{}, fmt.Errorf("reverse_search source %q header %q: %w", source.Name, name, err)
@@ -181,4 +184,20 @@ func ResolveReverseSearch(s Settings, getenv func(string) string) (ResolvedRever
 		return ResolvedReverseSearch{}, fmt.Errorf("reverse_search.default_source %q must be builtin or a defined source", resolved.DefaultSource)
 	}
 	return resolved, nil
+}
+
+// sensitiveHeaderNames 是需要强制 ${ENV:} 引用的 header 名（大小写不敏感），
+// 防止把明文 token/secret 写进 config.toml。
+var sensitiveHeaderNames = map[string]bool{
+	"authorization":       true,
+	"proxy-authorization": true,
+	"x-api-key":           true,
+	"api-key":             true,
+	"x-auth-token":        true,
+	"auth-token":          true,
+	"token":               true,
+}
+
+func isSensitiveHeaderName(name string) bool {
+	return sensitiveHeaderNames[strings.ToLower(strings.TrimSpace(name))]
 }

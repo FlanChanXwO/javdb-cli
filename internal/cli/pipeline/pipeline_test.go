@@ -254,3 +254,15 @@ func TestRunBatchOrderErrorsAndExit(t *testing.T) {
 type testError string
 
 func (e testError) Error() string { return string(e) }
+
+// TestTagKindRoundTrip tags 自产的 tag 信封必须能通过管道解码。
+func TestTagKindRoundTrip(t *testing.T) {
+	line := `{"schema":"javdb.pipeline/v1","kind":"tag","ref":"VR","id":"t-1","data":{"name_zh":"VR"}}`
+	envelope, err := DecodeJSONL(line)
+	if err != nil {
+		t.Fatalf("DecodeJSONL tag envelope: %v", err)
+	}
+	if envelope.Kind != KindTag || envelope.ID != "t-1" {
+		t.Errorf("tag envelope = %+v", envelope)
+	}
+}

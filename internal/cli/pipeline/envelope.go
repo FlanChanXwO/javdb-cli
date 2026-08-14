@@ -99,7 +99,7 @@ func IsKind(kind Kind) bool {
 	switch kind {
 	case KindMovie, KindActor, KindSeries, KindMaker, KindDirector,
 		KindCode, KindList, KindAccount, KindComment, KindMagnet,
-		KindDownload, KindConfigKey, KindError:
+		KindDownload, KindConfigKey, KindTag, KindError:
 		return true
 	default:
 		return false

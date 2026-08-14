@@ -19,8 +19,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	var page, limit int
 	var isID, asJSON, asJSONL, asText bool
 	runner := &pipeline.BatchRunner{
-		Name:  "comments",
-		Kinds: []pipeline.Kind{pipeline.KindMovie},
+		Name:       "comments",
+		LegacyJSON: true,
+		Kinds:      []pipeline.Kind{pipeline.KindMovie},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},

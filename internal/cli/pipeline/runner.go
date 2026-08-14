@@ -25,6 +25,10 @@ type BatchRunner struct {
 	RunOne func(*javdb.Client, context.Context, Envelope) (Envelope, error)
 	// Legacy 处理单项既有路径（args 为位置参数列表）。
 	Legacy func(args []string) error
+	// LegacyJSON 表示 Legacy 路径已支持显式 --json 输出（保持既有 shape）。
+	// 为 false 时，单项显式 --json 也走 consumer 路径（RunOne + 信封对象输出），
+	// 避免本地命令（mark/config 等）在 --json 下静默输出裸文本或无输出。
+	LegacyJSON bool
 	// Preflight 在批处理路径开始前校验全部输入（如 download 的全量目标展开
 	// 与冲突检查）；返回错误时整个批处理失败，不做任何写入。
 	Preflight func([]Envelope) error
@@ -53,10 +57,11 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, jsonl,
 
 // ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
-	// 单项 TTY 文本或显式 --json 且输入是纯文本 ref（无 kind）时走既有路径，
-	// 保持 shape 与认证语义；JSONL 信封即使只有一条也必须经过 kind 校验并
-	// 保留 id 语义，绝不绕过消费者检查。
-	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || mode == OutputJSON) {
+	// 单项 TTY 文本或显式 --json（且 Legacy 支持 JSON）且输入是纯文本 ref
+	// （无 kind）时走既有路径，保持 shape 与认证语义；JSONL 信封即使只有一条
+	// 也必须经过 kind 校验并保留 id 语义，绝不绕过消费者检查。Legacy 不支持
+	// JSON 的命令在显式 --json 下走 consumer 路径输出信封对象。
+	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || (mode == OutputJSON && b.LegacyJSON)) {
 		return b.Legacy([]string{pipelineConsumerRef(inputs[0])})
 	}
 	if b.Preflight != nil {

@@ -56,8 +56,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		return mid, items, nil
 	}
 	runner := &pipeline.BatchRunner{
-		Name:  "magnets",
-		Kinds: []pipeline.Kind{pipeline.KindMovie},
+		Name:       "magnets",
+		LegacyJSON: true,
+		Kinds:      []pipeline.Kind{pipeline.KindMovie},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},

@@ -221,3 +221,20 @@ func stringsRepeatHex(value string) string {
 	}
 	return result
 }
+
+// TestNullResponseEntryIsExplicitError response: null 的条目必须显式报错，
+// 不得当作命中（命中后解引用会 panic）。
+func TestNullResponseEntryIsExplicitError(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "builtin.json")
+	if err := os.WriteFile(file, []byte(`{"k":{"written_at":"2026-08-13T00:00:00Z","response":null}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := New(dir, 0)
+	if _, ok, err := store.Get("builtin", "k"); err == nil || ok {
+		t.Fatalf("null response entry must be an explicit error: ok=%v err=%v", ok, err)
+	}
+	if err := store.Put("builtin", "k", nil); err == nil {
+		t.Fatal("Put must reject a nil response")
+	}
+}

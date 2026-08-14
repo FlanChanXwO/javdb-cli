@@ -30,8 +30,9 @@ func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 		return eid, data, nil
 	}
 	runner := &pipeline.BatchRunner{
-		Name:  "lists show",
-		Kinds: []pipeline.Kind{pipeline.KindList},
+		Name:       "lists show",
+		LegacyJSON: true,
+		Kinds:      []pipeline.Kind{pipeline.KindList},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},

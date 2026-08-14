@@ -27,8 +27,9 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 		return res.Named("lists"), nil
 	}
 	runner := &pipeline.BatchRunner{
-		Name:  "lists search",
-		Kinds: []pipeline.Kind{pipeline.KindList},
+		Name:       "lists search",
+		LegacyJSON: true,
+		Kinds:      []pipeline.Kind{pipeline.KindList},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},

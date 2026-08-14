@@ -33,8 +33,9 @@ func NewRelated(options *invocation.RootOptions, streams *invocation.Streams) *c
 		return mid, res.Named("lists"), nil
 	}
 	runner := &pipeline.BatchRunner{
-		Name:  "lists related",
-		Kinds: []pipeline.Kind{pipeline.KindMovie},
+		Name:       "lists related",
+		LegacyJSON: true,
+		Kinds:      []pipeline.Kind{pipeline.KindMovie},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},

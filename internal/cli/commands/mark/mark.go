@@ -22,13 +22,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	var asJSON, asJSONL, asText bool
 	var score int
 	var content string
-	status := "want_watch"
-	label := "想看"
-	if watched {
-		status = "watched"
-		label = "看過"
-	}
-	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool) (string, map[string]any, error) {
+	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool, status string) (string, map[string]any, error) {
 		mid := ref
 		var err error
 		if !useID {
@@ -51,7 +45,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
 			ref := pipeline.ConsumerRef(input)
-			mid, rev, err := fetch(c, ctx, ref, isID && input.ID == "")
+			status := "want_watch"
+			if watched {
+				status = "watched"
+			}
+			mid, rev, err := fetch(c, ctx, ref, isID && input.ID == "", status)
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
@@ -60,7 +58,13 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		},
 		Legacy: func(args []string) error {
 			return client.WithRequiredAuth(options, streams.Err, func(c *javdb.Client) error {
-				mid, rev, err := fetch(c, context.Background(), args[0], isID)
+				status := "want_watch"
+				label := "想看"
+				if watched {
+					status = "watched"
+					label = "看過"
+				}
+				mid, rev, err := fetch(c, context.Background(), args[0], isID, status)
 				if err != nil {
 					return err
 				}

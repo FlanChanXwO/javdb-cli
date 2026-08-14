@@ -29,8 +29,9 @@ func New(kind, use, short string, options *invocation.RootOptions, streams *invo
 	)
 	pipelineKind := pipeline.Kind(kind)
 	runner := &pipeline.BatchRunner{
-		Name:  kind,
-		Kinds: []pipeline.Kind{pipelineKind},
+		Name:       kind,
+		LegacyJSON: true,
+		Kinds:      []pipeline.Kind{pipelineKind},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},

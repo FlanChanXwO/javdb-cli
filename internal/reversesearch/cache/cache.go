@@ -83,6 +83,11 @@ func (s *Store) Get(source, key string) (*provider.Response, bool, error) {
 	if !exists {
 		return nil, false, nil
 	}
+	// response 为 null 的条目是损坏缓存：显式报错，绝不当作命中（命中后
+	// 下游解引用会 panic）。
+	if item.Response == nil {
+		return nil, false, fmt.Errorf("reverse search cache %q contains a null response", file)
+	}
 	if time.Since(item.WrittenAt) > s.ttl {
 		delete(entries, key)
 		// 过期清理是 best-effort：重写失败不把正常 miss 变成错误。
@@ -94,6 +99,9 @@ func (s *Store) Get(source, key string) (*provider.Response, bool, error) {
 
 // Put 写入 source 的 key 缓存；已有损坏缓存显式报错，不静默覆盖。
 func (s *Store) Put(source, key string, response *provider.Response) error {
+	if response == nil {
+		return fmt.Errorf("refuse to cache a nil reverse search response")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	file := s.fileFor(source)

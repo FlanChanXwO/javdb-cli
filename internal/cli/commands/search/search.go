@@ -61,8 +61,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				return fmt.Errorf("keyword or an image")
 			}
 			runner := &pipeline.BatchRunner{
-				Name:  "search",
-				Kinds: []pipeline.Kind{pipeline.KindMovie},
+				Name:       "search",
+				LegacyJSON: true,
+				Kinds:      []pipeline.Kind{pipeline.KindMovie},
 				ClientFactory: func() (*javdb.Client, error) {
 					return client.New(options, "")
 				},
