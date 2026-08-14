@@ -17,28 +17,20 @@ const (
 	OutputAuto OutputMode = iota
 	// OutputText 强制逐行 ref 文本。
 	OutputText
-	// OutputJSONL 强制逐条信封 JSONL。
-	OutputJSONL
+	// OutputNDJSON 强制逐条信封 NDJSON。
+	OutputNDJSON
 	// OutputJSON 显式 --json：单项保持命令既有形状，多项输出 JSON 数组。
 	OutputJSON
 )
 
 // ResolveOutputMode 校验互斥并解析输出模式；未显式指定时保持人类文本。
-func ResolveOutputMode(flagJSONL, flagText, flagJSON bool) (OutputMode, error) {
-	explicit := 0
-	for _, set := range []bool{flagJSONL, flagText, flagJSON} {
-		if set {
-			explicit++
-		}
-	}
-	if explicit > 1 {
-		return OutputAuto, errors.New("--jsonl, --text and --json are mutually exclusive")
+func ResolveOutputMode(flagNDJSON, flagJSON bool) (OutputMode, error) {
+	if flagNDJSON && flagJSON {
+		return OutputAuto, errors.New("--ndjson and --json are mutually exclusive")
 	}
 	switch {
-	case flagJSONL:
-		return OutputJSONL, nil
-	case flagText:
-		return OutputText, nil
+	case flagNDJSON:
+		return OutputNDJSON, nil
 	case flagJSON:
 		return OutputJSON, nil
 	default:
@@ -51,15 +43,15 @@ func ResolveOutputMode(flagJSONL, flagText, flagJSON bool) (OutputMode, error) {
 type Writer struct {
 	mode     OutputMode
 	out      io.Writer
-	jsonl    *json.Encoder
+	ndjson   *json.Encoder
 	buffered []Envelope
 }
 
 // NewWriter 构造按 mode 输出的 writer。
 func NewWriter(out io.Writer, mode OutputMode) *Writer {
 	writer := &Writer{mode: mode, out: out}
-	if mode == OutputJSONL {
-		writer.jsonl = json.NewEncoder(out)
+	if mode == OutputNDJSON {
+		writer.ndjson = json.NewEncoder(out)
 	}
 	return writer
 }
@@ -78,8 +70,8 @@ func (w *Writer) Write(envelope Envelope) error {
 		return nil
 	}
 	switch w.mode {
-	case OutputJSONL:
-		return w.jsonl.Encode(envelope)
+	case OutputNDJSON:
+		return w.ndjson.Encode(envelope)
 	case OutputText:
 		ref := envelope.Ref
 		if ref == "" {

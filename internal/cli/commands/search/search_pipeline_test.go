@@ -39,8 +39,8 @@ func TestSearchTextStdinBatchConsumesKeywords(t *testing.T) {
 	}
 }
 
-// TestSearchJSONLBatchRejectsWrongKind JSONL 批处理：不兼容 kind 原位错误。
-func TestSearchJSONLBatchRejectsWrongKind(t *testing.T) {
+// TestSearchNDJSONBatchRejectsWrongKind NDJSON 批处理：不兼容 kind 原位错误。
+func TestSearchNDJSONBatchRejectsWrongKind(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
@@ -52,7 +52,7 @@ func TestSearchJSONLBatchRejectsWrongKind(t *testing.T) {
 
 	streams := invocation.NewStreams(strings.NewReader("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"actor\",\"ref\":\"x\"}\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{"--jsonl"})
+	cmd.SetArgs([]string{"--ndjson"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "1 of 1 items failed") {
 		t.Fatalf("expected batch failure, got %v", err)

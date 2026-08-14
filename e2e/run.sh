@@ -60,27 +60,29 @@ jout=$(run version --json)
 assert_json "version --json has version/commit/build_date" "$jout" "all(k in d for k in ('version','commit','build_date'))"
 
 echo "== search =="
-out=$(run search SSIS-001 --limit 1 --text)
+out=$(run search SSIS-001 --limit 1)
 assert_substring "search text has number SSIS-001" "$out" "SSIS-001"
 jout=$(run search SSIS-001 --limit 1 --json)
 assert_json "search --json has movies[0].id" "$jout" "bool(d.get('movies') and d['movies'][0].get('id'))"
 # thumb_url 受 CDN/地区影响可为空,只校验键存在,反映 list 条目契约。
 assert_json "search --json exposes thumb_url key" "$jout" "'thumb_url' in d['movies'][0]"
+nout=$(run search SSIS-001 --limit 1 --ndjson)
+assert_json "search --ndjson emits a pipeline envelope" "$nout" "d.get('schema') == 'javdb.pipeline/v1' and d.get('kind') == 'movie'"
 
 echo "== rankings =="
-out=$(run rankings movies --period week --text)
+out=$(run rankings movies --period week)
 assert_substring "rankings movies week has a row" "$out" $'\t'
-out=$(run rankings actors --period week --text)
+out=$(run rankings actors --period week)
 assert_substring "rankings actors week has tab row" "$out" $'\t'
-out=$(run rankings playback --period week --text)
+out=$(run rankings playback --period week)
 assert_substring "rankings playback week has a row" "$out" $'\t'
 
 echo "== browse =="
-out=$(run browse --zone censored --limit 1 --text)
+out=$(run browse --zone censored --limit 1)
 assert_substring "browse returns a movie row" "$out" $'\t'
 
 echo "== detail (image fields) =="
-out=$(run detail SSIS-001 --text)
+out=$(run detail SSIS-001)
 assert_substring "detail has 番号" "$out" "番号"
 jout=$(run detail SSIS-001 --json)
 # preview_images 在 CI/地区差异下可能为空数组,校验键存在与类型即可。
@@ -89,13 +91,13 @@ assert_json "detail --json exposes thumb_url key" "$jout" "'thumb_url' in d"
 assert_json "detail --json exposes cover_url key" "$jout" "'cover_url' in d"
 
 echo "== tags =="
-out=$(run tags --zone censored --text)
+out=$(run tags --zone censored)
 assert_substring "tags lists main header" "$out" "main"
 
 echo "== magnets (read-only; uses token if available) =="
 jout=$(run magnets SSIS-001 --best --json)
 assert_json "magnets --best --json has magnet_uri" "$jout" "bool(d.get('magnet_uri'))"
-out=$(run magnets SSIS-001 --cnsub --text)
+out=$(run magnets SSIS-001 --cnsub)
 assert_substring "magnets text has magnet uri line" "$out" "magnet:?xt=urn:btih:"
 
 # --- 以下命令需要登录 ---
@@ -113,33 +115,33 @@ else
   assert_json "auth check --json ok" "$out" "d.get('ok') is True or d.get('valid') is True or 'user' in d or 'username' in d or bool(d)"
 
   echo "== top250 =="
-  out=$(run top250 --zone censored --limit 1 --text)
+  out=$(run top250 --zone censored --limit 1)
   assert_substring "top250 has ranked row" "$out" "#1"
   out=$(run top250 --zone censored --limit 1 --json)
   assert_json "top250 --json ok" "$out" "'movies' in d and len(d['movies']) == 1"
 
   echo "== watched / want / recent =="
-  out=$(run watched --text)
+  out=$(run watched)
   assert_substring "watched returns rows" "$out" $'\t'
-  out=$(run want --text)
+  out=$(run want)
   assert_substring "want returns rows" "$out" $'\t'
-  out=$(run recent --text)
+  out=$(run recent)
   assert_substring "recent returns rows" "$out" $'\t'
 
   echo "== collections =="
-  out=$(run collections actors --text)
+  out=$(run collections actors)
   assert_substring "collections actors has row" "$out" $'\t'
 
   echo "== lists =="
-  out=$(run lists --limit 1 --text)
+  out=$(run lists --limit 1)
   assert_substring "lists has row" "$out" $'\t'
 
   echo "== entity filmography =="
-  out=$(run actor 葵つかさ --limit 1 --text)
+  out=$(run actor 葵つかさ --limit 1)
   assert_substring "actor filmography has row" "$out" $'\t'
 
   echo "== lists related =="
-  out=$(run lists related SSIS-001 --limit 1 --text)
+  out=$(run lists related SSIS-001 --limit 1)
   assert_substring "lists related has row" "$out" $'\t'
 fi
 

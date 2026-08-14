@@ -62,20 +62,19 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			})
 		},
 	}
-	var asJSONL, asText bool
+	var asNDJSON bool
 	cmd := &cobra.Command{
 		Use:   "lists",
 		Short: "My 合集; subcommands: show/search/related",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().StringVar(&sortBy, "sort-by", "created", "created|name|movies_count|views_count|updated|default")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 
 	cmd.AddCommand(NewShow(options, streams))
 	cmd.AddCommand(NewSearch(options, streams))

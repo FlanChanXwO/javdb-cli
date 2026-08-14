@@ -19,7 +19,7 @@ import (
 // New builds the mark command (watched or want).
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var watched, want, isID bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	var score int
 	var content string
 	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool, status string) (string, map[string]any, error) {
@@ -82,7 +82,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if watched == want && (len(args) == 1 || stdinHasContent(streams)) {
 				return fmt.Errorf("specify exactly one of --watched or --want")
 			}
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&watched, "watched", false, "Mark as 看過")
@@ -91,8 +91,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().StringVar(&content, "content", "", "Optional review text")
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat NUMBER as internal movie id")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

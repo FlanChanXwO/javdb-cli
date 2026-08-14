@@ -21,7 +21,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	var zone, year string
 	var startRank, page, limit int
 	var ignoreWatched, hasMagnets bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	var generatedAt string
 	producer := &pipeline.MovieListProducer{
 		Name: "top250",
@@ -57,7 +57,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Use:   "top250",
 		Short: "TOP250 list (needs login)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&zone, "zone", "", "censored|uncensored|western|fc2 (omit for all-site)")
@@ -68,8 +68,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&ignoreWatched, "ignore-watched", false, "Skip already watched titles")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

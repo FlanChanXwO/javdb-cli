@@ -105,7 +105,7 @@ func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 	streams = invocation.NewStreams(strings.NewReader("SSIS-589\nHZGD-246\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd = New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"--thumbnail", dir + "/{number}.jpg"})
-	// 改用同 number 不同 id 输入避免重复：用 JSONL 提供唯一 id。
+	// 改用同 number 不同 id 输入避免重复：用 NDJSON 提供唯一 id。
 	streams = invocation.NewStreams(strings.NewReader("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"SSIS-589\",\"id\":\"EXISTING\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"SSIS-589\",\"id\":\"OTHER\"}\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd = New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"--thumbnail", dir + "/{id}.jpg"})

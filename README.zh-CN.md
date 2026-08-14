@@ -23,9 +23,9 @@
 - **CLI 与公开 Go SDK**——CLI 与可导入的 `javdb` 包都覆盖搜索、详情、标签、浏览、实体片单、磁力、
   单页评论、选定缩略图/预览媒体下载、排行、TOP250、合集、已认证的想看/看过数据，以及以图搜番
   与严格番号联动（`javdb search IMAGE`、`javdb cache reverse-search`）。
-- **可组合管道**——多数命令接受非 TTY stdin 批处理；显式 `--jsonl` 输出
-  `javdb.pipeline/v1` JSONL 信封，可把上一条命令的结果直接喂给下一条
-  （`javdb search --jsonl | javdb detail`）。
+- **可组合管道**——多数命令接受非 TTY stdin 批处理；显式 `--ndjson` 输出
+  `javdb.pipeline/v1` NDJSON 信封，可把上一条命令的结果直接喂给下一条
+  （`javdb search --ndjson | javdb detail`）。
 - **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
   显示，不会伪装成空结果。
 - **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供

@@ -34,8 +34,8 @@ func TestCollectInputsMatrix(t *testing.T) {
 		{name: "positional arg", stdin: "", terminal: true, arg: "SSIS-589", want: 1, wantKind: ""},
 		{name: "tty no input", stdin: "", terminal: true, arg: "", want: 0},
 		{name: "text batch", stdin: "SSIS-589\nHZGD-246\n", terminal: false, arg: "", want: 2, wantKind: KindMovie},
-		{name: "jsonl batch", stdin: "{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n", terminal: false, arg: "", want: 2, wantKind: KindMovie},
-		{name: "jsonl wrong kind", stdin: "{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"actor\",\"ref\":\"a\"}\n", terminal: false, arg: "", want: 1, wantKind: KindActor},
+		{name: "ndjson batch", stdin: "{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n", terminal: false, arg: "", want: 2, wantKind: KindMovie},
+		{name: "ndjson wrong kind", stdin: "{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"actor\",\"ref\":\"a\"}\n", terminal: false, arg: "", want: 1, wantKind: KindActor},
 		{name: "ambiguous arg and stdin", stdin: "data\n", terminal: false, arg: "x", wantErr: true},
 		{name: "image rejected", stdin: string([]byte{0xFF, 0xD8, 0xFF}), terminal: false, arg: "", wantErr: true},
 	} {
@@ -81,7 +81,7 @@ func TestConsumerKindCheckingAndInPlaceErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectInputs: %v", err)
 	}
-	err = consumer.RunInputs(streams, inputs, OutputJSONL)
+	err = consumer.RunInputs(streams, inputs, OutputNDJSON)
 	if err == nil || !strings.Contains(err.Error(), "2 of 3 items failed") {
 		t.Fatalf("expected 2-of-3 failure summary, got %v", err)
 	}
@@ -108,7 +108,7 @@ func TestConsumerKindCheckingAndInPlaceErrors(t *testing.T) {
 	}
 }
 
-func TestConsumerSingleJSONLegacyShape(t *testing.T) {
+func TestConsumerSingleNDJSONLegacyShape(t *testing.T) {
 	streams, out := testStreams("", true)
 	legacyCalled := false
 	consumer := &Consumer{
@@ -161,7 +161,7 @@ func TestListProducerDefaultsToText(t *testing.T) {
 			return nil
 		},
 	}
-	if err := producer.Execute(streams, false, false, false); err != nil {
+	if err := producer.Execute(streams, false, false); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if out.String() != "SSIS-589\nHZGD-246\n" {
@@ -181,7 +181,7 @@ func TestBatchRunnerPipedInputDefaultsToText(t *testing.T) {
 			return testError("batch input must not use the single-item legacy path")
 		},
 	}
-	if err := runner.Execute(streams, nil, false, false, false); err != nil {
+	if err := runner.Execute(streams, nil, false, false); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if out.String() != "SSIS-589\nHZGD-246\n" {
@@ -189,10 +189,9 @@ func TestBatchRunnerPipedInputDefaultsToText(t *testing.T) {
 	}
 }
 
-// TestConsumerSingleJSONLEnvelopeStillChecksKind 单条 JSONL 信封在显式
-// --text/--json 下也必须经过 kind 校验，且保留 id 语义（legacy 路径只
-// 服务于纯文本 ref 输入）。
-func TestConsumerSingleJSONLEnvelopeStillChecksKind(t *testing.T) {
+// TestConsumerSingleNDJSONEnvelopeStillChecksKind 单条 NDJSON 信封必须经过
+// kind 校验并保留 id 语义（legacy 路径只服务于纯文本 ref 输入）。
+func TestConsumerSingleNDJSONEnvelopeStillChecksKind(t *testing.T) {
 	streams, out := testStreams("", false)
 	consumer := &Consumer{
 		Name:          "detail",
@@ -205,7 +204,7 @@ func TestConsumerSingleJSONLEnvelopeStillChecksKind(t *testing.T) {
 			return New(KindMovie, input.Ref, input.ID).WithData(map[string]any{"movie_id": input.ID}), nil
 		},
 		LegacyJSON: func(w io.Writer, envelope Envelope) error {
-			return testError("legacy JSON must not run for JSONL envelopes")
+			return testError("legacy JSON must not run for NDJSON envelopes")
 		},
 	}
 	// 显式 --json 单条 actor 信封 → kind 校验失败（原位 error），不落 legacy。
@@ -218,7 +217,7 @@ func TestConsumerSingleJSONLEnvelopeStillChecksKind(t *testing.T) {
 		t.Errorf("kind error envelope missing: %s", out.String())
 	}
 
-	// 单条 movie 信封（带 id）+ --text → 走 RunOne 并保留 id。
+	// 单条 movie 信封（带 id）+ 默认文本 → 走 RunOne 并保留 id。
 	streams2, out2 := testStreams("", false)
 	consumer2 := &Consumer{
 		Name:          "detail",
@@ -231,7 +230,7 @@ func TestConsumerSingleJSONLEnvelopeStillChecksKind(t *testing.T) {
 	if err := consumer2.RunInputs(streams2, movieInputs, OutputText); err != nil {
 		t.Fatalf("RunInputs text: %v", err)
 	}
-	// --text 输出使用人类稳定引用（ref）；消费侧（RunOne）保留 id 语义。
+	// 默认文本输出使用人类稳定引用（ref）；消费侧（RunOne）保留 id 语义。
 	if strings.TrimSpace(out2.String()) != "SSIS-589" {
 		t.Errorf("text output = %q, want ref SSIS-589", out2.String())
 	}

@@ -18,7 +18,7 @@ import (
 func NewPlayback(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var filterBy, period string
 	var hasMagnets bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	producer := &pipeline.ListProducer{
 		Name: "rankings playback",
 		ClientFactory: func() (*javdb.Client, error) {
@@ -46,15 +46,14 @@ func NewPlayback(options *invocation.RootOptions, streams *invocation.Streams) *
 		Use:   "playback",
 		Short: "Playback rankings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&filterBy, "filter-by", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

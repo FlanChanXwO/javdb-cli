@@ -12,9 +12,9 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
 
-// TestWatchedProducerJSONL 显式 JSONL producer：不消费 stdin，输出逐条 movie
+// TestWatchedProducerNDJSON 显式 NDJSON producer：不消费 stdin，输出逐条 movie
 // 信封。
-func TestWatchedProducerJSONL(t *testing.T) {
+func TestWatchedProducerNDJSON(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
@@ -31,14 +31,14 @@ func TestWatchedProducerJSONL(t *testing.T) {
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{"--jsonl"})
+	cmd.SetArgs([]string{"--ndjson"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	out := streams.Out.(*bytes.Buffer).String()
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) != 2 {
-		t.Fatalf("jsonl lines = %d:\n%s", len(lines), out)
+		t.Fatalf("ndjson lines = %d:\n%s", len(lines), out)
 	}
 	var first struct {
 		Kind string `json:"kind"`

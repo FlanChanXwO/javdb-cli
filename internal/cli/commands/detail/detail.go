@@ -16,7 +16,7 @@ import (
 
 // New builds the movie detail command (graph ids for agent navigation).
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
-	var isID, withMagnets, asJSON, asJSONL, asText bool
+	var isID, withMagnets, asJSON, asNDJSON bool
 	runner := &pipeline.BatchRunner{
 		Name:       "detail",
 		LegacyJSON: true,
@@ -100,13 +100,12 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Show movie detail (graph ids for agent navigation)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat argument as internal movie id")
 	cmd.Flags().BoolVar(&withMagnets, "magnets", false, "Also list magnet links")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }

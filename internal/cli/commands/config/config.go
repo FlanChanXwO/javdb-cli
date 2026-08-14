@@ -139,7 +139,7 @@ func New(streams *invocation.Streams) *cobra.Command {
 
 // newGet 构建 config get：一个 key 或无 key 时的非 TTY stdin 批处理。
 func newGet(streams *invocation.Streams) *cobra.Command {
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	load := func() (settings.Settings, string, error) {
 		if err := paths.EnsureDefaultConfigFile(); err != nil {
 			return settings.Settings{}, "", err
@@ -209,18 +209,17 @@ func newGet(streams *invocation.Streams) *cobra.Command {
 					return nil
 				}
 			}
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 
 // newUnset 构建 config unset：一个 key 或非 TTY stdin key 批处理。
 func newUnset(streams *invocation.Streams) *cobra.Command {
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	runOne := func(key string) error {
 		if !knownConfigKey(key) {
 			return fmt.Errorf("unknown key %q", key)
@@ -265,12 +264,11 @@ func newUnset(streams *invocation.Streams) *cobra.Command {
 		Short: "Clear a config key to default",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

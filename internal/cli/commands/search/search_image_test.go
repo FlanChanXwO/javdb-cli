@@ -158,7 +158,7 @@ func TestSearchImageFromStdinMagicDefaultsToText(t *testing.T) {
 		t.Errorf("stdin image text output lacks failure:\n%s", out)
 	}
 	if strings.Contains(out, `"kind":`) {
-		t.Errorf("stdin image unexpectedly emitted JSONL without --jsonl:\n%s", out)
+		t.Errorf("stdin image unexpectedly emitted NDJSON without --ndjson:\n%s", out)
 	}
 }
 

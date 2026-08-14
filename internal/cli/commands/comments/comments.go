@@ -17,7 +17,7 @@ import (
 // New builds the one-page movie review command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var page, limit int
-	var isID, asJSON, asJSONL, asText bool
+	var isID, asJSON, asNDJSON bool
 	runner := &pipeline.BatchRunner{
 		Name:       "comments",
 		LegacyJSON: true,
@@ -94,14 +94,13 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if limit < 1 {
 				return fmt.Errorf("--limit must be positive")
 			}
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat NUMBER as internal movie id")
 	cmd.Flags().IntVar(&page, "page", 1, "Page number")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
