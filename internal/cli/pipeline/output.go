@@ -9,11 +9,11 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
 )
 
-// OutputMode 是命令的机器输出格式。
+// OutputMode 是命令的输出格式。
 type OutputMode int
 
 const (
-	// OutputAuto 由 TTY 状态决定：TTY 人类文本，非 TTY JSONL。
+	// OutputAuto 表示尚未解析显式输出 flag。
 	OutputAuto OutputMode = iota
 	// OutputText 强制逐行 ref 文本。
 	OutputText
@@ -23,8 +23,8 @@ const (
 	OutputJSON
 )
 
-// ResolveOutputMode 校验互斥并解析输出模式；未显式指定时按 TTY 状态默认。
-func ResolveOutputMode(flagJSONL, flagText, flagJSON bool, isTerminal bool) (OutputMode, error) {
+// ResolveOutputMode 校验互斥并解析输出模式；未显式指定时保持人类文本。
+func ResolveOutputMode(flagJSONL, flagText, flagJSON bool) (OutputMode, error) {
 	explicit := 0
 	for _, set := range []bool{flagJSONL, flagText, flagJSON} {
 		if set {
@@ -41,10 +41,8 @@ func ResolveOutputMode(flagJSONL, flagText, flagJSON bool, isTerminal bool) (Out
 		return OutputText, nil
 	case flagJSON:
 		return OutputJSON, nil
-	case isTerminal:
-		return OutputText, nil
 	default:
-		return OutputJSONL, nil
+		return OutputText, nil
 	}
 }
 

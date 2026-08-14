@@ -41,7 +41,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Search movies (or other dimensions with --type)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := pipeline.ResolveOutputMode(asJSONL, asText, asJSON, streams.InIsTerminal)
+			mode, err := pipeline.ResolveOutputMode(asJSONL, asText, asJSON)
 			if err != nil {
 				return err
 			}
@@ -86,7 +86,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop movie rows with magnets_count == 0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
 	cmd.Flags().BoolVar(&asImage, "image", false, "Treat the argument as an image path or HTTP(S) URL")
 	cmd.Flags().StringVar(&source, "source", "", "Reverse-search source (default: reverse_search.default_source)")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Bypass the reverse-search response cache")

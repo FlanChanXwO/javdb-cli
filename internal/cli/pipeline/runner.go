@@ -36,7 +36,7 @@ type BatchRunner struct {
 
 // Execute 是命令 RunE 的通用实现。
 func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, jsonl, text, json bool) error {
-	mode, err := ResolveOutputMode(jsonl, text, json, streams.InIsTerminal)
+	mode, err := ResolveOutputMode(jsonl, text, json)
 	if err != nil {
 		return err
 	}
@@ -94,8 +94,8 @@ func pipelineConsumerRef(input Envelope) string {
 	return input.Ref
 }
 
-// Producer 是无位置参数命令的非 TTY 输出器：不消费 stdin，非 TTY 时把结果
-// 逐条输出为信封；TTY 走 Text 渲染；显式 --json 走 LegacyJSON。
+// Producer 是无位置参数命令的输出器：不消费 stdin，默认走 Text 渲染；
+// 显式 --jsonl 逐条输出信封，--json 走 LegacyJSON。
 type Producer struct {
 	Name string
 	// Produce 执行并返回输出信封序列（空切片表示无结果）。
@@ -108,7 +108,7 @@ type Producer struct {
 
 // Execute 是 producer 命令 RunE 的通用实现。
 func (p *Producer) Execute(streams *invocation.Streams, jsonl, text, json bool) error {
-	mode, err := ResolveOutputMode(jsonl, text, json, streams.InIsTerminal)
+	mode, err := ResolveOutputMode(jsonl, text, json)
 	if err != nil {
 		return err
 	}

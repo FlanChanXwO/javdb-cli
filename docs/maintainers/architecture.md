@@ -143,8 +143,8 @@ adapter，统一 multipart `file` 响应协议、三次总请求与 30/60s 退�
 
 `javdb.pipeline/v1` 机器协议核心：typed envelope（schema/kind/ref/id/data/
 meta）、严格 JSONL 与逐行文本解码、输入分类（图片 magic → JSONL → 文本）、
-输出模式（TTY 文本 / 非 TTY JSONL / 显式 --jsonl/--text/--json 互斥，单/批
-JSON cardinality）、批处理执行（顺序保持、原位错误信封、最终非零），以及
+输出模式（默认文本 / 显式 --jsonl/--text/--json 互斥，单/批 JSON
+cardinality）、批处理执行（顺序保持、原位错误信封、最终非零），以及
 Consumer/BatchRunner/ListProducer 三件套把只读/状态命令统一接入。命令不
 复制解析逻辑；`auth login` 与密码提示排除通用 stdin。
 

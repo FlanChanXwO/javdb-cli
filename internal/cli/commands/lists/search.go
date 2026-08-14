@@ -68,6 +68,6 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 	cmd.Flags().StringVar(&zone, "zone", "all", "censored|uncensored|western|fc2|all")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
 	return cmd
 }

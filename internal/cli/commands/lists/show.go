@@ -93,7 +93,7 @@ func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
 	return cmd
 }
 

@@ -37,7 +37,7 @@ func TestMarkBatchPartialFailure(t *testing.T) {
 
 	streams := invocation.NewStreams(strings.NewReader("SSIS-589\nGHOST-999\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{"--watched"})
+	cmd.SetArgs([]string{"--watched", "--jsonl"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "1 of 2 items failed") {
 		t.Fatalf("expected 1-of-2 failure, got %v", err)

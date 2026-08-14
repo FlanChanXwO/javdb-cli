@@ -12,7 +12,7 @@ import (
 )
 
 // ListProducer 是"拉取列表"类 producer 命令的通用执行器：
-// 不消费 stdin；非 TTY 输出逐条信封；TTY 人类文本；显式 --json 走 JSON 载荷。
+// 不消费 stdin；默认输出人类文本；显式 --jsonl 输出逐条信封，--json 走 JSON 载荷。
 type ListProducer struct {
 	Name string
 	// ClientFactory 每次执行调用一次。
@@ -33,7 +33,7 @@ type ListProducer struct {
 
 // Execute 是 producer 命令 RunE 的通用实现。
 func (p *ListProducer) Execute(streams *invocation.Streams, jsonl, text, json bool) error {
-	mode, err := ResolveOutputMode(jsonl, text, json, streams.InIsTerminal)
+	mode, err := ResolveOutputMode(jsonl, text, json)
 	if err != nil {
 		return err
 	}

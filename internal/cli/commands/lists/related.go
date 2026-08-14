@@ -75,6 +75,6 @@ func NewRelated(options *invocation.RootOptions, streams *invocation.Streams) *c
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default)")
 	return cmd
 }

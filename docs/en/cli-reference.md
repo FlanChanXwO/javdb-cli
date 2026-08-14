@@ -192,12 +192,12 @@ Consumers check the kind strictly and prefer a valid `id`; incompatible input
 becomes an in-place `error` envelope. Batch processing preserves input order,
 continues after item failures, and exits non-zero with a summary on stderr.
 
-Output defaults to human text on a TTY and one JSONL envelope per line
-otherwise. `--jsonl`, `--text`, and `--json` are mutually exclusive. Explicit
+Output defaults to human-readable text. `--jsonl`, `--text`, and `--json` are
+mutually exclusive; JSON or JSONL is emitted only when its flag is explicit.
 `--json` keeps the legacy single-item shape and emits a JSON array of envelopes
 for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
-`top250`, `watched`, `want`, `recent`) never read stdin; on non-TTY stdout they
-emit one envelope per record.
+`top250`, `watched`, `want`, `recent`) never read stdin and also default to
+text; use `--jsonl` to emit one envelope per record.
 
 ## Entity and list navigation
 

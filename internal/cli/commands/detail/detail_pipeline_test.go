@@ -42,7 +42,7 @@ func TestDetailJSONLStdinBatch(t *testing.T) {
 `
 	streams := invocation.NewStreams(strings.NewReader(stdin), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--jsonl"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "1 of 2 items failed") {
 		t.Fatalf("expected batch failure, got %v", err)

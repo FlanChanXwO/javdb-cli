@@ -12,8 +12,8 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
 
-// TestWatchedProducerJSONL 非 TTY producer：不消费 stdin，输出逐条 movie
-// 信封；TTY 保持人类文本行。
+// TestWatchedProducerJSONL 显式 JSONL producer：不消费 stdin，输出逐条 movie
+// 信封。
 func TestWatchedProducerJSONL(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
@@ -31,7 +31,7 @@ func TestWatchedProducerJSONL(t *testing.T) {
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--jsonl"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}

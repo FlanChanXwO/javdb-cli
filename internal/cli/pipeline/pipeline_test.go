@@ -128,20 +128,18 @@ func TestResolveOutputMode(t *testing.T) {
 		jsonl     bool
 		text      bool
 		json      bool
-		terminal  bool
 		want      OutputMode
 		wantError bool
 	}{
-		{name: "default tty", terminal: true, want: OutputText},
-		{name: "default pipe", terminal: false, want: OutputJSONL},
-		{name: "explicit jsonl", jsonl: true, terminal: true, want: OutputJSONL},
-		{name: "explicit text", text: true, terminal: false, want: OutputText},
-		{name: "explicit json", json: true, terminal: false, want: OutputJSON},
+		{name: "default", want: OutputText},
+		{name: "explicit jsonl", jsonl: true, want: OutputJSONL},
+		{name: "explicit text", text: true, want: OutputText},
+		{name: "explicit json", json: true, want: OutputJSON},
 		{name: "jsonl and json", jsonl: true, json: true, wantError: true},
 		{name: "all three", jsonl: true, text: true, json: true, wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mode, err := ResolveOutputMode(tc.jsonl, tc.text, tc.json, tc.terminal)
+			mode, err := ResolveOutputMode(tc.jsonl, tc.text, tc.json)
 			if tc.wantError {
 				if err == nil {
 					t.Fatal("expected mutual exclusion error")

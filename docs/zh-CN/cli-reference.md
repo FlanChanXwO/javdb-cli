@@ -155,10 +155,10 @@ SDK 嵌入方必须自行施加网络边界。
 消费者严格检查 kind 并优先使用合法 `id`；不兼容输入生成原位 `error` 信封。批处理保持输入
 顺序、单项失败继续执行，最终非零并在 stderr 输出汇总。
 
-输出默认：TTY 人类文本，非 TTY 每行一个 JSONL 信封。`--jsonl`、`--text` 与 `--json`
-互斥。显式 `--json` 单项保持既有 shape，多项输出信封数组。生产者命令（如 `browse`、
-`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）不读 stdin；
-非 TTY stdout 逐条输出信封。
+输出默认使用人类可读文本。`--jsonl`、`--text` 与 `--json` 互斥；只有显式指定对应 flag
+才输出 JSON 或 JSONL。显式 `--json` 单项保持既有 shape，多项输出信封数组。生产者命令
+（如 `browse`、`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）
+不读 stdin 且同样默认文本；使用 `--jsonl` 才逐条输出信封。
 
 ## 实体与合集导航
 

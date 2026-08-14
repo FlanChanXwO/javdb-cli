@@ -220,12 +220,12 @@ func TestConfigGetListsReverseSearchScalars(t *testing.T) {
 	}
 }
 
-// TestConfigGetStdinBatch 无 key + 非 TTY stdin：key 批处理输出 config_key 信封。
+// TestConfigGetStdinBatch 无 key + 非 TTY stdin：显式 JSONL 批处理输出 config_key 信封。
 func TestConfigGetStdinBatch(t *testing.T) {
 	isolateHome(t)
 	streams := invocation.NewStreams(strings.NewReader("host\nlang\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	command := New(streams)
-	command.SetArgs([]string{"get"})
+	command.SetArgs([]string{"get", "--jsonl"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("get batch: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestConfigGetBatchRedactsProxyCredentials(t *testing.T) {
 	}
 	streams := invocation.NewStreams(strings.NewReader("https_proxy\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	command := New(streams)
-	command.SetArgs([]string{"get"})
+	command.SetArgs([]string{"get", "--jsonl"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}

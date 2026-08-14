@@ -139,7 +139,7 @@ Flags:
       --page int           Page number (default 1)
       --sort string        relevance|release|score|update|hit
       --source string      Reverse-search source (default: reverse_search.default_source)
-      --text               Plain text lines (default for TTY)
+      --text               Plain text lines (default)
       --type string        movie|code|series|actor|maker|director|list
       --zone string        censored|uncensored|western|fc2|all (default "censored")
 
@@ -158,7 +158,7 @@ Flags:
       --json      Machine-readable JSON
       --jsonl     Pipeline JSONL envelopes
       --magnets   Also list magnet links
-      --text      Plain text lines (default for TTY)
+      --text      Plain text lines (default)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -178,7 +178,7 @@ Flags:
       --json              Machine-readable JSON
       --jsonl             Pipeline JSONL envelopes
       --min-size string   Min size e.g. 2000, 4GB, 500MB
-      --text              Plain text lines (default for TTY)
+      --text              Plain text lines (default)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -196,7 +196,7 @@ Flags:
       --json             Machine-readable JSON
       --jsonl            Pipeline JSONL envelopes
       --score int        Optional score
-      --text             Plain text lines (default for TTY)
+      --text             Plain text lines (default)
       --want             Mark as 想看
       --watched          Mark as 看過
 
@@ -222,7 +222,7 @@ Flags:
       --limit int        Page size (default 20)
       --page int         Page (default 1)
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
-      --text             Plain text lines (default for TTY)
+      --text             Plain text lines (default)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -135,7 +136,7 @@ func TestConsumerSingleJSONLegacyShape(t *testing.T) {
 	}
 }
 
-func TestListProducerJSONLOutput(t *testing.T) {
+func TestListProducerDefaultsToText(t *testing.T) {
 	streams, out := testStreams("", false)
 	producer := &ListProducer{
 		Name: "watched",
@@ -151,20 +152,40 @@ func TestListProducerJSONLOutput(t *testing.T) {
 		JSON: func(items []map[string]any) (map[string]any, error) {
 			return map[string]any{"movies": items}, nil
 		},
+		RowText: func(w io.Writer, _ io.Writer, items []map[string]any) error {
+			for _, item := range items {
+				if _, err := fmt.Fprintln(w, item["number"]); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 	}
 	if err := producer.Execute(streams, false, false, false); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("jsonl lines = %d", len(lines))
+	if out.String() != "SSIS-589\nHZGD-246\n" {
+		t.Errorf("default output = %q", out.String())
 	}
-	var first Envelope
-	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
-		t.Fatal(err)
+}
+
+func TestBatchRunnerPipedInputDefaultsToText(t *testing.T) {
+	streams, out := testStreams("SSIS-589\nHZGD-246\n", false)
+	runner := &BatchRunner{
+		Name:  "search",
+		Kinds: []Kind{KindMovie},
+		RunOne: func(_ *javdb.Client, _ context.Context, input Envelope) (Envelope, error) {
+			return New(KindMovie, input.Ref, "id-"+input.Ref), nil
+		},
+		Legacy: func([]string) error {
+			return testError("batch input must not use the single-item legacy path")
+		},
 	}
-	if first.Kind != KindMovie || first.Ref != "SSIS-589" || first.ID != "id-a" {
-		t.Errorf("envelope = %+v", first)
+	if err := runner.Execute(streams, nil, false, false, false); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if out.String() != "SSIS-589\nHZGD-246\n" {
+		t.Errorf("default output = %q", out.String())
 	}
 }
 

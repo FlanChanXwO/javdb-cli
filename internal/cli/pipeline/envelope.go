@@ -2,8 +2,7 @@
 // 严格 JSONL/文本解码、输入分类与输出模式。
 //
 // 命令之间通过 JSONL 组合：生产者按固定 schema 输出逐条 envelope，消费者按
-// kind 选择 id 或 ref。TTY 默认人类文本，非 TTY 默认 JSONL；显式 --jsonl /
-// --text / --json 互斥。
+// kind 选择 id 或 ref。默认输出文本；显式 --jsonl / --text / --json 互斥。
 package pipeline
 
 import (
