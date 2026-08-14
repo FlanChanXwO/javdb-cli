@@ -38,15 +38,10 @@ jobs:
 
   packaged_binary_smoke:
     needs: classify_changes
-    if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-    # job 级 if 会在矩阵展开前判断；纯文档改动被跳过时 matrix 尚不可用，
-    # 因此使用固定说明名，避免 GitHub UI 显示未展开的占位符。正常矩阵仍保留
-    # 既有的目标名称，以兼容分支保护所识别的六个平台检查。
-    name: >-
-      ${{ needs.classify_changes.outputs.docs_only == 'true' &&
-          'Packaged binary smoke (docs-only; intentionally skipped)' ||
-          format('Packaged binary smoke {0}/{1}', matrix.goos, matrix.goarch) }}
-    runs-on: ${{ matrix.runner }}
+    # 矩阵必须始终展开并上报六个固定名称，否则文档 PR 会永久等待分支保护所需的 checks。
+    # 纯文档改动统一使用轻量 Ubuntu runner；其他改动仍使用声明的六个原生 runner。
+    name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ needs.classify_changes.outputs.docs_only == 'true' && 'ubuntu-24.04' || matrix.runner }}
     permissions:
       contents: read
     strategy:
@@ -72,16 +67,26 @@ jobs:
             goos: windows
             goarch: arm64
     steps:
+      - name: Confirm docs-only native smoke skip
+        if: needs.classify_changes.outputs.docs_only == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Docs-only change: native smoke is intentionally skipped for ${{ matrix.goos }}/${{ matrix.goarch }}.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: needs.classify_changes.outputs.docs_only != 'true'
         with:
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: needs.classify_changes.outputs.docs_only != 'true'
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Require the declared native target
+        if: needs.classify_changes.outputs.docs_only != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -89,6 +94,7 @@ jobs:
           test "$(go env GOARCH)" = '${{ matrix.goarch }}'
 
       - name: Test and vet on the native platform
+        if: needs.classify_changes.outputs.docs_only != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -96,11 +102,12 @@ jobs:
           go vet ./...
 
       - name: Test with the race detector where Go supports it
-        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        if: needs.classify_changes.outputs.docs_only != 'true' && (matrix.goos != 'windows' || matrix.goarch != 'arm64')
         shell: bash
         run: go test -race ./... -count=1
 
       - name: Build, package, extract, and smoke the native binary
+        if: needs.classify_changes.outputs.docs_only != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +138,7 @@ jobs:
           "./$smoked_binary" version --json | tee "$RUNNER_TEMP/javdb-version.json"
           grep -F "\"version\":\"v${version}\"" "$RUNNER_TEMP/javdb-version.json"
 
-  # 分支保护只需要此稳定汇总 job：完整变更要求六个平台均成功，文档改动则确认矩阵被有意跳过。
+  # 稳定汇总 job 要求六个平台矩阵成功；纯文档矩阵由同名轻量检查满足分支保护。
   platform_smoke_gate:
     name: Platform smoke gate
     needs:
@@ -144,12 +151,7 @@ jobs:
       - name: Require the expected matrix outcome
         shell: bash
         env:
-          DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
           MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
         run: |
           set -euo pipefail
-          if [ "$DOCS_ONLY" = true ]; then
-            test "$MATRIX_RESULT" = skipped
-            exit 0
-          fi
           test "$MATRIX_RESULT" = success
