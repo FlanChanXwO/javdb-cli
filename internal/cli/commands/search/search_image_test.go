@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
@@ -204,13 +205,13 @@ func TestSearchImageURLGoesThroughProxy(t *testing.T) {
 	defer javdbServer.Close()
 	writeReverseSearchConfig(t, provider.URL)
 
-	var proxySawRequest bool
+	var proxySawRequest atomic.Bool
 	upstream, _ := url.Parse(provider.URL)
 	providerProxy := httputil.NewSingleHostReverseProxy(upstream)
 	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method == http.MethodGet {
 			// 图片 URL 读取必须经代理到达这里。
-			proxySawRequest = true
+			proxySawRequest.Store(true)
 			_, _ = writer.Write(testJPEG)
 			return
 		}
@@ -226,7 +227,7 @@ func TestSearchImageURLGoesThroughProxy(t *testing.T) {
 	if err == nil {
 		t.Fatal("partial candidate failure must exit non-zero")
 	}
-	if !proxySawRequest {
+	if !proxySawRequest.Load() {
 		t.Fatal("image URL request did not go through the configured proxy")
 	}
 	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") {
