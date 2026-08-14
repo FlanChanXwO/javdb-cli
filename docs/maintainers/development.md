@@ -202,8 +202,9 @@ environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt
 1. Quality workflow 在 PR 与 `main` 上运行 release-note metadata 校验。仅限 README、贡献指南、
    changelog、docs、skills、repo-local skills 和 Issue/PR template 的改动走文档门禁；其他任何路径
    都运行格式、测试、vet、构建和静态脚本门禁。
-2. Platform smoke workflow 用同一分类器在六个原生 runner 测试、打包、解包并执行
-   `javdb version --json`；`Platform smoke gate` 始终存在，文档改动时显式确认矩阵被跳过。
+2. Platform smoke workflow 始终展开六个固定名称的 matrix checks，以满足分支保护。非文档改动在六个
+   原生 runner 测试、打包、解包并执行 `javdb version --json`；纯文档改动则在轻量 Ubuntu runner
+   上用同名 checks 显式确认原生 smoke 被跳过。`Platform smoke gate` 始终汇总并要求矩阵成功。
 3. feature PR 只填写 `.github/PULL_REQUEST_TEMPLATE.md` 中唯一的 release-note declaration；不要
    编辑 `changelog/unreleased/`。release-prep PR 将审核后的双语计划放入
    `changelog/plans/vX.Y.Z.json`，然后运行 `prepare` 与 `validate` 生成版本目录。
