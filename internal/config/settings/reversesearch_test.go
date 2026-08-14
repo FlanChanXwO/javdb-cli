@@ -338,8 +338,12 @@ func TestSensitiveHeaderValueFormat(t *testing.T) {
 	allowed := []map[string]string{
 		{"Authorization": "Bearer ${ENV:TOKEN}"},
 		{"Authorization": "${ENV:TOKEN}"},
-		{"Cookie": "${ENV:JAVDB_COOKIE}"},
+		{"Authorization": "${ENV:A}${ENV:B}"},
+		{"Authorization": "Bearer ${ENV:A} extra"},
+		{"Cookie": "session=${ENV:SESSION}; csrf=${ENV:CSRF}"},
 		{"X-Api-Key": "Token ${ENV:KEY}"},
+		{"X-Access-Token": "${ENV:AT}"},
+		{"Private-Token": "${ENV:PT}"},
 		{"X-Static": "plain-static-is-fine-for-non-sensitive"},
 	}
 	for _, headers := range allowed {
@@ -350,13 +354,35 @@ func TestSensitiveHeaderValueFormat(t *testing.T) {
 	rejected := []map[string]string{
 		{"Authorization": "Bearer plaintext-secret"},
 		{"Authorization": "${ENV:DUMMY} plaintext-secret"},
-		{"Authorization": "${ENV:A}${ENV:B}"},
-		{"Authorization": "Bearer ${ENV:A} extra"},
+		{"Authorization": "Bearer superlongplaintextsecret"},
 		{"Cookie": "session=plaintext"},
+		{"X-Access-Token": "averylongplaintextsecret"},
+		{"X-Secret-Key": "short-secret"},
 	}
 	for _, headers := range rejected {
 		if _, err := ResolveReverseSearch(build(headers), func(string) string { return "v" }); err == nil {
 			t.Errorf("plaintext-sensitive headers accepted: %v", headers)
 		}
+	}
+}
+
+// TestSensitiveHeaderErrorDoesNotLeakValue 被拒绝的敏感 header 值不得进入
+// 错误消息（stderr/管道 error/日志都不得包含 secret）。
+func TestSensitiveHeaderErrorDoesNotLeakValue(t *testing.T) {
+	const secret = "Bearer plaintext-secret-abc123"
+	settings := Defaults()
+	settings.ReverseSearch = ReverseSearchSettings{
+		DefaultSource: "builtin",
+		Sources: []ReverseSearchSource{{
+			Name: "custom", URL: "https://example.test/search",
+			Headers: map[string]string{"Authorization": secret},
+		}},
+	}
+	_, err := ResolveReverseSearch(settings, func(string) string { return "v" })
+	if err == nil {
+		t.Fatal("expected rejection")
+	}
+	if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "plaintext-secret") {
+		t.Fatalf("error leaks the sensitive header value: %v", err)
 	}
 }

@@ -113,6 +113,16 @@ func (s *Store) Put(source, key string, response *provider.Response) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// 既有条目语义损坏（null response 或缺 written_at）必须显式报错，
+	// 不静默保留或覆盖。
+	for existingKey, existing := range entries {
+		if existing.Response == nil {
+			return fmt.Errorf("reverse search cache %q contains a null response for key %q", file, existingKey)
+		}
+		if existing.WrittenAt.IsZero() {
+			return fmt.Errorf("reverse search cache %q contains an entry without written_at for key %q", file, existingKey)
+		}
+	}
 	if entries == nil {
 		entries = map[string]entry{}
 	}

@@ -188,8 +188,9 @@ func ResolveReverseSearch(s Settings, getenv func(string) string) (ResolvedRever
 	return resolved, nil
 }
 
-// sensitiveHeaderNames 是需要强制 ${ENV:} 引用的 header 名（大小写不敏感），
-// 防止把明文 token/secret 写进 config.toml。
+// sensitiveHeaderNames 是需要强制 ${ENV:} 引用的精确 header 名（大小写不
+// 不敏感）。isSensitiveHeaderName 还会对名称含 token/key/secret/auth/
+// cookie/credential/password 等关键词的自定义 header 生效，防止绕过。
 var sensitiveHeaderNames = map[string]bool{
 	"authorization":       true,
 	"proxy-authorization": true,
@@ -201,19 +202,46 @@ var sensitiveHeaderNames = map[string]bool{
 	"cookie":              true,
 }
 
-// sensitiveHeaderValuePattern 限制敏感 header 值为：可选单个词前缀（如
-// Bearer/Basic/Token）+ 一个 ${ENV:NAME} 引用，且不得有任何其它静态文本。
-// 这堵住 "Bearer plaintext-secret" 与 "${ENV:DUMMY} plaintext-secret"
-// 这类把明文 secret 与引用混写的绕过。
-var sensitiveHeaderValuePattern = regexp.MustCompile(`^[A-Za-z0-9-]+ \$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}$|^\$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}$`)
-
-func validateSensitiveHeaderValue(value string) error {
-	if !sensitiveHeaderValuePattern.MatchString(strings.TrimSpace(value)) {
-		return fmt.Errorf("sensitive header must be a single ${ENV:NAME} reference (optionally with one scheme prefix like Bearer), got %q", value)
-	}
-	return nil
+var sensitiveHeaderKeywords = []string{
+	"token", "key", "secret", "auth", "cookie", "credential", "password",
 }
 
 func isSensitiveHeaderName(name string) bool {
-	return sensitiveHeaderNames[strings.ToLower(strings.TrimSpace(name))]
+	lower := strings.ToLower(strings.TrimSpace(name))
+	if sensitiveHeaderNames[lower] {
+		return true
+	}
+	for _, keyword := range sensitiveHeaderKeywords {
+		if strings.Contains(lower, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// envReferencePattern 匹配 ${ENV:NAME} 引用（已在文件顶部定义）。
+var sensitiveHeaderValuePattern = regexp.MustCompile(`\$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}`)
+
+// validateSensitiveHeaderValue 校验敏感 header 值：至少包含一个 ${ENV:NAME}
+// 引用（文档契约：静态文本与引用可任意组合，如
+// "session=${ENV:SESSION}; csrf=${ENV:CSRF}"），且不存在疑似明文 secret 的
+// 独立长 token（无空白/逗号/分号分隔、长度 >= 10 的非引用片段会被拒绝，
+// 如 "${ENV:DUMMY} plaintext-secret" 与 "Bearer real-secret-12345"）。
+// 错误消息只描述规则，绝不回显被拒绝的值。
+func validateSensitiveHeaderValue(value string) error {
+	if !sensitiveHeaderValuePattern.MatchString(value) {
+		return fmt.Errorf("sensitive header must reference ${ENV:NAME} instead of storing a plaintext secret")
+	}
+	for _, token := range strings.FieldsFunc(value, func(character rune) bool {
+		return character == ' ' || character == '\t' || character == ',' || character == ';'
+	}) {
+		token = strings.TrimSpace(token)
+		if token == "" || sensitiveHeaderValuePattern.MatchString(token) {
+			continue
+		}
+		if len(token) >= 10 {
+			return fmt.Errorf("sensitive header contains a suspicious plaintext secret; use ${ENV:NAME} references only")
+		}
+	}
+	return nil
 }

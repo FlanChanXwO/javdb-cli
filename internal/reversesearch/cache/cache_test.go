@@ -252,3 +252,22 @@ func TestMissingWrittenAtIsExplicitError(t *testing.T) {
 		t.Fatalf("entry without written_at must be an explicit error: ok=%v err=%v", ok, err)
 	}
 }
+
+// TestPutRejectsSemanticallyCorruptExistingCache Put 遇到语义损坏的既有条目
+// 必须显式报错，不静默保留或覆盖。
+func TestPutRejectsSemanticallyCorruptExistingCache(t *testing.T) {
+	for _, content := range []string{
+		`{"k":{"written_at":"2026-08-13T00:00:00Z","response":null}}`,
+		`{"k":{"response":{"source":"builtin"}}}`,
+	} {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "builtin.json")
+		if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		store := New(dir, 0)
+		if err := store.Put("builtin", "other", sampleResponse()); err == nil {
+			t.Fatalf("Put silently accepted corrupt cache: %s", content)
+		}
+	}
+}

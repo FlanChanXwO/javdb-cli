@@ -117,10 +117,18 @@ func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 
 // TestDownloadPipelineIDDoesNotResolveAsNumber --id 在管道/非 TTY 路径也不得
 // 调用番号搜索（resolver 无精确匹配时会回退首项，存在下载错影片风险）。
+// 完整走通下载链路：detail 返回本地 mock 媒体，断言请求 ID 正确、成功结果
+// 与输出文件内容。
 func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	var searchCalls int
+	var detailIDs []string
+	media := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// 媒体下载要求响应是已识别图片（magic）或 XOR 编码图片。
+		_, _ = writer.Write([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03})
+	}))
+	defer media.Close()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/api/v2/search":
@@ -128,9 +136,11 @@ func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {
 			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
 				"movies": []map[string]any{{"number": "SSIS-589", "id": "WRONG-ID"}},
 			}})
-		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/CORRECT-ID"):
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/"):
+			id := strings.TrimPrefix(request.URL.Path, "/api/v4/movies/")
+			detailIDs = append(detailIDs, id)
 			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
-				"movie": map[string]any{"number": "SSIS-589", "id": "CORRECT-ID", "thumb_url": "https://example.test/t.jpg"},
+				"movie": map[string]any{"number": "SSIS-589", "id": id, "thumb_url": media.URL},
 			}})
 		default:
 			http.NotFound(writer, request)
@@ -139,14 +149,24 @@ func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {
 	defer server.Close()
 
 	dir := t.TempDir()
+	target := filepath.Join(dir, "out.jpg")
 	streams := invocation.NewStreams(strings.NewReader("CORRECT-ID\n"), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{"--id", "--thumbnail", dir + "/{id}.jpg"})
-	// 下载会失败（detail 无媒体字段时），但搜索绝不能发生。
-	if err := cmd.Execute(); err == nil {
-		// 若意外成功也可；核心断言是 search 未被调用。
+	cmd.SetArgs([]string{"--id", "--thumbnail", target})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
 	}
 	if searchCalls != 0 {
 		t.Fatalf("--id pipeline path called ResolveMovieID %d time(s)", searchCalls)
+	}
+	if len(detailIDs) != 1 || detailIDs[0] != "CORRECT-ID" {
+		t.Fatalf("detail requested for ids %v, want [CORRECT-ID]", detailIDs)
+	}
+	body, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("output file missing: %v", err)
+	}
+	if !bytes.Equal(body, []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03}) {
+		t.Fatalf("output content = %x", body)
 	}
 }
