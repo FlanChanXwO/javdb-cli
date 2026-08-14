@@ -53,6 +53,13 @@ func (c *Consumer) Execute(streams *invocation.Streams, args []string, ndjson, j
 
 // RunInputs 按输出模式处理已收集的输入；单项失败原位错误信封并继续。
 // 调用方（如 search）可自行完成图片分类后复用本方法。
+//
+// 文本/人类模式（OutputText/OutputHuman）下：
+//   - 成功项：若 RenderText 已设置则调用它渲染人类/稳定文本，否则逐行 ref。
+//   - 失败项：错误原因写 stderr，不向 stdout 写任何内容（不伪造成功 ref）。
+//
+// NDJSON/JSON 模式下：失败项原位 error 信封写入 stdout（机器契约），保持
+// 输出顺序与单项错误可观测性。
 func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// legacy JSON shape 只适用于纯文本 ref 输入；NDJSON 信封先过 kind 校验。
 	if mode == OutputJSON && len(inputs) == 1 && inputs[0].Kind == "" && c.LegacyJSON != nil {
@@ -64,6 +71,35 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 			return err
 		}
 		return c.LegacyJSON(streams.Out, output)
+	}
+
+	// 文本/人类模式：成功项按 RenderText 或 ref 写 stdout，失败项写 stderr。
+	if mode == OutputText || mode == OutputHuman {
+		failures := 0
+		for _, input := range inputs {
+			if !c.accepts(input) {
+				failures++
+				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, fmt.Sprintf("unsupported kind %q", input.Kind))
+				continue
+			}
+			output, err := c.RunOne(context.Background(), input)
+			if err != nil {
+				failures++
+				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, err.Error())
+				continue
+			}
+			if c.RenderText != nil {
+				if err := c.RenderText(streams.Out, output); err != nil {
+					return err
+				}
+			} else if err := writeRef(streams.Out, output); err != nil {
+				return err
+			}
+		}
+		if failures > 0 {
+			return fmt.Errorf("%s completed with %d of %d items failed", c.Name, failures, len(inputs))
+		}
+		return nil
 	}
 
 	writer := NewWriter(streams.Out, mode)
@@ -93,6 +129,19 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		return fmt.Errorf("%s completed with %d of %d items failed", c.Name, failures, len(inputs))
 	}
 	return nil
+}
+
+// writeRef 写出信封的稳定引用（优先 ref，否则 id），不含错误信封。
+func writeRef(w io.Writer, envelope Envelope) error {
+	ref := envelope.Ref
+	if ref == "" {
+		ref = envelope.ID
+	}
+	if ref == "" {
+		return fmt.Errorf("envelope has no printable ref or id")
+	}
+	_, err := fmt.Fprintln(w, ref)
+	return err
 }
 
 // CollectInputs 统一收集输入：位置参数（单个）或非 TTY stdin 批。

@@ -262,3 +262,65 @@ func TestBatchRunnerTTYStdoutRoutesToLegacy(t *testing.T) {
 		t.Error("TTY stdout must route single text input through the legacy human path")
 	}
 }
+
+// TestConsumerTextModeErrorsToStderr 文本/人类模式下失败项只写 stderr，
+// 不向 stdout 输出任何内容（不伪造成功 ref）；成功项写 stdout。
+func TestConsumerTextModeErrorsToStderr(t *testing.T) {
+	streams, out := testStreams("a\nb\nc\n", false)
+	errBuf := &bytes.Buffer{}
+	streams.Err = errBuf
+	consumer := &Consumer{
+		Name:          "detail",
+		AcceptedKinds: []Kind{KindMovie},
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			if input.Ref == "b" {
+				return Envelope{}, testError("detail failed")
+			}
+			return New(KindMovie, input.Ref, "id-"+input.Ref), nil
+		},
+	}
+	inputs, err := CollectInputs(bufio.NewReader(strings.NewReader("a\nb\nc\n")), streams, "", []Kind{KindMovie})
+	if err != nil {
+		t.Fatalf("CollectInputs: %v", err)
+	}
+	err = consumer.RunInputs(streams, inputs, OutputText)
+	if err == nil || !strings.Contains(err.Error(), "1 of 3 items failed") {
+		t.Fatalf("expected 1-of-3 failure summary, got %v", err)
+	}
+	// stdout 只有成功项的 ref，不含失败项。
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || lines[0] != "a" || lines[1] != "c" {
+		t.Errorf("stdout = %q, want only a and c", out.String())
+	}
+	// stderr 包含失败原因。
+	if !strings.Contains(errBuf.String(), "detail failed") {
+		t.Errorf("stderr = %q, want 'detail failed'", errBuf.String())
+	}
+}
+
+// TestConsumerHumanModeRenderText OutputHuman 模式下成功项走 RenderText。
+func TestConsumerHumanModeRenderText(t *testing.T) {
+	streams, out := testStreams("", false)
+	renderCalled := false
+	consumer := &Consumer{
+		Name:          "detail",
+		AcceptedKinds: []Kind{KindMovie},
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			return New(KindMovie, input.Ref, "id"), nil
+		},
+		RenderText: func(w io.Writer, envelope Envelope) error {
+			renderCalled = true
+			_, err := fmt.Fprintf(w, ">> %s\n", envelope.Ref)
+			return err
+		},
+	}
+	if err := consumer.RunInputs(streams, []Envelope{New("", "SSIS-589", "")}, OutputHuman); err != nil {
+		t.Fatalf("RunInputs: %v", err)
+	}
+	if !renderCalled {
+		t.Error("OutputHuman must call RenderText for successful items")
+	}
+	if !strings.Contains(out.String(), ">> SSIS-589") {
+		t.Errorf("output = %q, want '>> SSIS-589'", out.String())
+	}
+}
