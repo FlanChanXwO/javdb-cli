@@ -77,6 +77,16 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 	if mode == OutputText || mode == OutputHuman {
 		failures := 0
 		for _, input := range inputs {
+			// kind:error 透传：不重新执行或包装，错误原因写 stderr。
+			if input.Kind == KindError {
+				failures++
+				msg := input.Data["message"]
+				if msg == nil {
+					msg = "upstream error"
+				}
+				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, msg)
+				continue
+			}
 			if !c.accepts(input) {
 				failures++
 				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, fmt.Sprintf("unsupported kind %q", input.Kind))
@@ -105,6 +115,14 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 	writer := NewWriter(streams.Out, mode)
 	failures := 0
 	for _, input := range inputs {
+		// kind:error 透传：不重新执行或包装，原样写出。
+		if input.Kind == KindError {
+			failures++
+			if err := writer.Write(input); err != nil {
+				return err
+			}
+			continue
+		}
 		if !c.accepts(input) {
 			failures++
 			output := ErrorEnvelope(input, c.Name, "input", "kind", fmt.Sprintf("unsupported kind %q", input.Kind))

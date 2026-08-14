@@ -324,3 +324,45 @@ func TestConsumerHumanModeRenderText(t *testing.T) {
 		t.Errorf("output = %q, want '>> SSIS-589'", out.String())
 	}
 }
+
+// TestConsumerPassesThroughErrorEnvelope kind:error 输入不重新执行或包装：
+// NDJSON 模式原样写出，文本模式错误原因写 stderr。
+func TestConsumerPassesThroughErrorEnvelope(t *testing.T) {
+	// NDJSON 模式：原样透传。
+	streams, out := testStreams("", false)
+	errInput := ErrorEnvelope(New(KindMovie, "SSIS-589", "id-1"), "upstream", "link", "resolve", "not found")
+	consumer := &Consumer{
+		Name:          "magnets",
+		AcceptedKinds: []Kind{KindMovie},
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			t.Fatal("RunOne must not be called for kind:error input")
+			return Envelope{}, nil
+		},
+	}
+	err := consumer.RunInputs(streams, []Envelope{errInput}, OutputNDJSON)
+	if err == nil || !strings.Contains(err.Error(), "1 of 1 items failed") {
+		t.Fatalf("expected failure summary, got %v", err)
+	}
+	var parsed Envelope
+	if e := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &parsed); e != nil {
+		t.Fatal(e)
+	}
+	if parsed.Kind != KindError || parsed.Data["code"] != "resolve" {
+		t.Errorf("passthrough envelope = %+v, want kind=error code=resolve", parsed)
+	}
+
+	// 文本模式：错误原因写 stderr。
+	streams2, _ := testStreams("", false)
+	errBuf := &bytes.Buffer{}
+	streams2.Err = errBuf
+	err = consumer.RunInputs(streams2, []Envelope{errInput}, OutputText)
+	if err == nil {
+		t.Fatal("expected failure summary")
+	}
+	if !strings.Contains(errBuf.String(), "not found") {
+		t.Errorf("stderr = %q, want 'not found'", errBuf.String())
+	}
+	if streams2.Out.(*bytes.Buffer).String() != "" {
+		t.Errorf("stdout should be empty for error-only input, got %q", streams2.Out.(*bytes.Buffer).String())
+	}
+}

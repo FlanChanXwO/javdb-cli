@@ -63,8 +63,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			return client.NewWithDefaultToken(options)
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+			// 管道信封携带 id 时直接按内部 ID 请求，不做番号解析。
+			// --id flag 仅对位置参数（无信封 id）生效。
+			useID := input.ID != "" || isID
 			ref := pipeline.ConsumerRef(input)
-			mid, items, err := fetch(c, ctx, ref, isID && input.ID == "")
+			mid, items, err := fetch(c, ctx, ref, useID)
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
