@@ -16,7 +16,7 @@ import (
 func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var page, limit int
 	var zone string
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	runOne := func(c *javdb.Client, ctx context.Context, keyword string) ([]map[string]any, error) {
 		res, err := c.Search(ctx, keyword, javdb.SearchOptions{
 			Page: page, Limit: limit, Zone: zone, Type: "list",
@@ -60,14 +60,13 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 		Short: "Search public 合集",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().IntVar(&page, "page", 1, "Page")
 	cmd.Flags().IntVar(&limit, "limit", 0, "Page size")
 	cmd.Flags().StringVar(&zone, "zone", "all", "censored|uncensored|western|fc2|all")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }

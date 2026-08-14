@@ -18,14 +18,14 @@ type Classification int
 const (
 	// ClassificationImage 表示 JPEG/PNG/WEBP 图片字节。
 	ClassificationImage Classification = iota
-	// ClassificationJSONL 表示 javdb.pipeline/v1 信封流。
-	ClassificationJSONL
+	// ClassificationNDJSON 表示 javdb.pipeline/v1 信封流。
+	ClassificationNDJSON
 	// ClassificationText 表示逐行纯文本 ref。
 	ClassificationText
 )
 
-// Classify 按固定顺序识别 stdin 类别：图片 magic → JSONL → 文本。
-// 不消费输入：图片判定只 Peek 前 12 字节；JSONL/文本判定读取全部剩余内容。
+// Classify 按固定顺序识别 stdin 类别：图片 magic → NDJSON → 文本。
+// 不消费输入：图片判定只 Peek 前 12 字节；NDJSON/文本判定读取全部剩余内容。
 func Classify(reader *bufio.Reader) (Classification, []byte, error) {
 	if reader == nil {
 		return ClassificationText, nil, nil
@@ -41,14 +41,14 @@ func Classify(reader *bufio.Reader) (Classification, []byte, error) {
 	if err != nil {
 		return ClassificationText, nil, fmt.Errorf("read stdin: %w", err)
 	}
-	if looksLikeJSONL(content) {
-		return ClassificationJSONL, content, nil
+	if looksLikeNDJSON(content) {
+		return ClassificationNDJSON, content, nil
 	}
 	return ClassificationText, content, nil
 }
 
-// looksLikeJSONL 判定首个非空行是否为合法 v1 信封。
-func looksLikeJSONL(content []byte) bool {
+// looksLikeNDJSON 判定首个非空行是否为合法 v1 信封。
+func looksLikeNDJSON(content []byte) bool {
 	for _, line := range bytes.Split(content, []byte("\n")) {
 		trimmed := strings.TrimSpace(string(line))
 		if trimmed == "" {

@@ -79,12 +79,12 @@ TOP250 and personal-list commands require the default account.
 ```bash
 javdb search KEYWORD|IMAGE [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
   [--type TYPE] [--page N] [--limit N] [--has-magnets] \
-  [--image] [--source NAME] [--no-cache] [--json|--jsonl|--text]
-javdb detail NUMBER [--id] [--magnets] [--json|--jsonl|--text]
-javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--jsonl|--text]
-javdb tags [--zone ZONE] [--refresh] [--json|--jsonl|--text]
+  [--image] [--source NAME] [--no-cache] [--json|--ndjson]
+javdb detail NUMBER [--id] [--magnets] [--json|--ndjson]
+javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
+javdb tags [--zone ZONE] [--refresh] [--json|--ndjson]
 javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
-  [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json|--jsonl|--text]
+  [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json|--ndjson]
 ```
 
 `search` accepts `censored`, `uncensored`, `western`, `fc2`, or `all` for
@@ -93,8 +93,8 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
 entity commands. `tags --refresh` downloads and rewrites the local public tag
 cache, so it is not read-only local behavior.
 
-See [Pipeline protocol](#pipeline-protocol) for the `--jsonl`/`--text` output
-contract shared by the commands above and below.
+See [Pipeline protocol](#pipeline-protocol) for the `--ndjson` output contract
+shared by the commands above and below.
 
 `browse --tag` accepts a tag ID, English name, or Chinese name. Repeat
 `--main` for server-side category masks. Use `--json` for programs; human output
@@ -130,7 +130,7 @@ unfinished/live playlists fail explicitly instead of producing a partial file.
 ## Reverse image search
 
 ```bash
-javdb search IMAGE|URL|--image [--source NAME] [--no-cache] [--json|--jsonl|--text]
+javdb search IMAGE|URL|--image [--source NAME] [--no-cache] [--json|--ndjson]
 javdb cache reverse-search [--source NAME] [--clear]
 ```
 
@@ -178,7 +178,7 @@ must enforce their own network boundary.
 ## Pipeline protocol
 
 Commands that take a single positional ref also accept a non-TTY stdin batch.
-Input is classified in fixed order: image magic, `javdb.pipeline/v1` JSONL
+Input is classified in fixed order: image magic, `javdb.pipeline/v1` NDJSON
 envelopes, then plain text lines. Providing both a positional argument and
 non-empty stdin is an ambiguity error.
 
@@ -192,12 +192,12 @@ Consumers check the kind strictly and prefer a valid `id`; incompatible input
 becomes an in-place `error` envelope. Batch processing preserves input order,
 continues after item failures, and exits non-zero with a summary on stderr.
 
-Output defaults to human text on a TTY and one JSONL envelope per line
-otherwise. `--jsonl`, `--text`, and `--json` are mutually exclusive. Explicit
+Output defaults to human-readable text. `--ndjson` and `--json` are mutually
+exclusive; JSON or NDJSON is emitted only when its flag is explicit.
 `--json` keeps the legacy single-item shape and emits a JSON array of envelopes
 for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
-`top250`, `watched`, `want`, `recent`) never read stdin; on non-TTY stdout they
-emit one envelope per record.
+`top250`, `watched`, `want`, `recent`) never read stdin and also default to
+text; use `--ndjson` to emit one envelope per record.
 
 ## Entity and list navigation
 
@@ -216,9 +216,9 @@ javdb lists related NUMBER [--id] [--page N] [--limit N] [--json]
 ```
 
 Entity options include zone, repeated tag/main filters, sorting, page/limit,
-`--has-magnets`, and JSON/pipeline output (`--json`, `--jsonl`, or `--text`). `lists` without a subcommand reads the
-authenticated user's lists; `list REF` is the entity-filmography command for a
-public or user list.
+`--has-magnets`, and JSON/pipeline output (`--json` or `--ndjson`). `lists`
+without a subcommand reads the authenticated user's lists; `list REF` is the
+entity-filmography command for a public or user list.
 
 ## Magnets, rankings, and personal state
 

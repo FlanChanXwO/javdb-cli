@@ -20,12 +20,12 @@ import (
 // New 构造实体影片列表命令（actor/series/maker/director/code/list 共用）。
 func New(kind, use, short string, options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
-		zone, sort, order       string
-		page, limit             int
-		tagRefs, main           []string
-		allPages                bool
-		hasMagnets              bool
-		asJSON, asJSONL, asText bool
+		zone, sort, order string
+		page, limit       int
+		tagRefs, main     []string
+		allPages          bool
+		hasMagnets        bool
+		asJSON, asNDJSON  bool
 	)
 	pipelineKind := pipeline.Kind(kind)
 	runner := &pipeline.BatchRunner{
@@ -73,7 +73,7 @@ func New(kind, use, short string, options *invocation.RootOptions, streams *invo
 		Short: short,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
@@ -86,8 +86,7 @@ func New(kind, use, short string, options *invocation.RootOptions, streams *invo
 	cmd.Flags().BoolVar(&allPages, "all", false, "Fetch all pages (capped)")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON with entity meta + movies")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

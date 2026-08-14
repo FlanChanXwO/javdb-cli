@@ -17,7 +17,7 @@ import (
 
 // NewShow builds the lists show command.
 func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	runOne := func(c *javdb.Client, ctx context.Context, ref string) (string, map[string]any, error) {
 		eid, err := c.ResolveEntity(ctx, "list", ref, "censored")
 		if err != nil {
@@ -88,12 +88,11 @@ func NewShow(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 		Short: "Show 合集 meta (movies: use list <id>)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

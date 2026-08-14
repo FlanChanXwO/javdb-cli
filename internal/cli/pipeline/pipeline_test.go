@@ -31,19 +31,19 @@ func TestEnvelopeValidate(t *testing.T) {
 	}
 }
 
-func TestDecodeJSONL(t *testing.T) {
-	envelope, err := DecodeJSONL(`{"schema":"javdb.pipeline/v1","kind":"movie","ref":"SSIS-589","id":"9DGB5X"}`)
+func TestDecodeNDJSON(t *testing.T) {
+	envelope, err := DecodeNDJSON(`{"schema":"javdb.pipeline/v1","kind":"movie","ref":"SSIS-589","id":"9DGB5X"}`)
 	if err != nil {
-		t.Fatalf("DecodeJSONL: %v", err)
+		t.Fatalf("DecodeNDJSON: %v", err)
 	}
 	if envelope.Ref != "SSIS-589" || envelope.ID != "9DGB5X" {
 		t.Errorf("envelope = %+v", envelope)
 	}
 
 	// meta/data 保留。
-	envelope, err = DecodeJSONL(`{"schema":"javdb.pipeline/v1","kind":"movie","ref":"x","meta":{"source":"builtin"}}`)
+	envelope, err = DecodeNDJSON(`{"schema":"javdb.pipeline/v1","kind":"movie","ref":"x","meta":{"source":"builtin"}}`)
 	if err != nil {
-		t.Fatalf("DecodeJSONL with meta: %v", err)
+		t.Fatalf("DecodeNDJSON with meta: %v", err)
 	}
 	if envelope.Meta["source"] != "builtin" {
 		t.Errorf("meta lost: %+v", envelope.Meta)
@@ -61,14 +61,14 @@ func TestDecodeJSONL(t *testing.T) {
 		{name: "no ref", line: `{"schema":"javdb.pipeline/v1","kind":"movie"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := DecodeJSONL(tc.line); err == nil {
-				t.Fatal("DecodeJSONL accepted invalid line")
+			if _, err := DecodeNDJSON(tc.line); err == nil {
+				t.Fatal("DecodeNDJSON accepted invalid line")
 			}
 		})
 	}
 }
 
-func TestParseBatchTextAndJSONL(t *testing.T) {
+func TestParseBatchTextAndNDJSON(t *testing.T) {
 	text, err := ParseBatch([]byte("SSIS-589\nHZGD-246\n"), KindMovie)
 	if err != nil {
 		t.Fatalf("ParseBatch text: %v", err)
@@ -77,21 +77,21 @@ func TestParseBatchTextAndJSONL(t *testing.T) {
 		t.Errorf("text batch = %+v", text)
 	}
 
-	jsonl, err := ParseBatch([]byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n"), KindJSONLInput)
+	ndjson, err := ParseBatch([]byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n"), KindNDJSONInput)
 	if err != nil {
-		t.Fatalf("ParseBatch jsonl: %v", err)
+		t.Fatalf("ParseBatch ndjson: %v", err)
 	}
-	if len(jsonl) != 2 || jsonl[0].Ref != "a" || jsonl[1].Ref != "b" {
-		t.Errorf("jsonl batch = %+v", jsonl)
+	if len(ndjson) != 2 || ndjson[0].Ref != "a" || ndjson[1].Ref != "b" {
+		t.Errorf("ndjson batch = %+v", ndjson)
 	}
 
 	// 混合/非法行必须带行号报错。
-	if _, err := ParseBatch([]byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\ngarbage\n"), KindJSONLInput); err == nil || !strings.Contains(err.Error(), "line 2") {
+	if _, err := ParseBatch([]byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\ngarbage\n"), KindNDJSONInput); err == nil || !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("mixed batch error = %v", err)
 	}
 }
 
-func TestClassifyImageJSONLText(t *testing.T) {
+func TestClassifyImageNDJSONText(t *testing.T) {
 	// 图片 magic 优先。
 	classification, content, err := Classify(bufio.NewReader(bytes.NewReader(testJPEG)))
 	if err != nil || classification != ClassificationImage {
@@ -99,14 +99,14 @@ func TestClassifyImageJSONLText(t *testing.T) {
 	}
 	_ = content
 
-	// JSONL。
-	jsonl := []byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n")
-	classification, content, err = Classify(bufio.NewReader(bytes.NewReader(jsonl)))
-	if err != nil || classification != ClassificationJSONL {
-		t.Fatalf("jsonl classification = %v err=%v", classification, err)
+	// NDJSON。
+	ndjson := []byte("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"a\"}\n{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"b\"}\n")
+	classification, content, err = Classify(bufio.NewReader(bytes.NewReader(ndjson)))
+	if err != nil || classification != ClassificationNDJSON {
+		t.Fatalf("ndjson classification = %v err=%v", classification, err)
 	}
-	if !bytes.Equal(content, jsonl) {
-		t.Error("jsonl content not preserved")
+	if !bytes.Equal(content, ndjson) {
+		t.Error("ndjson content not preserved")
 	}
 
 	// 文本。
@@ -125,23 +125,18 @@ func TestClassifyImageJSONLText(t *testing.T) {
 func TestResolveOutputMode(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
-		jsonl     bool
-		text      bool
+		ndjson    bool
 		json      bool
-		terminal  bool
 		want      OutputMode
 		wantError bool
 	}{
-		{name: "default tty", terminal: true, want: OutputText},
-		{name: "default pipe", terminal: false, want: OutputJSONL},
-		{name: "explicit jsonl", jsonl: true, terminal: true, want: OutputJSONL},
-		{name: "explicit text", text: true, terminal: false, want: OutputText},
-		{name: "explicit json", json: true, terminal: false, want: OutputJSON},
-		{name: "jsonl and json", jsonl: true, json: true, wantError: true},
-		{name: "all three", jsonl: true, text: true, json: true, wantError: true},
+		{name: "default", want: OutputText},
+		{name: "explicit ndjson", ndjson: true, want: OutputNDJSON},
+		{name: "explicit json", json: true, want: OutputJSON},
+		{name: "ndjson and json", ndjson: true, json: true, wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mode, err := ResolveOutputMode(tc.jsonl, tc.text, tc.json, tc.terminal)
+			mode, err := ResolveOutputMode(tc.ndjson, tc.json)
 			if tc.wantError {
 				if err == nil {
 					t.Fatal("expected mutual exclusion error")
@@ -158,22 +153,22 @@ func TestResolveOutputMode(t *testing.T) {
 func TestWriterModes(t *testing.T) {
 	envelope := New(KindMovie, "SSIS-589", "9DGB5X")
 
-	// JSONL：每行一个信封。
-	var jsonlOut bytes.Buffer
-	jsonlWriter := NewWriter(&jsonlOut, OutputJSONL)
-	if err := jsonlWriter.Write(envelope); err != nil {
+	// NDJSON：每行一个信封。
+	var ndjsonOut bytes.Buffer
+	ndjsonWriter := NewWriter(&ndjsonOut, OutputNDJSON)
+	if err := ndjsonWriter.Write(envelope); err != nil {
 		t.Fatal(err)
 	}
-	if err := jsonlWriter.Write(envelope.WithData(map[string]any{"n": 1})); err != nil {
+	if err := ndjsonWriter.Write(envelope.WithData(map[string]any{"n": 1})); err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(jsonlOut.String()), "\n")
+	lines := strings.Split(strings.TrimSpace(ndjsonOut.String()), "\n")
 	if len(lines) != 2 {
-		t.Fatalf("jsonl lines = %d", len(lines))
+		t.Fatalf("ndjson lines = %d", len(lines))
 	}
 	var parsed Envelope
 	if err := json.Unmarshal([]byte(lines[0]), &parsed); err != nil || parsed.Schema != Schema {
-		t.Fatalf("jsonl line invalid: %v", err)
+		t.Fatalf("ndjson line invalid: %v", err)
 	}
 
 	// Text：逐行 ref。
@@ -219,7 +214,7 @@ func TestWriterModes(t *testing.T) {
 
 func TestRunBatchOrderErrorsAndExit(t *testing.T) {
 	var out bytes.Buffer
-	writer := NewWriter(&out, OutputJSONL)
+	writer := NewWriter(&out, OutputNDJSON)
 	inputs := []Envelope{
 		New(KindMovie, "a", ""),
 		New(KindMovie, "b", ""),
@@ -258,9 +253,9 @@ func (e testError) Error() string { return string(e) }
 // TestTagKindRoundTrip tags 自产的 tag 信封必须能通过管道解码。
 func TestTagKindRoundTrip(t *testing.T) {
 	line := `{"schema":"javdb.pipeline/v1","kind":"tag","ref":"VR","id":"t-1","data":{"name_zh":"VR"}}`
-	envelope, err := DecodeJSONL(line)
+	envelope, err := DecodeNDJSON(line)
 	if err != nil {
-		t.Fatalf("DecodeJSONL tag envelope: %v", err)
+		t.Fatalf("DecodeNDJSON tag envelope: %v", err)
 	}
 	if envelope.Kind != KindTag || envelope.ID != "t-1" {
 		t.Errorf("tag envelope = %+v", envelope)

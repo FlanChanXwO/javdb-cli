@@ -16,7 +16,7 @@ import (
 
 // NewUse builds the auth use command.
 func NewUse(streams *invocation.Streams) *cobra.Command {
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	runOne := func(userID int64) (string, error) {
 		// 参数校验通过后再按"第一个真实命令创建配置"契约触发首次创建。
 		if err := paths.EnsureDefaultConfigFile(); err != nil {
@@ -68,11 +68,10 @@ func NewUse(streams *invocation.Streams) *cobra.Command {
 		Short: "Set the default account",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }

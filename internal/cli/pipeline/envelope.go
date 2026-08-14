@@ -1,9 +1,8 @@
 // Package pipeline 实现 javdb.pipeline/v1 机器协议核心：typed envelope、
-// 严格 JSONL/文本解码、输入分类与输出模式。
+// 严格 NDJSON/文本解码、输入分类与输出模式。
 //
-// 命令之间通过 JSONL 组合：生产者按固定 schema 输出逐条 envelope，消费者按
-// kind 选择 id 或 ref。TTY 默认人类文本，非 TTY 默认 JSONL；显式 --jsonl /
-// --text / --json 互斥。
+// 命令之间通过 NDJSON 组合：生产者按固定 schema 输出逐条 envelope，消费者按
+// kind 选择 id 或 ref。默认输出文本；显式 --ndjson / --json 互斥。
 package pipeline
 
 import (
@@ -106,8 +105,8 @@ func IsKind(kind Kind) bool {
 	}
 }
 
-// DecodeJSONL 严格解码一条 JSONL 记录；拒绝非对象行、尾随数据与非法信封。
-func DecodeJSONL(line string) (Envelope, error) {
+// DecodeNDJSON 严格解码一条 NDJSON 记录；拒绝非对象行、尾随数据与非法信封。
+func DecodeNDJSON(line string) (Envelope, error) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return Envelope{}, errEmptyLine()
@@ -136,8 +135,8 @@ func DecodeText(line string) (Envelope, error) {
 }
 
 // ParseBatch 把 stdin 内容按分类解码为信封序列：
-//   - 输入分类固定顺序为图片 magic、JSONL、文本（由 Classify 完成）；
-//   - JSONL 模式逐行严格解码，混合/非法行返回带行号的错误；
+//   - 输入分类固定顺序为图片 magic、NDJSON、文本（由 Classify 完成）；
+//   - NDJSON 模式逐行严格解码，混合/非法行返回带行号的错误；
 //   - 文本模式逐行转 ref。
 func ParseBatch(content []byte, kind Kind) ([]Envelope, error) {
 	lines := strings.Split(string(content), "\n")
@@ -149,8 +148,8 @@ func ParseBatch(content []byte, kind Kind) ([]Envelope, error) {
 		var envelope Envelope
 		var err error
 		switch kind {
-		case KindJSONLInput:
-			envelope, err = DecodeJSONL(line)
+		case KindNDJSONInput:
+			envelope, err = DecodeNDJSON(line)
 		default:
 			envelope, err = DecodeText(line)
 			if err == nil {
@@ -165,8 +164,8 @@ func ParseBatch(content []byte, kind Kind) ([]Envelope, error) {
 	return envelopes, nil
 }
 
-// KindJSONLInput 是 ParseBatch 的哨兵：表示逐行 JSONL 严格解码。
-const KindJSONLInput Kind = "jsonl"
+// KindNDJSONInput 是 ParseBatch 的哨兵：表示逐行 NDJSON 严格解码。
+const KindNDJSONInput Kind = "ndjson"
 
 func errEmptyLine() error {
 	return errors.New("empty line")

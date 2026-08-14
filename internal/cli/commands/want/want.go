@@ -18,7 +18,7 @@ import (
 // New builds the want-to-watch movies command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var hasMagnets bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	producer := &pipeline.MovieListProducer{
 		Name: "want",
 		ClientFactory: func() (*javdb.Client, error) {
@@ -42,13 +42,12 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Use:   "want",
 		Short: "List want-to-watch (想看) movies",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

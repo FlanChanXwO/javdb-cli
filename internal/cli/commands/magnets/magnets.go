@@ -19,9 +19,9 @@ import (
 // New builds the magnet listing and best-magnet selection command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var (
-		cnsub, hd, best, isID   bool
-		asJSON, asJSONL, asText bool
-		minSize                 string
+		cnsub, hd, best, isID bool
+		asJSON, asNDJSON      bool
+		minSize               string
 	)
 	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool) (string, []map[string]any, error) {
 		mid := ref
@@ -112,7 +112,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List magnet links for a movie",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&cnsub, "cnsub", false, "Only magnets with Chinese subtitles")
@@ -121,8 +121,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&best, "best", false, "Pick single best magnet (cnsub > hd > size)")
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat NUMBER as internal movie id")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

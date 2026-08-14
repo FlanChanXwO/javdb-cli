@@ -20,7 +20,7 @@ import (
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var thumbnailPath, previewImagePath, previewVideoPath string
 	var isID bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 
 	pathFlags := func() []string {
 		return []string{thumbnailPath, previewImagePath, previewVideoPath}
@@ -182,7 +182,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if strings.TrimSpace(thumbnailPath) == "" && strings.TrimSpace(previewImagePath) == "" && strings.TrimSpace(previewVideoPath) == "" {
 				return fmt.Errorf("set at least one of --thumbnail, --preview-image, or --preview-video")
 			}
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat NUMBER as internal movie id")
@@ -190,8 +190,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().StringVar(&previewImagePath, "preview-image", "", "Save only the first preview image to PATH (supports {number}/{id})")
 	cmd.Flags().StringVar(&previewVideoPath, "preview-video", "", "Save preview HLS video to PATH (supports {number}/{id})")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

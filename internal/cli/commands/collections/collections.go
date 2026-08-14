@@ -18,7 +18,7 @@ import (
 
 // New builds the collection listing command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	runner := &pipeline.BatchRunner{
 		Name:       "collections",
 		LegacyJSON: true,
@@ -53,12 +53,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List a collection: actors|series|codes|makers|directors",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 

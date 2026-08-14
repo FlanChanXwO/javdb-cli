@@ -13,7 +13,7 @@ import (
 // BatchRunner 是只读命令的管道化执行器：
 //   - 单项 + （TTY 文本 或 显式 --json）走 Legacy 既有路径（保持既有 shape
 //     与可选认证/匿名重试行为）。
-//   - 其余情况（多项，或单项显式 --jsonl）走逐项 RunOne：单项失败原位错误
+//   - 其余情况（多项，或单项显式 --ndjson）走逐项 RunOne：单项失败原位错误
 //     信封并继续，最终非零；批量显式 --json 输出信封数组。
 type BatchRunner struct {
 	Name string
@@ -35,8 +35,8 @@ type BatchRunner struct {
 }
 
 // Execute 是命令 RunE 的通用实现。
-func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, jsonl, text, json bool) error {
-	mode, err := ResolveOutputMode(jsonl, text, json, streams.InIsTerminal)
+func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson, json bool) error {
+	mode, err := ResolveOutputMode(ndjson, json)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, jsonl,
 // ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// 单项 TTY 文本或显式 --json（且 Legacy 支持 JSON）且输入是纯文本 ref
-	// （无 kind）时走既有路径，保持 shape 与认证语义；JSONL 信封即使只有一条
+	// （无 kind）时走既有路径，保持 shape 与认证语义；NDJSON 信封即使只有一条
 	// 也必须经过 kind 校验并保留 id 语义，绝不绕过消费者检查。Legacy 不支持
 	// JSON 的命令在显式 --json 下走 consumer 路径输出信封对象。
 	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || (mode == OutputJSON && b.LegacyJSON)) {
@@ -94,8 +94,8 @@ func pipelineConsumerRef(input Envelope) string {
 	return input.Ref
 }
 
-// Producer 是无位置参数命令的非 TTY 输出器：不消费 stdin，非 TTY 时把结果
-// 逐条输出为信封；TTY 走 Text 渲染；显式 --json 走 LegacyJSON。
+// Producer 是无位置参数命令的输出器：不消费 stdin，默认走 Text 渲染；
+// 显式 --ndjson 逐条输出信封，--json 走 LegacyJSON。
 type Producer struct {
 	Name string
 	// Produce 执行并返回输出信封序列（空切片表示无结果）。
@@ -107,8 +107,8 @@ type Producer struct {
 }
 
 // Execute 是 producer 命令 RunE 的通用实现。
-func (p *Producer) Execute(streams *invocation.Streams, jsonl, text, json bool) error {
-	mode, err := ResolveOutputMode(jsonl, text, json, streams.InIsTerminal)
+func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error {
+	mode, err := ResolveOutputMode(ndjson, json)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (p *Producer) Execute(streams *invocation.Streams, jsonl, text, json bool) 
 	case OutputText:
 		return p.RenderText(streams.Out, envelopes)
 	default:
-		writer := NewWriter(streams.Out, OutputJSONL)
+		writer := NewWriter(streams.Out, OutputNDJSON)
 		for _, envelope := range envelopes {
 			if err := writer.Write(envelope); err != nil {
 				return err

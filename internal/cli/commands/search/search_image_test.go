@@ -138,7 +138,7 @@ func TestSearchImageExplicitFlagAndJSON(t *testing.T) {
 	}
 }
 
-func TestSearchImageFromStdinMagic(t *testing.T) {
+func TestSearchImageFromStdinMagicDefaultsToText(t *testing.T) {
 	provider, javdbServer := imageSearchFixture(t)
 	defer provider.Close()
 	defer javdbServer.Close()
@@ -150,12 +150,15 @@ func TestSearchImageFromStdinMagic(t *testing.T) {
 		t.Fatal("partial failure must exit non-zero")
 	}
 	out := streams.Out.(*bytes.Buffer).String()
-	// 非 TTY 管道默认 JSONL 信封；成功项 movie 信封、失败项 error 信封。
-	if !strings.Contains(out, `"kind":"movie"`) || !strings.Contains(out, "SSIS-589") {
-		t.Errorf("stdin image JSONL output lacks movie envelope:\n%s", out)
+	// 管道只负责输入分类，未显式指定结构化输出时仍使用纯文本。
+	if !strings.Contains(out, "SSIS-589") || !strings.Contains(out, "95.2%") {
+		t.Errorf("stdin image text output lacks candidate:\n%s", out)
 	}
-	if !strings.Contains(out, `"kind":"error"`) {
-		t.Errorf("stdin image JSONL output lacks error envelope:\n%s", out)
+	if !strings.Contains(out, "GHOST-999") || !strings.Contains(out, "失败") {
+		t.Errorf("stdin image text output lacks failure:\n%s", out)
+	}
+	if strings.Contains(out, `"kind":`) {
+		t.Errorf("stdin image unexpectedly emitted NDJSON without --ndjson:\n%s", out)
 	}
 }
 

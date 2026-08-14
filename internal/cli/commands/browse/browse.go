@@ -21,7 +21,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		page, limit                    int
 		tagRefs, mainFlags             []string
 		hasMagnets                     bool
-		asJSON, asJSONL, asText        bool
+		asJSON, asNDJSON               bool
 	)
 	fetch := func(c *javdb.Client, ctx context.Context) ([]map[string]any, error) {
 		var tagIDs []string
@@ -62,7 +62,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Use:   "browse",
 		Short: "Browse movies by content tags / year / month",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
@@ -76,7 +76,6 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().IntVar(&limit, "limit", 20, "Page size")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop magnets_count==0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }

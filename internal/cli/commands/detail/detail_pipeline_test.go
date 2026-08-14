@@ -12,9 +12,9 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
 
-// TestDetailJSONLStdinBatch 从 stdin 消费 movie 信封批，逐项解析并输出详情
+// TestDetailNDJSONStdinBatch 从 stdin 消费 movie 信封批，逐项解析并输出详情
 // 信封；不兼容 kind 原位错误。
-func TestDetailJSONLStdinBatch(t *testing.T) {
+func TestDetailNDJSONStdinBatch(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
@@ -42,7 +42,7 @@ func TestDetailJSONLStdinBatch(t *testing.T) {
 `
 	streams := invocation.NewStreams(strings.NewReader(stdin), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--ndjson"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "1 of 2 items failed") {
 		t.Fatalf("expected batch failure, got %v", err)

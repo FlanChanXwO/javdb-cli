@@ -18,7 +18,7 @@ import (
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var zone string
 	var refresh bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	producer := &pipeline.Producer{
 		Name: "tags",
 		Produce: func(ctx context.Context) ([]pipeline.Envelope, error) {
@@ -96,13 +96,12 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Use:   "tags",
 		Short: "List content-tag taxonomy (id + EN + 中文)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
 	cmd.Flags().BoolVar(&refresh, "refresh", false, "Re-fetch from API and rewrite local JSON")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }

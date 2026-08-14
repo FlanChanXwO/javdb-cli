@@ -30,8 +30,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		filterBy, typ string
 		hasMagnets    bool
 		asJSON        bool
-		asJSONL       bool
-		asText        bool
+		asNDJSON      bool
 		asImage       bool
 		source        string
 		noCache       bool
@@ -41,7 +40,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Search movies (or other dimensions with --type)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := pipeline.ResolveOutputMode(asJSONL, asText, asJSON, streams.InIsTerminal)
+			mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON)
 			if err != nil {
 				return err
 			}
@@ -85,8 +84,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().StringVar(&typ, "type", "", "movie|code|series|actor|maker|director|list")
 	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, "Drop movie rows with magnets_count == 0")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	cmd.Flags().BoolVar(&asImage, "image", false, "Treat the argument as an image path or HTTP(S) URL")
 	cmd.Flags().StringVar(&source, "source", "", "Reverse-search source (default: reverse_search.default_source)")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Bypass the reverse-search response cache")
@@ -95,7 +93,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 
 // classifySearchInput 一次性分类输入：返回图片模式标志与批处理输入。
 //   - --image 强制图片；参数是现有普通文件或 HTTP(S) URL 自动图片。
-//   - 无参数非 TTY stdin 按固定顺序分类（图片 magic → JSONL → 文本）。
+//   - 无参数非 TTY stdin 按固定顺序分类（图片 magic → NDJSON → 文本）。
 //   - 位置参数与非空 stdin 同时存在是歧义错误，绝不静默丢数据。
 func classifySearchInput(arg string, forced bool, reader *bufio.Reader, streams *invocation.Streams) (bool, []pipeline.Envelope, error) {
 	stdinHasContent := false
@@ -125,8 +123,8 @@ func classifySearchInput(arg string, forced bool, reader *bufio.Reader, streams 
 	switch classification {
 	case pipeline.ClassificationImage:
 		return true, nil, nil
-	case pipeline.ClassificationJSONL:
-		inputs, err := pipeline.ParseBatch(content, pipeline.KindJSONLInput)
+	case pipeline.ClassificationNDJSON:
+		inputs, err := pipeline.ParseBatch(content, pipeline.KindNDJSONInput)
 		return false, inputs, err
 	default:
 		inputs, err := pipeline.ParseBatch(content, pipeline.KindMovie)
@@ -250,8 +248,8 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 		}); err != nil {
 			return err
 		}
-	case pipeline.OutputJSONL:
-		writer := pipeline.NewWriter(streams.Out, pipeline.OutputJSONL)
+	case pipeline.OutputNDJSON:
+		writer := pipeline.NewWriter(streams.Out, pipeline.OutputNDJSON)
 		for _, match := range result.Matches {
 			if match.Error != nil {
 				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMovie, match.Candidate.VideoCode, match.MovieID), "search", "link", match.Error.Code, match.Error.Message)); err != nil {

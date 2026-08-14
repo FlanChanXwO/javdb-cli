@@ -28,9 +28,9 @@ terms and the laws that apply to you.
   filmographies, magnets, rankings, TOP250, collections, authenticated
   watch/want data, and reverse image search with strict number linking
   (`javdb search IMAGE`, `javdb cache reverse-search`).
-- **Composable pipelines** — most commands accept non-TTY stdin batches and
-  speak `javdb.pipeline/v1` JSONL envelopes, so command output can feed the
-  next command (`javdb search --jsonl | javdb detail`).
+- **Composable pipelines** — most commands accept non-TTY stdin batches;
+  explicit `--ndjson` emits `javdb.pipeline/v1` envelopes so command output can
+  feed the next command (`javdb search --ndjson | javdb detail`).
 - **API client, not a scraper** — commands use the App JSON API with explicit
   host and proxy selection; failures remain visible rather than becoming
   fabricated empty results.

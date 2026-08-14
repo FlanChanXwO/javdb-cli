@@ -121,9 +121,9 @@ javdb unmark SSIS-589
    "无结果"。
 2. 反搜缓存：默认启用（30 天，按 source + 原图 SHA-256）。`javdb cache reverse-search
    [--source NAME] [--clear]` 只清理反搜缓存；`--no-cache` 按次绕过。
-3. 管道：多数命令接受非 TTY stdin 批处理并默认输出 `javdb.pipeline/v1` JSONL 信封
-   （`--jsonl`/`--text`/`--json` 互斥）。例如
-   `javdb search SSIS --jsonl | javdb detail`。位置参数与非空 stdin 同时出现是歧义错误。
+3. 管道：多数命令接受非 TTY stdin 批处理并默认输出文本；显式 `--ndjson` 才输出
+   `javdb.pipeline/v1` NDJSON 信封（`--ndjson`/`--json` 互斥）。例如
+   `javdb search SSIS --ndjson | javdb detail`。位置参数与非空 stdin 同时出现是歧义错误。
    `auth login`、`config set` 与密码提示不使用管道 stdin。
 
 ## 路由

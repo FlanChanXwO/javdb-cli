@@ -16,7 +16,7 @@ import (
 // New builds the unmark command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var isID bool
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool) (string, bool, error) {
 		mid := ref
 		var err error
@@ -67,12 +67,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Remove watched/want mark for a movie",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.Execute(streams, args, asJSONL, asText, asJSON)
+			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().BoolVarP(&isID, "id", "i", false, "Treat NUMBER as internal movie id")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }

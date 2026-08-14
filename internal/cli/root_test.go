@@ -133,13 +133,12 @@ Flags:
   -h, --help               help for search
       --image              Treat the argument as an image path or HTTP(S) URL
       --json               Machine-readable JSON
-      --jsonl              Pipeline JSONL envelopes
       --limit int          Page size (0 = server default)
+      --ndjson             Pipeline NDJSON envelopes
       --no-cache           Bypass the reverse-search response cache
       --page int           Page number (default 1)
       --sort string        relevance|release|score|update|hit
       --source string      Reverse-search source (default: reverse_search.default_source)
-      --text               Plain text lines (default for TTY)
       --type string        movie|code|series|actor|maker|director|list
       --zone string        censored|uncensored|western|fc2|all (default "censored")
 
@@ -156,9 +155,8 @@ Flags:
   -h, --help      help for detail
   -i, --id        Treat argument as internal movie id
       --json      Machine-readable JSON
-      --jsonl     Pipeline JSONL envelopes
       --magnets   Also list magnet links
-      --text      Plain text lines (default for TTY)
+      --ndjson    Pipeline NDJSON envelopes
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -176,9 +174,8 @@ Flags:
   -h, --help              help for magnets
   -i, --id                Treat NUMBER as internal movie id
       --json              Machine-readable JSON
-      --jsonl             Pipeline JSONL envelopes
       --min-size string   Min size e.g. 2000, 4GB, 500MB
-      --text              Plain text lines (default for TTY)
+      --ndjson            Pipeline NDJSON envelopes
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -194,9 +191,8 @@ Flags:
   -h, --help             help for mark
   -i, --id               Treat NUMBER as internal movie id
       --json             Machine-readable JSON
-      --jsonl            Pipeline JSONL envelopes
+      --ndjson           Pipeline NDJSON envelopes
       --score int        Optional score
-      --text             Plain text lines (default for TTY)
       --want             Mark as 想看
       --watched          Mark as 看過
 
@@ -218,11 +214,10 @@ Available Commands:
 Flags:
   -h, --help             help for lists
       --json             JSON output
-      --jsonl            Pipeline JSONL envelopes
       --limit int        Page size (default 20)
+      --ndjson           Pipeline NDJSON envelopes
       --page int         Page (default 1)
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
-      --text             Plain text lines (default for TTY)
 
 Global Flags:
       --host string    auto|mirror|main|URL (default: config or auto)
@@ -412,12 +407,31 @@ func TestConfigSetPersistsHostValue(t *testing.T) {
 	}
 	out.Reset()
 	errb.Reset()
-	code = Run([]string{"config", "get", "host", "--text"}, strings.NewReader(""), &out, &errb)
+	code = Run([]string{"config", "get", "host"}, strings.NewReader(""), &out, &errb)
 	if code != 0 {
 		t.Fatalf("config get exit=%d stderr=%q", code, errb.String())
 	}
 	if got := strings.TrimSpace(out.String()); got != "main" {
 		t.Fatalf("host after set = %q, want %q", got, "main")
+	}
+}
+
+// TestOutputFlagsExposeOnlyJSONAndNDJSON 锁定纯文本只作为隐式默认，逐行
+// JSON 使用 NDJSON 命名。
+func TestOutputFlagsExposeOnlyJSONAndNDJSON(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := Run([]string{"search", "--help"}, strings.NewReader(""), &out, &errb)
+	if code != 0 {
+		t.Fatalf("search help exit=%d stderr=%q", code, errb.String())
+	}
+	if strings.Contains(out.String(), "--text") {
+		t.Fatalf("search help unexpectedly exposes --text:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "--jsonl") {
+		t.Fatalf("search help unexpectedly exposes --jsonl:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "--ndjson") {
+		t.Fatalf("search help lacks --ndjson:\n%s", out.String())
 	}
 }
 

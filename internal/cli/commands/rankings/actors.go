@@ -17,7 +17,7 @@ import (
 // NewActors builds the actor rankings command.
 func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var period string
-	var asJSON, asJSONL, asText bool
+	var asJSON, asNDJSON bool
 	fetch := func(ctx context.Context, c *javdb.Client) ([]map[string]any, error) {
 		res, err := c.RankingsActors(ctx, period)
 		if err != nil {
@@ -50,13 +50,12 @@ func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *co
 		Use:   "actors",
 		Short: "Actor rankings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return producer.Execute(streams, asJSONL, asText, asJSON)
+			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
-	cmd.Flags().BoolVar(&asJSONL, "jsonl", false, "Pipeline JSONL envelopes")
-	cmd.Flags().BoolVar(&asText, "text", false, "Plain text lines (default for TTY)")
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
 }
 
