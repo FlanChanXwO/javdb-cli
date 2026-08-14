@@ -168,8 +168,10 @@ func ResolveReverseSearch(s Settings, getenv func(string) string) (ResolvedRever
 		if len(source.Headers) > 0 {
 			expanded.Headers = make(map[string]string, len(source.Headers))
 			for name, value := range source.Headers {
-				if isSensitiveHeaderName(name) && !envReferencePattern.MatchString(value) {
-					return ResolvedReverseSearch{}, fmt.Errorf("reverse_search source %q header %q must reference ${ENV:NAME} instead of storing a plaintext secret", source.Name, name)
+				if isSensitiveHeaderName(name) {
+					if err := validateSensitiveHeaderValue(value); err != nil {
+						return ResolvedReverseSearch{}, fmt.Errorf("reverse_search source %q header %q: %w", source.Name, name, err)
+					}
 				}
 				expandedValue, err := ExpandEnvValue(value, getenv)
 				if err != nil {
@@ -196,6 +198,20 @@ var sensitiveHeaderNames = map[string]bool{
 	"x-auth-token":        true,
 	"auth-token":          true,
 	"token":               true,
+	"cookie":              true,
+}
+
+// sensitiveHeaderValuePattern 限制敏感 header 值为：可选单个词前缀（如
+// Bearer/Basic/Token）+ 一个 ${ENV:NAME} 引用，且不得有任何其它静态文本。
+// 这堵住 "Bearer plaintext-secret" 与 "${ENV:DUMMY} plaintext-secret"
+// 这类把明文 secret 与引用混写的绕过。
+var sensitiveHeaderValuePattern = regexp.MustCompile(`^[A-Za-z0-9-]+ \$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}$|^\$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}$`)
+
+func validateSensitiveHeaderValue(value string) error {
+	if !sensitiveHeaderValuePattern.MatchString(strings.TrimSpace(value)) {
+		return fmt.Errorf("sensitive header must be a single ${ENV:NAME} reference (optionally with one scheme prefix like Bearer), got %q", value)
+	}
+	return nil
 }
 
 func isSensitiveHeaderName(name string) bool {

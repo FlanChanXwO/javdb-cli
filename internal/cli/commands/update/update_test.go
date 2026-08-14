@@ -43,6 +43,7 @@ func TestUpdateHelpShowsExpectedText(t *testing.T) {
 }
 
 func TestResolveProxyUsesConfigPriority(t *testing.T) {
+	clearProxyEnv(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -85,5 +86,14 @@ func TestNewProductionCoordinatorOffline(t *testing.T) {
 	}
 	if coordinator == nil {
 		t.Fatal("newProductionCoordinator returned nil")
+	}
+}
+
+// clearProxyEnv 清除宿主代理环境变量，避免本机 HTTPS_PROXY/ALL_PROXY 让
+// go test 在不干净环境下稳定失败。
+func clearProxyEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"} {
+		t.Setenv(key, "")
 	}
 }

@@ -84,6 +84,7 @@ func TestResolveBlankEffectiveHostUsesAuto(t *testing.T) {
 // 来源的空白规范为空串（与 validator 的"空即合法"一致），显式 flag 空白则直接报错，避免
 // 静默覆盖继承代理并直连绕过网络策略。
 func TestResolveBlankProxyHandling(t *testing.T) {
+	clearProxyEnv(t)
 	t.Setenv("JAVDB_HOST", HostMirror)
 
 	t.Run("file", func(t *testing.T) {
@@ -259,5 +260,12 @@ func TestResolveValidFlagOverridesInvalidLowerPrecedenceHosts(t *testing.T) {
 	}
 	if rt.Host != HostMain || rt.BaseURL != HostURLs[HostMain] {
 		t.Fatalf("Resolve() host/base = %q/%q, want %q/%q", rt.Host, rt.BaseURL, HostMain, HostURLs[HostMain])
+	}
+}
+
+func clearProxyEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"} {
+		t.Setenv(key, "")
 	}
 }

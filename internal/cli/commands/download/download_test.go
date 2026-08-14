@@ -114,3 +114,39 @@ func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 		t.Fatalf("expected existing-target error, got %v", err)
 	}
 }
+
+// TestDownloadPipelineIDDoesNotResolveAsNumber --id 在管道/非 TTY 路径也不得
+// 调用番号搜索（resolver 无精确匹配时会回退首项，存在下载错影片风险）。
+func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	var searchCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/v2/search":
+			searchCalls++
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{{"number": "SSIS-589", "id": "WRONG-ID"}},
+			}})
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/CORRECT-ID"):
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movie": map[string]any{"number": "SSIS-589", "id": "CORRECT-ID", "thumb_url": "https://example.test/t.jpg"},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	streams := invocation.NewStreams(strings.NewReader("CORRECT-ID\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--id", "--thumbnail", dir + "/{id}.jpg"})
+	// 下载会失败（detail 无媒体字段时），但搜索绝不能发生。
+	if err := cmd.Execute(); err == nil {
+		// 若意外成功也可；核心断言是 search 未被调用。
+	}
+	if searchCalls != 0 {
+		t.Fatalf("--id pipeline path called ResolveMovieID %d time(s)", searchCalls)
+	}
+}

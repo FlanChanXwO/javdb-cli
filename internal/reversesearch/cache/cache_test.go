@@ -238,3 +238,17 @@ func TestNullResponseEntryIsExplicitError(t *testing.T) {
 		t.Fatal("Put must reject a nil response")
 	}
 }
+
+// TestMissingWrittenAtIsExplicitError 缺少 written_at 的合法 JSON 条目必须
+// 显式报错，不得被静默当作过期 miss。
+func TestMissingWrittenAtIsExplicitError(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "builtin.json")
+	if err := os.WriteFile(file, []byte(`{"k":{"response":{"source":"builtin"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := New(dir, 0)
+	if _, ok, err := store.Get("builtin", "k"); err == nil || ok {
+		t.Fatalf("entry without written_at must be an explicit error: ok=%v err=%v", ok, err)
+	}
+}

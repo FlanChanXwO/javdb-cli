@@ -39,9 +39,15 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		movieID := input.ID
 		var err error
 		if movieID == "" {
-			movieID, err = c.ResolveMovieID(ctx, number)
-			if err != nil {
-				return expandedPaths{}, "", err
+			if isID {
+				// --id：ref 本身就是内部 movie id，绝不当作番号搜索
+				// （ResolveMovieID 会在无精确匹配时回退首项，可能下载错影片）。
+				movieID = number
+			} else {
+				movieID, err = c.ResolveMovieID(ctx, number)
+				if err != nil {
+					return expandedPaths{}, "", err
+				}
 			}
 		}
 		return expandedPaths{

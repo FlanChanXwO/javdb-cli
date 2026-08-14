@@ -321,3 +321,42 @@ func TestResolveReverseSearchRejectsPlaintextSensitiveHeaders(t *testing.T) {
 		t.Fatalf("static non-sensitive header rejected: %v", err)
 	}
 }
+
+// TestSensitiveHeaderValueFormat 敏感 header 值必须恰好是"可选前缀 + 单个
+// ${ENV:}"，混写明文 secret 的绕过一律拒绝；Cookie 也在强制名单内。
+func TestSensitiveHeaderValueFormat(t *testing.T) {
+	build := func(headers map[string]string) Settings {
+		settings := Defaults()
+		settings.ReverseSearch = ReverseSearchSettings{
+			DefaultSource: "builtin",
+			Sources: []ReverseSearchSource{{
+				Name: "custom", URL: "https://example.test/search", Headers: headers,
+			}},
+		}
+		return settings
+	}
+	allowed := []map[string]string{
+		{"Authorization": "Bearer ${ENV:TOKEN}"},
+		{"Authorization": "${ENV:TOKEN}"},
+		{"Cookie": "${ENV:JAVDB_COOKIE}"},
+		{"X-Api-Key": "Token ${ENV:KEY}"},
+		{"X-Static": "plain-static-is-fine-for-non-sensitive"},
+	}
+	for _, headers := range allowed {
+		if _, err := ResolveReverseSearch(build(headers), func(string) string { return "v" }); err != nil {
+			t.Errorf("allowed headers rejected: %v (%v)", headers, err)
+		}
+	}
+	rejected := []map[string]string{
+		{"Authorization": "Bearer plaintext-secret"},
+		{"Authorization": "${ENV:DUMMY} plaintext-secret"},
+		{"Authorization": "${ENV:A}${ENV:B}"},
+		{"Authorization": "Bearer ${ENV:A} extra"},
+		{"Cookie": "session=plaintext"},
+	}
+	for _, headers := range rejected {
+		if _, err := ResolveReverseSearch(build(headers), func(string) string { return "v" }); err == nil {
+			t.Errorf("plaintext-sensitive headers accepted: %v", headers)
+		}
+	}
+}

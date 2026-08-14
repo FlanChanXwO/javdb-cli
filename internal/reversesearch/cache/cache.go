@@ -83,10 +83,14 @@ func (s *Store) Get(source, key string) (*provider.Response, bool, error) {
 	if !exists {
 		return nil, false, nil
 	}
-	// response 为 null 的条目是损坏缓存：显式报错，绝不当作命中（命中后
-	// 下游解引用会 panic）。
+	// response 为 null 或 written_at 缺失（零时间）的条目是损坏缓存：
+	// 显式报错，绝不当作命中（命中后下游解引用会 panic；零时间被静默当
+	// 过期删除会掩盖损坏）。
 	if item.Response == nil {
 		return nil, false, fmt.Errorf("reverse search cache %q contains a null response", file)
+	}
+	if item.WrittenAt.IsZero() {
+		return nil, false, fmt.Errorf("reverse search cache %q contains an entry without written_at", file)
 	}
 	if time.Since(item.WrittenAt) > s.ttl {
 		delete(entries, key)
