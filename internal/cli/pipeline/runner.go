@@ -36,7 +36,7 @@ type BatchRunner struct {
 
 // Execute 是命令 RunE 的通用实现。
 func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson, json bool) error {
-	mode, err := ResolveOutputMode(ndjson, json)
+	mode, err := ResolveOutputMode(ndjson, json, streams.OutIsTerminal)
 	if err != nil {
 		return err
 	}
@@ -57,11 +57,12 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson
 
 // ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
-	// 单项 TTY 文本或显式 --json（且 Legacy 支持 JSON）且输入是纯文本 ref
-	// （无 kind）时走既有路径，保持 shape 与认证语义；NDJSON 信封即使只有一条
-	// 也必须经过 kind 校验并保留 id 语义，绝不绕过消费者检查。Legacy 不支持
-	// JSON 的命令在显式 --json 下走 consumer 路径输出信封对象。
-	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || (mode == OutputJSON && b.LegacyJSON)) {
+	// 单项 TTY 人类文本/非 TTY 记录文本或显式 --json（且 Legacy 支持 JSON）
+	// 且输入是纯文本 ref（无 kind）时走既有路径，保持 shape 与认证语义；
+	// NDJSON 信封即使只有一条也必须经过 kind 校验并保留 id 语义，绝不绕过
+	// 消费者检查。Legacy 不支持 JSON 的命令在显式 --json 下走 consumer 路径
+	// 输出信封对象。
+	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || mode == OutputHuman || (mode == OutputJSON && b.LegacyJSON)) {
 		return b.Legacy([]string{pipelineConsumerRef(inputs[0])})
 	}
 	if b.Preflight != nil {
@@ -108,7 +109,7 @@ type Producer struct {
 
 // Execute 是 producer 命令 RunE 的通用实现。
 func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error {
-	mode, err := ResolveOutputMode(ndjson, json)
+	mode, err := ResolveOutputMode(ndjson, json, streams.OutIsTerminal)
 	if err != nil {
 		return err
 	}
@@ -119,7 +120,7 @@ func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error
 	switch mode {
 	case OutputJSON:
 		return p.LegacyJSON(streams.Out)
-	case OutputText:
+	case OutputText, OutputHuman:
 		return p.RenderText(streams.Out, envelopes)
 	default:
 		writer := NewWriter(streams.Out, OutputNDJSON)

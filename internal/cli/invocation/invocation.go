@@ -21,6 +21,11 @@ type Streams struct {
 	// InIsTerminal 标记 stdin 是否为交互终端；由根命令入口探测，测试可显式设置。
 	// 非 TTY stdin 是管道/批处理输入的信号，命令据此选择输入分类。
 	InIsTerminal bool
+
+	// OutIsTerminal 标记 stdout 是否为交互终端；由根命令入口探测，测试可显式
+	// 设置。非 TTY stdout 时默认输出稳定记录流（一行一个 ref/URI），TTY 时
+	// 使用人类文本渲染。显式 --json/--ndjson 不受此标记影响。
+	OutIsTerminal bool
 }
 
 // NewStreams 构造 Streams。

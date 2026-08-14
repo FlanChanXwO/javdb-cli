@@ -15,7 +15,9 @@ type OutputMode int
 const (
 	// OutputAuto 表示尚未解析显式输出 flag。
 	OutputAuto OutputMode = iota
-	// OutputText 强制逐行 ref 文本。
+	// OutputHuman 是 TTY 默认：人类可读文本，由命令的 RenderText 渲染。
+	OutputHuman
+	// OutputText 是非 TTY 默认：稳定记录流，一行一个 ref/URI，便于管道消费。
 	OutputText
 	// OutputNDJSON 强制逐条信封 NDJSON。
 	OutputNDJSON
@@ -23,8 +25,10 @@ const (
 	OutputJSON
 )
 
-// ResolveOutputMode 校验互斥并解析输出模式；未显式指定时保持人类文本。
-func ResolveOutputMode(flagNDJSON, flagJSON bool) (OutputMode, error) {
+// ResolveOutputMode 校验互斥并解析输出模式：显式 --ndjson/--json 优先且互斥；
+// 未显式指定时，TTY stdout 使用人类文本（OutputHuman），非 TTY stdout 使用
+// 稳定记录流（OutputText）。测试可显式设置 OutIsTerminal 来模拟两种场景。
+func ResolveOutputMode(flagNDJSON, flagJSON bool, outIsTerminal bool) (OutputMode, error) {
 	if flagNDJSON && flagJSON {
 		return OutputAuto, errors.New("--ndjson and --json are mutually exclusive")
 	}
@@ -33,6 +37,8 @@ func ResolveOutputMode(flagNDJSON, flagJSON bool) (OutputMode, error) {
 		return OutputNDJSON, nil
 	case flagJSON:
 		return OutputJSON, nil
+	case outIsTerminal:
+		return OutputHuman, nil
 	default:
 		return OutputText, nil
 	}
@@ -64,7 +70,9 @@ func (w *Writer) Mode() OutputMode {
 	return w.mode
 }
 
-// Write 写出一个信封；OutputJSON 模式先缓冲。
+// Write 写出一个信封；OutputJSON 模式先缓冲。OutputHuman 在 Writer 层面
+// 退化为 OutputText（逐行 ref）；命令级别的人类渲染由 Consumer.RenderText
+// 或 Producer.RenderText 负责，在进入 Writer 前已完成分流。
 func (w *Writer) Write(envelope Envelope) error {
 	if w == nil {
 		return nil
@@ -72,7 +80,7 @@ func (w *Writer) Write(envelope Envelope) error {
 	switch w.mode {
 	case OutputNDJSON:
 		return w.ndjson.Encode(envelope)
-	case OutputText:
+	case OutputText, OutputHuman:
 		ref := envelope.Ref
 		if ref == "" {
 			ref = envelope.ID

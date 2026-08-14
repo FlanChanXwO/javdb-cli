@@ -33,7 +33,7 @@ type ListProducer struct {
 
 // Execute 是 producer 命令 RunE 的通用实现。
 func (p *ListProducer) Execute(streams *invocation.Streams, ndjson, json bool) error {
-	mode, err := ResolveOutputMode(ndjson, json)
+	mode, err := ResolveOutputMode(ndjson, json, streams.OutIsTerminal)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func (p *ListProducer) Execute(streams *invocation.Streams, ndjson, json bool) e
 			return err
 		}
 		return jsonxWrite(streams.Out, payload)
-	case OutputText:
+	case OutputText, OutputHuman:
 		if p.ErrNote != nil {
 			p.ErrNote(streams.Err, items)
 		}

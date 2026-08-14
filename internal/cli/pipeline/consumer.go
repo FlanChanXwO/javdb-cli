@@ -32,7 +32,7 @@ type Consumer struct {
 
 // Execute 是命令 RunE 的通用实现（不消费图片；需要图片输入的调用方自行先行处理）。
 func (c *Consumer) Execute(streams *invocation.Streams, args []string, ndjson, json bool) error {
-	mode, err := ResolveOutputMode(ndjson, json)
+	mode, err := ResolveOutputMode(ndjson, json, streams.OutIsTerminal)
 	if err != nil {
 		return err
 	}

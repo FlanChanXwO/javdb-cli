@@ -40,7 +40,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Search movies (or other dimensions with --type)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON)
+			mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
 			if err != nil {
 				return err
 			}

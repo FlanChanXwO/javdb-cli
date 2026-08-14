@@ -18,6 +18,7 @@ func testStreams(stdin string, terminal bool) (*invocation.Streams, *bytes.Buffe
 	out := &bytes.Buffer{}
 	streams := invocation.NewStreams(strings.NewReader(stdin), out, &bytes.Buffer{})
 	streams.InIsTerminal = terminal
+	streams.OutIsTerminal = terminal
 	return streams, out
 }
 
@@ -233,5 +234,31 @@ func TestConsumerSingleNDJSONEnvelopeStillChecksKind(t *testing.T) {
 	// 默认文本输出使用人类稳定引用（ref）；消费侧（RunOne）保留 id 语义。
 	if strings.TrimSpace(out2.String()) != "SSIS-589" {
 		t.Errorf("text output = %q, want ref SSIS-589", out2.String())
+	}
+}
+
+// TestBatchRunnerTTYStdoutRoutesToLegacy TTY stdout 默认 OutputHuman，单项
+// 纯文本 ref 输入走 legacy 人类文本路径而非 Writer 逐行 ref。
+func TestBatchRunnerTTYStdoutRoutesToLegacy(t *testing.T) {
+	streams, out := testStreams("", true)
+	legacyCalled := false
+	runner := &BatchRunner{
+		Name:  "detail",
+		Kinds: []Kind{KindMovie},
+		RunOne: func(_ *javdb.Client, _ context.Context, input Envelope) (Envelope, error) {
+			return New(KindMovie, input.Ref, "id"), nil
+		},
+		Legacy: func(args []string) error {
+			legacyCalled = true
+			_, err := fmt.Fprintln(out, "human-readable")
+			return err
+		},
+	}
+	// 单项纯文本 ref + TTY stdout → OutputHuman → legacy 路径。
+	if err := runner.ExecuteWithInputs(streams, []Envelope{New("", "SSIS-589", "")}, OutputHuman); err != nil {
+		t.Fatalf("ExecuteWithInputs: %v", err)
+	}
+	if !legacyCalled {
+		t.Error("TTY stdout must route single text input through the legacy human path")
 	}
 }

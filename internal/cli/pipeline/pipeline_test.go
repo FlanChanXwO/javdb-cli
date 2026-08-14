@@ -124,19 +124,23 @@ func TestClassifyImageNDJSONText(t *testing.T) {
 
 func TestResolveOutputMode(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		ndjson    bool
-		json      bool
-		want      OutputMode
-		wantError bool
+		name          string
+		ndjson        bool
+		json          bool
+		outIsTerminal bool
+		want          OutputMode
+		wantError     bool
 	}{
-		{name: "default", want: OutputText},
-		{name: "explicit ndjson", ndjson: true, want: OutputNDJSON},
-		{name: "explicit json", json: true, want: OutputJSON},
+		{name: "default tty", outIsTerminal: true, want: OutputHuman},
+		{name: "default non-tty", outIsTerminal: false, want: OutputText},
+		{name: "explicit ndjson tty", ndjson: true, outIsTerminal: true, want: OutputNDJSON},
+		{name: "explicit ndjson non-tty", ndjson: true, outIsTerminal: false, want: OutputNDJSON},
+		{name: "explicit json tty", json: true, outIsTerminal: true, want: OutputJSON},
+		{name: "explicit json non-tty", json: true, outIsTerminal: false, want: OutputJSON},
 		{name: "ndjson and json", ndjson: true, json: true, wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mode, err := ResolveOutputMode(tc.ndjson, tc.json)
+			mode, err := ResolveOutputMode(tc.ndjson, tc.json, tc.outIsTerminal)
 			if tc.wantError {
 				if err == nil {
 					t.Fatal("expected mutual exclusion error")
@@ -147,6 +151,20 @@ func TestResolveOutputMode(t *testing.T) {
 				t.Fatalf("mode = %v err = %v, want %v", mode, err, tc.want)
 			}
 		})
+	}
+}
+
+// TestWriterHumanFallsBackToText Writer 在 OutputHuman 模式下退化为逐行 ref，
+// 与 OutputText 行为一致；命令级人类渲染在进入 Writer 前已分流。
+func TestWriterHumanFallsBackToText(t *testing.T) {
+	envelope := New(KindMovie, "SSIS-589", "9DGB5X")
+	var out bytes.Buffer
+	writer := NewWriter(&out, OutputHuman)
+	if err := writer.Write(envelope); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out.String()) != "SSIS-589" {
+		t.Errorf("human fallback output = %q, want SSIS-589", out.String())
 	}
 }
 
