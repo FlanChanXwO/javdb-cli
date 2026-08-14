@@ -177,6 +177,9 @@ func PickBestMagnet(items []map[string]any) map[string]any {
 // MagnetURI 从磁力记录构建 magnet URI。
 func MagnetURI(item map[string]any) string { return magnets.MagnetURI(item) }
 
+// MagnetBetter 报告磁力 a 是否优于 b（cnsub > hd > size > files_count）。
+func MagnetBetter(a, b map[string]any) bool { return magnets.MagnetBetter(a, b) }
+
 // LoadOrCreateDeviceUUID 读取或创建稳定 device UUID。
 func LoadOrCreateDeviceUUID(path string) (string, error) {
 	return transport.LoadOrCreateDeviceUUID(path)
