@@ -69,6 +69,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
 					return runSearchOne(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
 				},
+				RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
+					return runSearchMany(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
+				},
 				Legacy: func(args []string) error {
 					return runTextSearch(options, streams, args[0], page, limit, zone, sort, filterBy, typ, hasMagnets, asJSON)
 				},
@@ -182,7 +185,44 @@ func runSearchOne(c *javdb.Client, ctx context.Context, input pipeline.Envelope,
 	return envelope, nil
 }
 
-// runTextSearch 保持既有文本搜索行为。
+// runSearchMany 执行单个关键词搜索并返回多个信封（fan-out）：
+//   - movie 类型：每部影片一个 KindMovie 信封，ref 为番号，id 为内部 ID。
+//   - 其他 --type：回退为单信封（与 runSearchOne 相同）。
+func runSearchMany(c *javdb.Client, ctx context.Context, input pipeline.Envelope, page, limit int, zone, sort, filterBy, typ string, hasMagnets bool) ([]pipeline.Envelope, error) {
+	keyword := pipeline.ConsumerRef(input)
+	opt := javdb.SearchOptions{
+		Page:     page,
+		Limit:    limit,
+		Zone:     zone,
+		Sort:     sort,
+		FilterBy: filterBy,
+		Type:     typ,
+	}
+	res, err := c.Search(ctx, keyword, opt)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
+	}
+	if typ == "" || typ == "movie" {
+		movies := res.Movies()
+		if hasMagnets {
+			movies = result.FilterMoviesWithMagnets(movies)
+		}
+		envelopes := make([]pipeline.Envelope, 0, len(movies))
+		for _, m := range movies {
+			ref := fmt.Sprint(m["number"])
+			id := fmt.Sprint(m["id"])
+			envelope := pipeline.New(pipeline.KindMovie, ref, id).WithData(map[string]any{"movie": m})
+			envelopes = append(envelopes, envelope)
+		}
+		return envelopes, nil
+	}
+	// 非 movie 类型回退为单信封。
+	one, err := runSearchOne(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
+	if err != nil {
+		return nil, err
+	}
+	return []pipeline.Envelope{one}, nil
+}
 func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams, keyword string, page, limit int, zone, sort, filterBy, typ string, hasMagnets, asJSON bool) error {
 	c, err := client.New(options, "")
 	if err != nil {

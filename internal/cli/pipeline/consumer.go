@@ -24,6 +24,8 @@ type Consumer struct {
 	AcceptedKinds []Kind
 	// RunOne 执行单项并返回输出信封。
 	RunOne func(context.Context, Envelope) (Envelope, error)
+	// RunMany 执行单项并返回多个输出信封（fan-out）；设置时优先于 RunOne。
+	RunMany func(context.Context, Envelope) ([]Envelope, error)
 	// RenderText 输出默认的人类文本。
 	RenderText func(io.Writer, Envelope) error
 	// LegacyJSON 输出单项显式 --json 的既有 shape；nil 时输出信封对象。
@@ -63,14 +65,18 @@ func (c *Consumer) Execute(streams *invocation.Streams, args []string, ndjson, j
 func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// legacy JSON shape 只适用于纯文本 ref 输入；NDJSON 信封先过 kind 校验。
 	if mode == OutputJSON && len(inputs) == 1 && inputs[0].Kind == "" && c.LegacyJSON != nil {
-		output, err := c.RunOne(context.Background(), inputs[0])
+		outputs, err := c.runItem(inputs[0])
 		if err != nil {
 			if legacyErr := c.LegacyJSON(streams.Out, ErrorEnvelope(inputs[0], c.Name, "batch", "item", err.Error())); legacyErr != nil {
 				return legacyErr
 			}
 			return err
 		}
-		return c.LegacyJSON(streams.Out, output)
+		// legacy JSON 只接受单项输出；RunMany fan-out 在非 legacy 路径处理。
+		if len(outputs) > 0 {
+			return c.LegacyJSON(streams.Out, outputs[0])
+		}
+		return c.LegacyJSON(streams.Out, Envelope{})
 	}
 
 	// 文本/人类模式：成功项按 RenderText 或 ref 写 stdout，失败项写 stderr。
@@ -92,18 +98,20 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, fmt.Sprintf("unsupported kind %q", input.Kind))
 				continue
 			}
-			output, err := c.RunOne(context.Background(), input)
+			outputs, err := c.runItem(input)
 			if err != nil {
 				failures++
 				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, err.Error())
 				continue
 			}
-			if c.RenderText != nil {
-				if err := c.RenderText(streams.Out, output); err != nil {
+			for _, output := range outputs {
+				if c.RenderText != nil {
+					if err := c.RenderText(streams.Out, output); err != nil {
+						return err
+					}
+				} else if err := writeRef(streams.Out, output); err != nil {
 					return err
 				}
-			} else if err := writeRef(streams.Out, output); err != nil {
-				return err
 			}
 		}
 		if failures > 0 {
@@ -131,13 +139,15 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 			}
 			continue
 		}
-		output, err := c.RunOne(context.Background(), input)
+		outputs, err := c.runItem(input)
 		if err != nil {
 			failures++
-			output = ErrorEnvelope(input, c.Name, "batch", "item", err.Error())
+			outputs = []Envelope{ErrorEnvelope(input, c.Name, "batch", "item", err.Error())}
 		}
-		if err := writer.Write(output); err != nil {
-			return err
+		for _, output := range outputs {
+			if err := writer.Write(output); err != nil {
+				return err
+			}
 		}
 	}
 	if err := writer.Finish(); err != nil {
@@ -160,6 +170,18 @@ func writeRef(w io.Writer, envelope Envelope) error {
 	}
 	_, err := fmt.Fprintln(w, ref)
 	return err
+}
+
+// runItem 执行单项并返回输出信封列表；RunMany 优先于 RunOne（fan-out）。
+func (c *Consumer) runItem(input Envelope) ([]Envelope, error) {
+	if c.RunMany != nil {
+		return c.RunMany(context.Background(), input)
+	}
+	output, err := c.RunOne(context.Background(), input)
+	if err != nil {
+		return nil, err
+	}
+	return []Envelope{output}, nil
 }
 
 // CollectInputs 统一收集输入：位置参数（单个）或非 TTY stdin 批。

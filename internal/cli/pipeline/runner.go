@@ -23,6 +23,9 @@ type BatchRunner struct {
 	ClientFactory func() (*javdb.Client, error)
 	// RunOne 执行单项并返回输出信封。
 	RunOne func(*javdb.Client, context.Context, Envelope) (Envelope, error)
+	// RunMany 执行单项并返回多个输出信封（fan-out）；设置时优先于 RunOne。
+	// 调用方负责在返回的信封中携带稳定 ref/id。
+	RunMany func(*javdb.Client, context.Context, Envelope) ([]Envelope, error)
 	// Legacy 处理单项既有路径（args 为位置参数列表）。
 	Legacy func(args []string) error
 	// LegacyJSON 表示 Legacy 路径已支持显式 --json 输出（保持既有 shape）。
@@ -84,6 +87,11 @@ func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []En
 		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
 			return b.RunOne(client, ctx, input)
 		},
+	}
+	if b.RunMany != nil {
+		consumer.RunMany = func(ctx context.Context, input Envelope) ([]Envelope, error) {
+			return b.RunMany(client, ctx, input)
+		}
 	}
 	return consumer.RunInputs(streams, inputs, mode)
 }
