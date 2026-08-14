@@ -37,7 +37,18 @@ grep -F "path: $github_expr{{ runner.temp }}/clawhub-release-tag" "$clawhub_work
 grep -F 'handoff_dir="$RUNNER_TEMP/clawhub-release-tag"' "$clawhub_workflow" >/dev/null
 grep -F 'git merge-base --is-ancestor' "$clawhub_workflow" >/dev/null
 grep -F "releases/tags/\$RELEASE_TAG" "$clawhub_workflow" >/dev/null
-grep -F "ref: $github_expr{{ steps.release_tag.outputs.value }}" "$clawhub_workflow" >/dev/null
+grep -F 'backfill_from_default_branch:' "$clawhub_workflow" >/dev/null
+grep -F 'BACKFILL_FROM_DEFAULT_BRANCH:' "$clawhub_workflow" >/dev/null
+grep -F 'test "$GITHUB_EVENT_NAME" = workflow_dispatch' "$clawhub_workflow" >/dev/null
+grep -F 'git merge-base --is-ancestor "$source_commit" "origin/$DEFAULT_BRANCH"' "$clawhub_workflow" >/dev/null
+grep -F 'git diff --name-only "$RELEASE_TAG" "$source_commit" -- skills/javdb-cli' "$clawhub_workflow" >/dev/null
+grep -F "git show \"\$RELEASE_TAG:skills/javdb-cli/SKILL.md\" | grep -c '^version: '" "$clawhub_workflow" >/dev/null
+grep -F "git show \"\$RELEASE_TAG:skills/javdb-cli/SKILL.md\"" "$clawhub_workflow" >/dev/null
+grep -F 'cmp "$tag_skill" "$source_skill"' "$clawhub_workflow" >/dev/null
+grep -F "source_ref=\$DEFAULT_BRANCH" "$clawhub_workflow" >/dev/null
+grep -F 'test "$source_commit" = "$tag_commit"' "$clawhub_workflow" >/dev/null
+grep -F "SOURCE_REF: $github_expr{{ steps.skill_change.outputs.source_ref }}" "$clawhub_workflow" >/dev/null
+grep -F -- '--source-ref "$SOURCE_REF"' "$clawhub_workflow" >/dev/null
 
 grep -F 'clawhub@0.23.1' "$clawhub_workflow" >/dev/null
 grep -F 'clawhub skill publish skills/javdb-cli' "$clawhub_workflow" >/dev/null
