@@ -23,24 +23,35 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		asJSON, asNDJSON      bool
 		minSize               string
 	)
-	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool) (string, []map[string]any, error) {
-		mid := ref
+	fetch := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope, useID bool) (string, []map[string]any, error) {
+		mid := pipeline.ConsumerRef(input)
 		var err error
 		if !useID {
-			mid, err = c.ResolveMovieID(ctx, ref)
+			mid, err = c.ResolveMovieID(ctx, mid)
 			if err != nil {
 				return "", nil, err
 			}
 		}
-		detail, err := c.MovieDetail(ctx, mid)
-		if err != nil {
-			return "", nil, fmt.Errorf("magnets failed: %w", err)
-		}
+		// 若输入信封已携带 magnets_count，跳过重复 MovieDetail 请求。
+		count, hasCount := knownMagnetCount(input)
 		var items []map[string]any
-		if magnetCount(detail["magnets_count"]) == 0 {
+		if hasCount && count == 0 {
 			items = nil
 		} else {
-			items, err = c.MovieMagnets(ctx, mid)
+			if hasCount {
+				// magnets_count > 0：直接取磁力，不做详情请求。
+				items, err = c.MovieMagnets(ctx, mid)
+			} else {
+				detail, derr := c.MovieDetail(ctx, mid)
+				if derr != nil {
+					return "", nil, fmt.Errorf("magnets failed: %w", derr)
+				}
+				if magnetCount(detail["magnets_count"]) == 0 {
+					items = nil
+				} else {
+					items, err = c.MovieMagnets(ctx, mid)
+				}
+			}
 			if err != nil {
 				return "", nil, fmt.Errorf("magnets failed: %w", err)
 			}
@@ -59,6 +70,8 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Name:       "magnets",
 		LegacyJSON: true,
 		Kinds:      []pipeline.Kind{pipeline.KindMovie},
+		// 按输入并发请求磁力；结果按输入顺序写出。
+		Concurrency: 1,
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
@@ -66,8 +79,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			// 管道信封携带 id 时直接按内部 ID 请求，不做番号解析。
 			// --id flag 仅对位置参数（无信封 id）生效。
 			useID := input.ID != "" || isID
-			ref := pipeline.ConsumerRef(input)
-			mid, items, err := fetch(c, ctx, ref, useID)
+			mid, items, err := fetch(c, ctx, input, useID)
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
@@ -82,7 +94,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Legacy: func(args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				ctx := context.Background()
-				mid, items, err := fetch(c, ctx, args[0], isID)
+				mid, items, err := fetch(c, ctx, pipeline.New("", args[0], ""), isID)
 				if err != nil {
 					return err
 				}
@@ -169,4 +181,22 @@ func magnetCount(v any) int {
 		}
 		return 0
 	}
+}
+
+// knownMagnetCount 从输入信封中提取已知的 magnets_count（上游 search 信封的
+// data.movie 携带该字段时可用）。返回 (count, true) 表示已知，(0, false) 表示
+// 未知，需要请求 MovieDetail。
+func knownMagnetCount(input pipeline.Envelope) (int, bool) {
+	if input.Data == nil {
+		return 0, false
+	}
+	movie, ok := input.Data["movie"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	raw, exists := movie["magnets_count"]
+	if !exists {
+		return 0, false
+	}
+	return magnetCount(raw), true
 }

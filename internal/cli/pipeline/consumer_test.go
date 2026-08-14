@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
@@ -364,5 +365,88 @@ func TestConsumerPassesThroughErrorEnvelope(t *testing.T) {
 	}
 	if streams2.Out.(*bytes.Buffer).String() != "" {
 		t.Errorf("stdout should be empty for error-only input, got %q", streams2.Out.(*bytes.Buffer).String())
+	}
+}
+
+// TestConsumerConcurrencyPreservesOrder 并发模式下结果按输入顺序写出，
+// 即使各项处理耗时不同。
+func TestConsumerConcurrencyPreservesOrder(t *testing.T) {
+	streams, out := testStreams("", false)
+	inputs := []Envelope{
+		New("", "a", ""),
+		New("", "b", ""),
+		New("", "c", ""),
+		New("", "d", ""),
+	}
+	consumer := &Consumer{
+		Name:          "test",
+		AcceptedKinds: []Kind{KindMovie},
+		Concurrency:   1,
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			// 模拟不同耗时：b 最慢，a 最快。
+			delay := map[string]int{"a": 10, "b": 50, "c": 20, "d": 5}[input.Ref]
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+			return New(KindMovie, input.Ref+"-ok", ""), nil
+		},
+	}
+	if err := consumer.RunInputs(streams, inputs, OutputNDJSON); err != nil {
+		t.Fatalf("RunInputs: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("lines = %d, want 4", len(lines))
+	}
+	// 顺序必须与输入一致，不受处理耗时影响。
+	want := []string{"a-ok", "b-ok", "c-ok", "d-ok"}
+	for i, w := range want {
+		var env Envelope
+		if err := json.Unmarshal([]byte(lines[i]), &env); err != nil {
+			t.Fatal(err)
+		}
+		if env.Ref != w {
+			t.Errorf("line %d ref = %s, want %s", i, env.Ref, w)
+		}
+	}
+}
+
+// TestConsumerConcurrencyPartialFailureContinues 并发模式下单项失败不阻塞其他项，
+// 结果仍按输入顺序写出。
+func TestConsumerConcurrencyPartialFailureContinues(t *testing.T) {
+	streams, _ := testStreams("", false)
+	errBuf := &bytes.Buffer{}
+	streams.Err = errBuf
+	inputs := []Envelope{
+		New("", "a", ""),
+		New("", "b", ""),
+		New("", "c", ""),
+	}
+	consumer := &Consumer{
+		Name:          "test",
+		AcceptedKinds: []Kind{KindMovie},
+		Concurrency:   1,
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			if input.Ref == "b" {
+				return Envelope{}, testError("boom")
+			}
+			return New(KindMovie, input.Ref+"-ok", ""), nil
+		},
+	}
+	err := consumer.RunInputs(streams, inputs, OutputNDJSON)
+	if err == nil || !strings.Contains(err.Error(), "1 of 3 items failed") {
+		t.Fatalf("expected 1-of-3 failure, got %v", err)
+	}
+	out := streams.Out.(*bytes.Buffer).String()
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("lines = %d, want 3", len(lines))
+	}
+	var kinds []string
+	for _, line := range lines {
+		var env Envelope
+		_ = json.Unmarshal([]byte(line), &env)
+		kinds = append(kinds, string(env.Kind))
+	}
+	if kinds[0] != "movie" || kinds[1] != "error" || kinds[2] != "movie" {
+		t.Errorf("kinds = %v, want [movie error movie]", kinds)
 	}
 }

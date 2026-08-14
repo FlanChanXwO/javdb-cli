@@ -35,6 +35,8 @@ type BatchRunner struct {
 	// Preflight 在批处理路径开始前校验全部输入（如 download 的全量目标展开
 	// 与冲突检查）；返回错误时整个批处理失败，不做任何写入。
 	Preflight func([]Envelope) error
+	// Concurrency 控制批量执行并发度；<= 0 表示串行。
+	Concurrency int
 }
 
 // Execute 是命令 RunE 的通用实现。
@@ -84,6 +86,7 @@ func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []En
 	consumer := &Consumer{
 		Name:          b.Name,
 		AcceptedKinds: b.Kinds,
+		Concurrency:   b.Concurrency,
 		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
 			return b.RunOne(client, ctx, input)
 		},

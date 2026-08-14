@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
@@ -30,6 +31,9 @@ type Consumer struct {
 	RenderText func(io.Writer, Envelope) error
 	// LegacyJSON 输出单项显式 --json 的既有 shape；nil 时输出信封对象。
 	LegacyJSON func(io.Writer, Envelope) error
+	// Concurrency 控制批量执行并发度；<= 0 表示串行。并发时结果按输入顺序
+	// 写出，单项失败不阻塞其他项。
+	Concurrency int
 }
 
 // Execute 是命令 RunE 的通用实现（不消费图片；需要图片输入的调用方自行先行处理）。
@@ -62,6 +66,8 @@ func (c *Consumer) Execute(streams *invocation.Streams, args []string, ndjson, j
 //
 // NDJSON/JSON 模式下：失败项原位 error 信封写入 stdout（机器契约），保持
 // 输出顺序与单项错误可观测性。
+//
+// Concurrency > 0 时批量请求并发执行，结果按输入顺序写出。
 func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// legacy JSON shape 只适用于纯文本 ref 输入；NDJSON 信封先过 kind 校验。
 	if mode == OutputJSON && len(inputs) == 1 && inputs[0].Kind == "" && c.LegacyJSON != nil {
@@ -79,32 +85,19 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		return c.LegacyJSON(streams.Out, Envelope{})
 	}
 
+	// 并发或串行执行全部输入，收集按索引排序的结果。
+	results := c.processAll(inputs)
+
 	// 文本/人类模式：成功项按 RenderText 或 ref 写 stdout，失败项写 stderr。
 	if mode == OutputText || mode == OutputHuman {
 		failures := 0
-		for _, input := range inputs {
-			// kind:error 透传：不重新执行或包装，错误原因写 stderr。
-			if input.Kind == KindError {
+		for _, r := range results {
+			if r.err != nil {
 				failures++
-				msg := input.Data["message"]
-				if msg == nil {
-					msg = "upstream error"
-				}
-				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, msg)
+				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, r.err.Error())
 				continue
 			}
-			if !c.accepts(input) {
-				failures++
-				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, fmt.Sprintf("unsupported kind %q", input.Kind))
-				continue
-			}
-			outputs, err := c.runItem(input)
-			if err != nil {
-				failures++
-				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, err.Error())
-				continue
-			}
-			for _, output := range outputs {
+			for _, output := range r.outputs {
 				if c.RenderText != nil {
 					if err := c.RenderText(streams.Out, output); err != nil {
 						return err
@@ -122,32 +115,14 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 
 	writer := NewWriter(streams.Out, mode)
 	failures := 0
-	for _, input := range inputs {
-		// kind:error 透传：不重新执行或包装，原样写出。
-		if input.Kind == KindError {
-			failures++
-			if err := writer.Write(input); err != nil {
-				return err
-			}
-			continue
-		}
-		if !c.accepts(input) {
-			failures++
-			output := ErrorEnvelope(input, c.Name, "input", "kind", fmt.Sprintf("unsupported kind %q", input.Kind))
+	for _, r := range results {
+		for _, output := range r.envelopes {
 			if err := writer.Write(output); err != nil {
 				return err
 			}
-			continue
 		}
-		outputs, err := c.runItem(input)
-		if err != nil {
+		if r.err != nil {
 			failures++
-			outputs = []Envelope{ErrorEnvelope(input, c.Name, "batch", "item", err.Error())}
-		}
-		for _, output := range outputs {
-			if err := writer.Write(output); err != nil {
-				return err
-			}
 		}
 	}
 	if err := writer.Finish(); err != nil {
@@ -157,6 +132,63 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		return fmt.Errorf("%s completed with %d of %d items failed", c.Name, failures, len(inputs))
 	}
 	return nil
+}
+
+// itemResult 是单项处理的结果。
+type itemResult struct {
+	// outputs 用于文本/人类模式：成功时包含输出信封，失败时为空。
+	outputs []Envelope
+	// envelopes 用于 NDJSON/JSON 模式：成功时为输出信封，失败时为原位 error 信封。
+	envelopes []Envelope
+	// err 非 nil 表示该项失败（文本模式写 stderr，NDJSON 模式用 envelopes 中的 error 信封）。
+	err error
+}
+
+// processAll 执行全部输入并返回按索引排序的结果。Concurrency > 0 时并发执行。
+func (c *Consumer) processAll(inputs []Envelope) []itemResult {
+	results := make([]itemResult, len(inputs))
+	if c.Concurrency > 0 && len(inputs) > 1 {
+		var wait sync.WaitGroup
+		wait.Add(len(inputs))
+		for index, input := range inputs {
+			go func(index int, input Envelope) {
+				defer wait.Done()
+				results[index] = c.processOne(input)
+			}(index, input)
+		}
+		wait.Wait()
+		return results
+	}
+	for index, input := range inputs {
+		results[index] = c.processOne(input)
+	}
+	return results
+}
+
+// processOne 处理单项输入并返回结果。
+func (c *Consumer) processOne(input Envelope) itemResult {
+	// kind:error 透传：不重新执行或包装。
+	if input.Kind == KindError {
+		return itemResult{
+			envelopes: []Envelope{input},
+			err:       fmt.Errorf("%s", input.Data["message"]),
+		}
+	}
+	if !c.accepts(input) {
+		err := fmt.Errorf("unsupported kind %q", input.Kind)
+		return itemResult{
+			envelopes: []Envelope{ErrorEnvelope(input, c.Name, "input", "kind", err.Error())},
+			err:       err,
+		}
+	}
+	outputs, err := c.runItem(input)
+	if err != nil {
+		return itemResult{
+			envelopes: []Envelope{ErrorEnvelope(input, c.Name, "batch", "item", err.Error())},
+			err:       err,
+		}
+	}
+	return itemResult{outputs: outputs, envelopes: outputs}
 }
 
 // writeRef 写出信封的稳定引用（优先 ref，否则 id），不含错误信封。
