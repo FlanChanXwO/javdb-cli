@@ -83,6 +83,7 @@ func TestSearchImagePathAutoDetectsAndOutputsMatches(t *testing.T) {
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	streams.InIsTerminal = true
+	streams.OutIsTerminal = true
 	err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL},
 		imagePath, "--source", "test", "--no-cache")
 	// 部分失败（GHOST-999 无法解析）必须在输出完成后非零。
@@ -99,8 +100,9 @@ func TestSearchImagePathAutoDetectsAndOutputsMatches(t *testing.T) {
 	if !strings.Contains(out, "9DGB5X") {
 		t.Errorf("output lacks matched movie projection:\n%s", out)
 	}
-	if !strings.Contains(out, "GHOST-999") || !strings.Contains(out, "失败") {
-		t.Errorf("output lacks per-item failure:\n%s", out)
+	errOut := streams.Err.(*bytes.Buffer).String()
+	if !strings.Contains(errOut, "GHOST-999") || !strings.Contains(errOut, "失败") {
+		t.Errorf("stderr lacks per-item failure:\n%s", errOut)
 	}
 	if !strings.Contains(err.Error(), "1 of 2 candidates failed") {
 		t.Errorf("error should count failures: %v", err)
@@ -150,12 +152,13 @@ func TestSearchImageFromStdinMagicDefaultsToText(t *testing.T) {
 		t.Fatal("partial failure must exit non-zero")
 	}
 	out := streams.Out.(*bytes.Buffer).String()
-	// 管道只负责输入分类，未显式指定结构化输出时仍使用纯文本。
-	if !strings.Contains(out, "SSIS-589") || !strings.Contains(out, "95.2%") {
-		t.Errorf("stdin image text output lacks candidate:\n%s", out)
+	// 非 TTY 纯文本 stdout 只保留成功番号，供 magnets 消费。
+	if out != "SSIS-589\n" {
+		t.Errorf("stdin image text output = %q, want stable movie ref", out)
 	}
-	if !strings.Contains(out, "GHOST-999") || !strings.Contains(out, "失败") {
-		t.Errorf("stdin image text output lacks failure:\n%s", out)
+	errOut := streams.Err.(*bytes.Buffer).String()
+	if !strings.Contains(errOut, "SSIS-589") || !strings.Contains(errOut, "01:04:53") || !strings.Contains(errOut, "GHOST-999") || !strings.Contains(errOut, "失败") {
+		t.Errorf("stdin image stderr lacks diagnostics:\n%s", errOut)
 	}
 	if strings.Contains(out, `"kind":`) {
 		t.Errorf("stdin image unexpectedly emitted NDJSON without --ndjson:\n%s", out)
@@ -233,7 +236,7 @@ func TestSearchImageURLGoesThroughProxy(t *testing.T) {
 	if !proxySawRequest.Load() {
 		t.Fatal("image URL request did not go through the configured proxy")
 	}
-	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") {
-		t.Errorf("proxy image result missing candidate")
+	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") && !strings.Contains(streams.Err.(*bytes.Buffer).String(), "SSIS-589") {
+		t.Errorf("proxy image result missing candidate: stdout=%q stderr=%q", streams.Out.(*bytes.Buffer).String(), streams.Err.(*bytes.Buffer).String())
 	}
 }

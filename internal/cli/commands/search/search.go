@@ -330,8 +330,17 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 				return err
 			}
 		}
-	default:
-		if err := writeImageSearchText(streams.Out, result); err != nil {
+	case pipeline.OutputHuman:
+		if err := writeImageSearchText(streams.Out, streams.Err, result); err != nil {
+			return err
+		}
+	case pipeline.OutputText:
+		// 非 TTY stdout 只输出成功影片番号；候选、帧和失败诊断全部写 stderr，
+		// 避免下游 magnets 将人类描述误当作输入番号。
+		if err := writeImageSearchRecords(streams.Out, result); err != nil {
+			return err
+		}
+		if err := writeImageSearchText(streams.Err, streams.Err, result); err != nil {
 			return err
 		}
 	}
@@ -363,17 +372,36 @@ func countImageFailures(result javdb.ImageSearchResult) int {
 	return failures
 }
 
-// writeImageSearchText 人类可读输出：候选行、相似度、帧、严格匹配详情与逐项错误。
-func writeImageSearchText(w io.Writer, searchResult javdb.ImageSearchResult) error {
+// writeImageSearchRecords 输出非 TTY 可消费的成功影片番号，一行一个记录。
+func writeImageSearchRecords(w io.Writer, searchResult javdb.ImageSearchResult) error {
+	for index, match := range searchResult.Matches {
+		if match.Error != nil {
+			continue
+		}
+		ref := match.Candidate.VideoCode
+		if ref == "" {
+			return fmt.Errorf("reverse search match %d has no video code", index+1)
+		}
+		if _, err := fmt.Fprintln(w, ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeImageSearchText 输出人类诊断：候选行、相似度、帧、严格匹配详情与逐项错误。
+// infoW 用于成功候选的诊断，errW 专用于失败项；调用方可将二者都指向 stderr
+// 以保持非 TTY stdout 的机器记录契约。
+func writeImageSearchText(infoW, errW io.Writer, searchResult javdb.ImageSearchResult) error {
 	for index, match := range searchResult.Matches {
 		candidate := match.Candidate
 		if match.Error != nil {
-			if _, err := fmt.Fprintf(w, "%d. %s (%.1f%%)  [失败: %s]\n", index+1, candidate.VideoCode, candidate.Similarity, match.Error.Message); err != nil {
+			if _, err := fmt.Fprintf(errW, "%d. %s (%.1f%%)  [失败: %s]\n", index+1, candidate.VideoCode, candidate.Similarity, match.Error.Message); err != nil {
 				return err
 			}
 			continue
 		}
-		if _, err := fmt.Fprintf(w, "%d. %s (%.1f%%)\n", index+1, candidate.VideoCode, candidate.Similarity); err != nil {
+		if _, err := fmt.Fprintf(infoW, "%d. %s (%.1f%%)\n", index+1, candidate.VideoCode, candidate.Similarity); err != nil {
 			return err
 		}
 		for _, frame := range candidate.Frames {
@@ -381,21 +409,21 @@ func writeImageSearchText(w io.Writer, searchResult javdb.ImageSearchResult) err
 			if frame.ThumbnailURL != "" {
 				line += "  " + frame.ThumbnailURL
 			}
-			if _, err := fmt.Fprintln(w, line); err != nil {
+			if _, err := fmt.Fprintln(infoW, line); err != nil {
 				return err
 			}
 		}
 		if match.Movie != nil {
 			rows := result.ProjectMovies([]map[string]any{match.Movie})
 			for _, row := range rows {
-				if _, err := fmt.Fprintf(w, "   => %s\n", row.Line()); err != nil {
+				if _, err := fmt.Fprintf(infoW, "   => %s\n", row.Line()); err != nil {
 					return err
 				}
 			}
 		}
 	}
 	if len(searchResult.Matches) == 0 {
-		_, err := fmt.Fprintln(w, "(无候选)")
+		_, err := fmt.Fprintln(infoW, "(无候选)")
 		return err
 	}
 	return nil
