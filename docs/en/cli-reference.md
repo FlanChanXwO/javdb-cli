@@ -200,12 +200,13 @@ Consumers check the kind strictly and prefer a valid `id`; incompatible input
 becomes an in-place `error` envelope. Batch processing preserves input order,
 continues after item failures, and exits non-zero with a summary on stderr.
 
-Output defaults to human-readable text. `--ndjson` and `--json` are mutually
+TTY stdout defaults to human-readable text; non-TTY stdout defaults to a
+stable, newline-delimited record stream. `--ndjson` and `--json` are mutually
 exclusive; JSON or NDJSON is emitted only when its flag is explicit.
 `--json` keeps the legacy single-item shape and emits a JSON array of envelopes
 for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
-`top250`, `watched`, `want`, `recent`) never read stdin and also default to
-text; use `--ndjson` to emit one envelope per record.
+`top250`, `watched`, `want`, `recent`) never read stdin and follow the same
+TTY/non-TTY text split; use `--ndjson` to emit one envelope per record.
 
 ## Entity and list navigation
 

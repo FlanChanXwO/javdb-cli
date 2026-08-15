@@ -161,10 +161,11 @@ SDK 嵌入方必须自行施加网络边界。
 消费者严格检查 kind 并优先使用合法 `id`；不兼容输入生成原位 `error` 信封。批处理保持输入
 顺序、单项失败继续执行，最终非零并在 stderr 输出汇总。
 
-输出默认使用人类可读文本。`--ndjson` 与 `--json` 互斥；只有显式指定对应 flag
-才输出 JSON 或 NDJSON。显式 `--json` 单项保持既有 shape，多项输出信封数组。生产者命令
+TTY stdout 默认使用人类可读文本；非 TTY stdout 默认输出逐行稳定记录流。`--ndjson` 与
+`--json` 互斥；只有显式指定对应 flag 才输出 JSON 或 NDJSON。显式 `--json` 单项保持既有
+shape，多项输出信封数组。生产者命令
 （如 `browse`、`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）
-不读 stdin 且同样默认文本；使用 `--ndjson` 才逐条输出信封。
+不读 stdin，且遵循相同的 TTY/非 TTY 文本分流；使用 `--ndjson` 才逐条输出信封。
 
 ## 实体与合集导航
 
