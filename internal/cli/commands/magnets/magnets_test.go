@@ -156,6 +156,42 @@ func TestMagnetsTextModeOutputsMagnetURIs(t *testing.T) {
 	}
 }
 
+// TestMagnetsPositionalTextModeOutputsMagnetURIs 覆盖纯文本位置参数的真实
+// 非 TTY 路径，确保 stdout 是 magnet URI 而不是输入番号或人类表格行。
+func TestMagnetsPositionalTextModeOutputsMagnetURIs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1"}},
+			}})
+		case "/api/v4/movies/id-1":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{"movie": map[string]any{"magnets_count": float64(2)}}})
+		case "/api/v1/movies/id-1/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"name": "HD", "hash": "AAA"}, {"name": "SD", "hash": "BBB"}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"SSIS-001"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := streams.Out.(*bytes.Buffer).String(); got != "magnet:?xt=urn:btih:AAA\nmagnet:?xt=urn:btih:BBB\n" {
+		t.Fatalf("text output = %q, want magnet URIs", got)
+	}
+}
+
 // TestMagnetsPartialFailureContinues NDJSON 批处理中部分项失败仍继续。
 func TestMagnetsPartialFailureContinues(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

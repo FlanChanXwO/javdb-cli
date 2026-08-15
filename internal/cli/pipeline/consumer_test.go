@@ -299,6 +299,30 @@ func TestConsumerTextModeErrorsToStderr(t *testing.T) {
 	}
 }
 
+// TestConsumerTextModePropagatesStderrWriteError 下游 stderr 关闭时，文本模式
+// 必须返回写入错误，而不是继续返回批处理汇总或伪造成功。
+func TestConsumerTextModePropagatesStderrWriteError(t *testing.T) {
+	streams, _ := testStreams("", false)
+	streams.Err = failingWriter{}
+	consumer := &Consumer{
+		Name:          "detail",
+		AcceptedKinds: []Kind{KindMovie},
+		RunOne: func(context.Context, Envelope) (Envelope, error) {
+			return Envelope{}, testError("detail failed")
+		},
+	}
+	err := consumer.RunInputs(streams, []Envelope{New("", "SSIS-589", "")}, OutputText)
+	if err == nil || !strings.Contains(err.Error(), "stderr write failed") {
+		t.Fatalf("error = %v, want stderr write error", err)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, testError("stderr write failed")
+}
+
 // TestConsumerHumanModeRenderText OutputHuman 模式下成功项走 RenderText。
 func TestConsumerHumanModeRenderText(t *testing.T) {
 	streams, out := testStreams("", false)

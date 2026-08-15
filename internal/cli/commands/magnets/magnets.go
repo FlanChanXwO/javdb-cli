@@ -4,6 +4,7 @@ package magnets
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -69,7 +70,12 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	runner := &pipeline.BatchRunner{
 		Name:       "magnets",
 		LegacyJSON: true,
-		Kinds:      []pipeline.Kind{pipeline.KindMovie},
+		// 非 TTY 单项也输出可供下游消费的磁力 URI。
+		RouteTextThroughPipeline: true,
+		RenderText: func(w io.Writer, envelope pipeline.Envelope) error {
+			return renderText(w, envelope, best)
+		},
+		Kinds: []pipeline.Kind{pipeline.KindMovie},
 		// 按输入并发请求磁力；结果按输入顺序写出。
 		Concurrency: 1,
 		ClientFactory: func() (*javdb.Client, error) {
@@ -138,6 +144,30 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
+}
+
+// renderText 将磁力信封投影为可继续传给下游的 magnet URI；不把人类表格列
+// 混入 stdout，也不吞写入错误。
+func renderText(w io.Writer, envelope pipeline.Envelope, best bool) error {
+	if best {
+		uri, _ := envelope.Data["magnet_uri"].(string)
+		if uri == "" {
+			return nil
+		}
+		_, err := fmt.Fprintln(w, uri)
+		return err
+	}
+	magnets, _ := envelope.Data["magnets"].([]map[string]any)
+	for _, magnet := range magnets {
+		uri := javdb.MagnetURI(magnet)
+		if uri == "" {
+			continue
+		}
+		if _, err := fmt.Fprintln(w, uri); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ParseSizeMiB parses the CLI magnet size filter without changing its unit rules.

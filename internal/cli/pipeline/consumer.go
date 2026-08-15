@@ -94,7 +94,9 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		for _, r := range results {
 			if r.err != nil {
 				failures++
-				fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, r.err.Error())
+				if _, err := fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, r.err.Error()); err != nil {
+					return err
+				}
 				continue
 			}
 			for _, output := range r.outputs {
