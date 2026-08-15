@@ -193,6 +193,53 @@ func TestSearchMagnetsFlagOutputsMagnetURIs(t *testing.T) {
 	}
 }
 
+// TestSearchMagnetsJSONPartialFailureReturnsError 验证 JSON 保留成功/失败明细，
+// 但部分磁力请求失败时命令仍以非零错误结束。
+func TestSearchMagnetsJSONPartialFailureReturnsError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{
+					{"number": "SSIS-001", "id": "id-ok"},
+					{"number": "SSIS-002", "id": "id-fail"},
+				},
+			}})
+		case "/api/v1/movies/id-ok/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"name": "HD", "hash": "AAA"}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader("SSIS\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--magnets", "0", "--json"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "1 of 2 movies failed") {
+		t.Fatalf("error = %v, output = %q, want partial-failure summary", err, streams.Out.(*bytes.Buffer).String())
+	}
+	var output map[string]any
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &output); err != nil {
+		t.Fatalf("JSON output invalid: %v", err)
+	}
+	movies, _ := output["movies"].([]any)
+	if len(movies) != 2 {
+		t.Fatalf("movies = %d, want 2", len(movies))
+	}
+	failed, _ := movies[1].(map[string]any)
+	if failed["error"] == nil || failed["error"] == "" {
+		t.Fatalf("failed movie missing error detail: %v", failed)
+	}
+}
+
 // TestSearchMagnetsRejectsNonMovieType search --magnets 与非 movie --type 互斥。
 func TestSearchMagnetsRejectsNonMovieType(t *testing.T) {
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})

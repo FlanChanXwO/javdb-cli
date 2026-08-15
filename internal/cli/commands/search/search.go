@@ -559,11 +559,14 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 				"magnets": r.magnets,
 			}
 			if r.err != nil {
+				failures++
 				entry["error"] = r.err.Error()
 			}
 			moviesOut = append(moviesOut, entry)
 		}
-		return writeJSON(streams.Out, map[string]any{"movies": moviesOut})
+		if err := writeJSON(streams.Out, map[string]any{"movies": moviesOut}); err != nil {
+			return err
+		}
 	case pipeline.OutputNDJSON:
 		writer := pipeline.NewWriter(streams.Out, pipeline.OutputNDJSON)
 		for _, r := range results {
@@ -677,11 +680,14 @@ func runImageSearchMagnets(options *invocation.RootOptions, streams *invocation.
 				"magnets":    r.magnets,
 			}
 			if r.err != nil {
+				failures++
 				entry["error"] = r.err.Error()
 			}
 			matchesOut = append(matchesOut, entry)
 		}
-		return writeJSON(streams.Out, map[string]any{"reverse_search": result.ReverseSearch, "matches": matchesOut})
+		if err := writeJSON(streams.Out, map[string]any{"reverse_search": result.ReverseSearch, "matches": matchesOut}); err != nil {
+			return err
+		}
 	case pipeline.OutputNDJSON:
 		writer := pipeline.NewWriter(streams.Out, pipeline.OutputNDJSON)
 		for _, r := range results {
