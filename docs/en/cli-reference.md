@@ -79,6 +79,7 @@ TOP250 and personal-list commands require the default account.
 ```bash
 javdb search KEYWORD|IMAGE [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
   [--type TYPE] [--page N] [--limit N] [--has-magnets] \
+  [--magnets N] [--cnsub] [--hd] [--min-size SIZE] \
   [--image] [--source NAME] [--no-cache] [--json|--ndjson]
 javdb detail NUMBER [--id] [--magnets] [--json|--ndjson]
 javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
@@ -99,6 +100,13 @@ shared by the commands above and below.
 `browse --tag` accepts a tag ID, English name, or Chinese name. Repeat
 `--main` for server-side category masks. Use `--json` for programs; human output
 uses tab-separated rows and is not a stable machine schema.
+
+`search --magnets N` fetches magnets for each result movie: `--cnsub`,
+`--hd`, and `--min-size` filter before ranking; `N` controls how many
+magnets to keep per movie (`0` = all, `N` = top N by best rule). Text
+output emits magnet URIs; `--ndjson` emits `kind=magnet` envelopes.
+`--magnets` is only supported for movie search and is mutually exclusive
+with non-movie `--type`.
 
 `comments` calls the movie reviews endpoint exactly once for the selected page;
 it never prefetches or follows another page. Its default is page `1` with a

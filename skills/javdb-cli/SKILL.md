@@ -121,10 +121,14 @@ javdb unmark SSIS-589
    "无结果"。
 2. 反搜缓存：默认启用（30 天，按 source + 原图 SHA-256）。`javdb cache reverse-search
    [--source NAME] [--clear]` 只清理反搜缓存；`--no-cache` 按次绕过。
-3. 管道：多数命令接受非 TTY stdin 批处理并默认输出文本；显式 `--ndjson` 才输出
+3. 管道：多数命令接受非 TTY stdin 批处理，TTY stdout 默认输出人类文本，非 TTY
+   stdout 默认输出稳定记录流（逐行 ref/URI）；显式 `--ndjson` 才输出
    `javdb.pipeline/v1` NDJSON 信封（`--ndjson`/`--json` 互斥）。例如
    `javdb search SSIS --ndjson | javdb detail`。位置参数与非空 stdin 同时出现是歧义错误。
    `auth login`、`config set` 与密码提示不使用管道 stdin。
+4. 一体化磁力搜索：`javdb search KEYWORD --magnets N` 一次完成搜索、筛选、排序和
+   磁力获取。`--cnsub`、`--hd`、`--min-size` 在排序前筛选；`N=0` 返回全部，`N>0`
+   取前 N。文本模式输出磁力 URI，NDJSON 输出 `kind=magnet` 信封。仅支持 movie 搜索。
 
 ## 路由
 

@@ -97,7 +97,7 @@ log, panic, error wrapper, or test fixture.
 | Reviews | `MovieComments` |
 | Local media downloads | `DownloadMovieMedia`, `MovieMediaDownloadOptions`, `MovieMediaDownloadResult` |
 | Entity graph | `ResolveEntity`, `EntityDetail`, `EntityMovies`, `AllEntityMovies` |
-| Magnets | `MovieMagnets`, `FilterMagnets`, `PickBestMagnet`, `MagnetURI` |
+| Magnets | `MovieMagnets`, `FilterMagnets`, `PickBestMagnet`, `RankMagnets`, `MagnetURI` |
 | Rankings | `RankingsMovies`, `RankingsActors`, `RankingsPlayback`, `Top250` |
 | Personal state | `WatchedMovies`, `WantMovies`, `Mark`, `Unmark`, `Collected`, `RecentViewed` |
 | Lists | `MyLists`, `ListInfo`, `RelatedLists` |
@@ -195,7 +195,10 @@ for _, match := range result.Matches {
 - `SearchByImage` runs strict, case-insensitive, full-equality number matching
   (`ResolveMovieIDExact` — no first-hit fallback) for every candidate
   concurrently and restores provider order; per-candidate failures are
-  `ImageSearchError` values and never abort the batch.
+  `ImageSearchError` values and never abort the batch. Set
+  `ImageSearchOptions{SkipMovieDetail: true}` to resolve only the movie ID
+  without fetching full details — useful when only the ID is needed (e.g.
+  magnet lookups).
 - `ReverseSearchCache` is an injectable interface (`Get`/`Put` keyed by
   `"<source>:<image SHA-256>"` so different providers never share entries);
   the SDK never reads `~/.javdb-cli`. A cache hit skips the provider;
