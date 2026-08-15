@@ -229,8 +229,12 @@ func TestMagnetsPartialFailureContinues(t *testing.T) {
 		t.Fatalf("lines = %d, want 2", len(lines))
 	}
 	var first, second map[string]any
-	json.Unmarshal([]byte(lines[0]), &first)
-	json.Unmarshal([]byte(lines[1]), &second)
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatal(err)
+	}
 	if first["kind"] != "magnet" {
 		t.Errorf("line 0 kind = %v, want magnet", first["kind"])
 	}

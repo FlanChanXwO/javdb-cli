@@ -594,13 +594,17 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 		for _, r := range results {
 			if r.err != nil {
 				failures++
-				fmt.Fprintf(streams.Err, "search: %s\n", r.err.Error())
+				if _, err := fmt.Fprintf(streams.Err, "search: %s\n", r.err.Error()); err != nil {
+					return err
+				}
 				continue
 			}
 			for _, m := range r.magnets {
 				uri := javdb.MagnetURI(m)
 				if uri != "" {
-					fmt.Fprintln(streams.Out, uri)
+					if _, err := fmt.Fprintln(streams.Out, uri); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -719,13 +723,17 @@ func runImageSearchMagnets(options *invocation.RootOptions, streams *invocation.
 		for _, r := range results {
 			if r.err != nil {
 				failures++
-				fmt.Fprintf(streams.Err, "search: %s\n", r.err.Error())
+				if _, err := fmt.Fprintf(streams.Err, "search: %s\n", r.err.Error()); err != nil {
+					return err
+				}
 				continue
 			}
 			for _, m := range r.magnets {
 				uri := javdb.MagnetURI(m)
 				if uri != "" {
-					fmt.Fprintln(streams.Out, uri)
+					if _, err := fmt.Fprintln(streams.Out, uri); err != nil {
+						return err
+					}
 				}
 			}
 		}

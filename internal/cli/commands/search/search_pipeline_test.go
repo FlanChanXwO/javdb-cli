@@ -3,6 +3,7 @@ package search
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,6 +13,10 @@ import (
 	magnetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
 
 // TestSearchTextStdinBatchConsumesKeywords 文本 stdin 批处理：逐关键词搜索并
 // 按 fan-out 输出每部影片的番号，顺序保持。
@@ -237,6 +242,70 @@ func TestSearchMagnetsJSONPartialFailureReturnsError(t *testing.T) {
 	failed, _ := movies[1].(map[string]any)
 	if failed["error"] == nil || failed["error"] == "" {
 		t.Fatalf("failed movie missing error detail: %v", failed)
+	}
+}
+
+// TestSearchMagnetsTextPropagatesWriteErrors 验证磁力文本路径向上返回 stdout
+// 和 stderr 的写入错误，避免下游关闭 pipe 后仍报告正常成功。
+func TestSearchMagnetsTextPropagatesWriteErrors(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	for _, tc := range []struct {
+		name       string
+		magnets404 bool
+		out        failingWriter
+		errW       failingWriter
+		want       string
+	}{
+		{name: "stdout", out: failingWriter{err: errors.New("stdout closed")}, want: "stdout closed"},
+		{name: "stderr", magnets404: true, errW: failingWriter{err: errors.New("stderr closed")}, want: "stderr closed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/api/v2/search":
+					_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+						"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1"}},
+					}})
+				case "/api/v1/movies/id-1/magnets":
+					if tc.magnets404 {
+						http.NotFound(writer, request)
+						return
+					}
+					_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+						"magnets": []map[string]any{{"hash": "AAA"}},
+					}})
+				default:
+					http.NotFound(writer, request)
+				}
+			}))
+			defer server.Close()
+
+			var out, errOut bytes.Buffer
+			outWriter := &out
+			if tc.out.err != nil {
+				outWriter = nil
+			}
+			errWriter := &errOut
+			if tc.errW.err != nil {
+				errWriter = nil
+			}
+			streams := invocation.NewStreams(strings.NewReader("SSIS\n"), outWriter, errWriter)
+			if tc.out.err != nil {
+				streams.Out = tc.out
+			}
+			if tc.errW.err != nil {
+				streams.Err = tc.errW
+			}
+			cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+			cmd.SetArgs([]string{"--magnets", "0"})
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 
