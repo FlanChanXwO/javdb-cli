@@ -373,3 +373,64 @@ func TestSearchPipelineToMagnets(t *testing.T) {
 		t.Errorf("ref = %v, want SSIS-001", envelope["ref"])
 	}
 }
+
+// TestSearchTextPipelineToMagnets 验证默认非 TTY 文本链路只传递稳定番号，且
+// magnets 最终只投影磁力 URI；这是用户实际 `search SSIS | magnets` 的路径。
+func TestSearchTextPipelineToMagnets(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	searchQueries := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			searchQueries = append(searchQueries, request.URL.Query().Get("q"))
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1", "title": "Mock"}},
+			}})
+		case "/api/v4/movies/id-1":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movie": map[string]any{"magnets_count": float64(1)},
+			}})
+		case "/api/v1/movies/id-1/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"name": "HD", "hash": "AAA", "size": float64(4096), "hd": true}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	// Step 1: 单个位置参数且非 TTY 时仅产生稳定番号，不包含标题或表格列。
+	searchStreams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	searchCmd := New(&invocation.RootOptions{Host: server.URL}, searchStreams)
+	searchCmd.SetArgs([]string{"SSIS"})
+	if err := searchCmd.Execute(); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	searchOutput := searchStreams.Out.(*bytes.Buffer).String()
+	if searchOutput != "SSIS-001\n" {
+		t.Fatalf("search output = %q, want only stable movie record", searchOutput)
+	}
+	if got := searchStreams.Err.(*bytes.Buffer).String(); got != "" {
+		t.Fatalf("search stderr = %q, want empty", got)
+	}
+
+	// Step 2: 默认文本 magnets 从上一步 stdout 读取番号，并仅输出磁力 URI。
+	magnetsStreams := invocation.NewStreams(strings.NewReader(searchOutput), &bytes.Buffer{}, &bytes.Buffer{})
+	magnetsCmd := magnetscmd.New(&invocation.RootOptions{Host: server.URL}, magnetsStreams)
+	if err := magnetsCmd.Execute(); err != nil {
+		t.Fatalf("magnets: %v", err)
+	}
+	if got := magnetsStreams.Out.(*bytes.Buffer).String(); got != "magnet:?xt=urn:btih:AAA\n" {
+		t.Fatalf("magnets output = %q, want only magnet URI", got)
+	}
+	if got := magnetsStreams.Err.(*bytes.Buffer).String(); got != "" {
+		t.Fatalf("magnets stderr = %q, want empty", got)
+	}
+	if got, want := strings.Join(searchQueries, ","), "SSIS,SSIS-001"; got != want {
+		t.Fatalf("search queries = %q, want %q", got, want)
+	}
+}

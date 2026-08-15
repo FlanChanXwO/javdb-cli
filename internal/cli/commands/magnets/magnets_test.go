@@ -109,8 +109,9 @@ func TestMagnetsNDJSONInputWithIDDirect(t *testing.T) {
 	}
 }
 
-// TestMagnetsTextModeOutputsMagnetURIs 文本模式输出磁力 URI，而非番号 ref。
-func TestMagnetsTextModeOutputsMagnetURIs(t *testing.T) {
+// TestMagnetsNDJSONInputOutputsMagnetEnvelope 验证 NDJSON 输入保持磁力信封输出，
+// 避免名称误导为默认文本模式覆盖。
+func TestMagnetsNDJSONInputOutputsMagnetEnvelope(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
