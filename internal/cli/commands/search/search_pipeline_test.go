@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	magnetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
 
@@ -175,5 +176,59 @@ func TestSearchMagnetsRejectsNonMovieType(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "only supported for movie search") {
 		t.Fatalf("expected type mismatch error, got %v", err)
+	}
+}
+
+// TestSearchPipelineToMagnets end-to-end: search --ndjson | magnets --ndjson
+// 验证搜索 fan-out 的 movie 信封（带 id）可被 magnets 消费并输出 magnet 信封。
+func TestSearchPipelineToMagnets(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1"}},
+			}})
+		case "/api/v4/movies/id-1":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{"movie": map[string]any{"magnets_count": float64(1)}}})
+		case "/api/v1/movies/id-1/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"name": "HD", "hash": "AAA", "size": float64(4096), "hd": true}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	// Step 1: search --ndjson produces movie envelopes with id.
+	searchStreams := invocation.NewStreams(strings.NewReader("SSIS\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	searchCmd := New(&invocation.RootOptions{Host: server.URL}, searchStreams)
+	searchCmd.SetArgs([]string{"--ndjson"})
+	if err := searchCmd.Execute(); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	searchOutput := searchStreams.Out.(*bytes.Buffer).String()
+
+	// Step 2: magnets --ndjson consumes the search output.
+	magnetsStreams := invocation.NewStreams(strings.NewReader(searchOutput), &bytes.Buffer{}, &bytes.Buffer{})
+	magnetsCmd := magnetscmd.New(&invocation.RootOptions{Host: server.URL}, magnetsStreams)
+	magnetsCmd.SetArgs([]string{"--ndjson"})
+	if err := magnetsCmd.Execute(); err != nil {
+		t.Fatalf("magnets: %v", err)
+	}
+	magnetsOutput := magnetsStreams.Out.(*bytes.Buffer).String()
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(magnetsOutput)), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["kind"] != "magnet" {
+		t.Errorf("kind = %v, want magnet", envelope["kind"])
+	}
+	if envelope["ref"] != "SSIS-001" {
+		t.Errorf("ref = %v, want SSIS-001", envelope["ref"])
 	}
 }
