@@ -49,13 +49,17 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if err != nil {
 				return err
 			}
+			if magnets < 0 {
+				return fmt.Errorf("--magnets must be >= 0")
+			}
+			filtersChanged := cmd.Flags().Changed("cnsub") || cmd.Flags().Changed("hd") || cmd.Flags().Changed("min-size")
+			if filtersChanged && !cmd.Flags().Changed("magnets") {
+				return fmt.Errorf("--cnsub, --hd, and --min-size require --magnets")
+			}
 			// --magnets 仅支持 movie 搜索。
 			if magnets > 0 || cmd.Flags().Changed("magnets") {
 				if typ != "" && typ != "movie" {
 					return fmt.Errorf("--magnets is only supported for movie search (got --type %q)", typ)
-				}
-				if !cmd.Flags().Changed("cnsub") && !cmd.Flags().Changed("hd") && !cmd.Flags().Changed("min-size") && magnets == 0 {
-					// --magnets 0 不配合筛选 flag 时仍允许（返回全部磁力）。
 				}
 			}
 			reader := bufio.NewReader(streams.In)
