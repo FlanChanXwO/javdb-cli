@@ -28,6 +28,10 @@ type BatchRunner struct {
 	RunMany func(*javdb.Client, context.Context, Envelope) ([]Envelope, error)
 	// Legacy 处理单项既有路径（args 为位置参数列表）。
 	Legacy func(args []string) error
+	// RouteTextThroughPipeline 让单项纯文本输入的非 TTY OutputText 走 Consumer。
+	// 未启用时保留本地/有副作用命令的既有 Legacy 文本语义；需要稳定记录的
+	// 只读命令应显式启用此选项。
+	RouteTextThroughPipeline bool
 	// LegacyJSON 表示 Legacy 路径已支持显式 --json 输出（保持既有 shape）。
 	// 为 false 时，单项显式 --json 也走 consumer 路径（RunOne + 信封对象输出），
 	// 避免本地命令（mark/config 等）在 --json 下静默输出裸文本或无输出。
@@ -62,12 +66,14 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson
 
 // ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
-	// 单项 TTY 人类文本/非 TTY 记录文本或显式 --json（且 Legacy 支持 JSON）
+	// 单项 TTY 人类文本或显式 --json（且 Legacy 支持 JSON）
 	// 且输入是纯文本 ref（无 kind）时走既有路径，保持 shape 与认证语义；
+	// 启用 RouteTextThroughPipeline 的只读命令在非 TTY OutputText 下经过
+	// pipeline，输出稳定、可消费的记录；其他命令保留既有 Legacy 文本语义；
 	// NDJSON 信封即使只有一条也必须经过 kind 校验并保留 id 语义，绝不绕过
 	// 消费者检查。Legacy 不支持 JSON 的命令在显式 --json 下走 consumer 路径
 	// 输出信封对象。
-	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputText || mode == OutputHuman || (mode == OutputJSON && b.LegacyJSON)) {
+	if len(inputs) == 1 && inputs[0].Kind == "" && (mode == OutputHuman || (mode == OutputText && !b.RouteTextThroughPipeline) || (mode == OutputJSON && b.LegacyJSON)) {
 		return b.Legacy([]string{pipelineConsumerRef(inputs[0])})
 	}
 	if b.Preflight != nil {

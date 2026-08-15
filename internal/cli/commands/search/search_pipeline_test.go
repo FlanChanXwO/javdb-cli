@@ -41,6 +41,31 @@ func TestSearchTextStdinBatchConsumesKeywords(t *testing.T) {
 	}
 }
 
+// TestSearchPositionalNonTTYUsesStablePipelineRecord 验证单个位置参数在非 TTY
+// stdout 下不再调用 Legacy 人类列表渲染，而是输出可供下游消费的番号记录。
+func TestSearchPositionalNonTTYUsesStablePipelineRecord(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+			"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1", "title": "Mock"}},
+		}})
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"SSIS"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := streams.Out.(*bytes.Buffer).String(); got != "SSIS-001\n" {
+		t.Fatalf("non-TTY positional output = %q, want stable ref record", got)
+	}
+}
+
 // TestSearchNDJSONBatchRejectsWrongKind NDJSON 批处理：不兼容 kind 原位错误。
 func TestSearchNDJSONBatchRejectsWrongKind(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

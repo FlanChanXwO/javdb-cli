@@ -82,7 +82,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			runner := &pipeline.BatchRunner{
 				Name:       "search",
 				LegacyJSON: true,
-				Kinds:      []pipeline.Kind{pipeline.KindMovie},
+				// 非 TTY 单项也输出可供下游消费的稳定番号记录。
+				RouteTextThroughPipeline: true,
+				Kinds:                    []pipeline.Kind{pipeline.KindMovie},
 				ClientFactory: func() (*javdb.Client, error) {
 					return client.New(options, "")
 				},

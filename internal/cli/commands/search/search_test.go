@@ -92,6 +92,8 @@ func TestExecuteNamedText(t *testing.T) {
 	defer server.Close()
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	// 人类命名实体文本只在 TTY stdout 下验证；非 TTY 默认是稳定记录管道。
+	streams.OutIsTerminal = true
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"kw", "--type", "actor"})
 	if err := cmd.Execute(); err != nil {
