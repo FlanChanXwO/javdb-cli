@@ -32,6 +32,8 @@ type BatchRunner struct {
 	Legacy func(args []string) error
 	// RenderText 是 pipeline 文本/人类模式的领域投影；nil 时输出稳定 ref。
 	RenderText func(io.Writer, Envelope) error
+	// RenderError 是 pipeline 文本/人类模式的错误投影；nil 使用 Name 前缀。
+	RenderError func(io.Writer, error) error
 	// RouteTextThroughPipeline 让单项纯文本输入的非 TTY OutputText 走 Consumer。
 	// 未启用时保留本地/有副作用命令的既有 Legacy 文本语义；需要稳定记录的
 	// 只读命令应显式启用此选项。
@@ -99,6 +101,7 @@ func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []En
 		AcceptedKinds: b.Kinds,
 		Concurrency:   b.Concurrency,
 		RenderText:    b.RenderText,
+		RenderError:   b.RenderError,
 		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
 			return b.RunOne(client, ctx, input)
 		},

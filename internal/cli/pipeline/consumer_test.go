@@ -75,6 +75,28 @@ func TestConsumerUsesCallContext(t *testing.T) {
 	}
 }
 
+func TestConsumerCustomErrorRenderer(t *testing.T) {
+	streams, _ := testStreams("", false)
+	errBuf := &bytes.Buffer{}
+	streams.Err = errBuf
+	consumer := &Consumer{
+		Name: "internal-name",
+		RenderError: func(w io.Writer, err error) error {
+			_, writeErr := fmt.Fprintf(w, "localized: %s\n", err)
+			return writeErr
+		},
+		RunOne: func(context.Context, Envelope) (Envelope, error) {
+			return Envelope{}, testError("boom")
+		},
+	}
+	if err := consumer.RunInputs(streams, []Envelope{New("", "a", "")}, OutputText); err == nil {
+		t.Fatal("expected item failure")
+	}
+	if got := errBuf.String(); got != "localized: boom\n" {
+		t.Fatalf("stderr = %q, want localized error", got)
+	}
+}
+
 func TestCollectInputsMatrix(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

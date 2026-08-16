@@ -31,6 +31,8 @@ type Consumer struct {
 	RunMany func(context.Context, Envelope) ([]Envelope, error)
 	// RenderText 输出默认的人类文本。
 	RenderText func(io.Writer, Envelope) error
+	// RenderError 将文本/人类模式的单项错误写到 stderr；nil 使用 Name 前缀。
+	RenderError func(io.Writer, error) error
 	// LegacyJSON 输出单项显式 --json 的既有 shape；nil 时输出信封对象。
 	LegacyJSON func(io.Writer, Envelope) error
 	// Concurrency 控制批量执行并发度；<= 0 表示串行。并发时结果按输入顺序
@@ -96,7 +98,7 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		for _, r := range results {
 			if r.err != nil {
 				failures++
-				if _, err := fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, r.err.Error()); err != nil {
+				if err := c.renderError(streams.Err, r.err); err != nil {
 					return err
 				}
 				continue
@@ -136,6 +138,14 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		return fmt.Errorf("%s completed with %d of %d items failed", c.Name, failures, len(inputs))
 	}
 	return nil
+}
+
+func (c *Consumer) renderError(w io.Writer, itemErr error) error {
+	if c.RenderError != nil {
+		return c.RenderError(w, itemErr)
+	}
+	_, err := fmt.Fprintf(w, "%s: %s\n", c.Name, itemErr.Error())
+	return err
 }
 
 // itemResult 是单项处理的结果。
