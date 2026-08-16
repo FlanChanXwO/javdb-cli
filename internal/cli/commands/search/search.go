@@ -20,6 +20,7 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/result"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
+	"github.com/FlanChanXwO/javdb-cli/internal/common/scalar"
 	"github.com/FlanChanXwO/javdb-cli/internal/reversesearch/image"
 	"github.com/FlanChanXwO/javdb-cli/sdk"
 )
@@ -217,7 +218,7 @@ func runSearchOne(c *javdb.Client, ctx context.Context, input pipeline.Envelope,
 
 // runSearchMany 执行单个关键词搜索并返回多个信封（fan-out）：
 //   - movie 类型：每部影片一个 KindMovie 信封，ref 为番号，id 为内部 ID。
-//   - 其他 --type：回退为单信封（与 runSearchOne 相同）。
+//   - 其他 --type：每个命名实体一个对应 kind 的信封。
 func runSearchMany(c *javdb.Client, ctx context.Context, input pipeline.Envelope, page, limit int, zone, sort, filterBy, typ string, hasMagnets bool) ([]pipeline.Envelope, error) {
 	keyword := pipeline.ConsumerRef(input)
 	opt := javdb.SearchOptions{
@@ -246,12 +247,26 @@ func runSearchMany(c *javdb.Client, ctx context.Context, input pipeline.Envelope
 		}
 		return envelopes, nil
 	}
-	// 非 movie 类型回退为单信封。
-	one, err := runSearchOne(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
-	if err != nil {
-		return nil, err
+	key := searchTypeKey(typ)
+	items := res.Named(key)
+	envelopes := make([]pipeline.Envelope, 0, len(items))
+	for _, item := range items {
+		ref, id := namedEntityRef(item)
+		envelope := pipeline.New(pipeline.Kind(typ), ref, id).WithData(map[string]any{typ: item})
+		envelopes = append(envelopes, envelope)
 	}
-	return []pipeline.Envelope{one}, nil
+	return envelopes, nil
+}
+
+// namedEntityRef 为命名搜索结果选择可读且稳定的引用，同时保留内部 ID。
+func namedEntityRef(item map[string]any) (string, string) {
+	id := scalar.String(item["id"])
+	for _, key := range []string{"name_zht", "name", "code", "number"} {
+		if ref := scalar.String(item[key]); ref != "" {
+			return ref, id
+		}
+	}
+	return id, id
 }
 func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams, keyword string, page, limit int, zone, sort, filterBy, typ string, hasMagnets, asJSON bool) error {
 	c, err := client.New(options, "")
@@ -305,7 +320,7 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 		Filename:    imageBytes.Filename,
 		Source:      setup.Source,
 		BypassCache: noCache,
-	}, javdb.ImageSearchOptions{})
+	}, javdb.ImageSearchOptions{SkipMovieDetail: mode == pipeline.OutputText})
 	if err != nil {
 		// provider 顶层失败：不伪造空结果。
 		return fmt.Errorf("reverse search failed: %w", err)
@@ -508,45 +523,75 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 		}
 	}
 
-	// 收集所有搜索结果影片（保留输入顺序）。
-	var allMovies []map[string]any
+	type magnetResult struct {
+		movie         map[string]any
+		magnets       []map[string]any
+		err           error
+		errorEnvelope pipeline.Envelope
+	}
+
+	// 输入校验与搜索结果使用同一保序序列。错误信封不参与搜索，避免放大
+	// 上游失败；非法 kind 也在发出远程请求前转为原位错误。
+	var results []magnetResult
 	for _, input := range inputs {
+		if input.Kind == pipeline.KindError {
+			results = append(results, magnetResult{
+				err:           errors.New(pipelineErrorMessage(input)),
+				errorEnvelope: input,
+			})
+			continue
+		}
+		if input.Kind != "" && input.Kind != pipeline.KindMovie {
+			itemErr := fmt.Errorf("unsupported kind %q", input.Kind)
+			results = append(results, magnetResult{
+				err:           itemErr,
+				errorEnvelope: pipeline.ErrorEnvelope(input, "search", "input", "kind", itemErr.Error()),
+			})
+			continue
+		}
 		keyword := pipeline.ConsumerRef(input)
 		opt := javdb.SearchOptions{
 			Page: page, Limit: limit, Zone: zone, Sort: sort, FilterBy: filterBy, Type: "movie",
 		}
 		res, err := c.Search(context.Background(), keyword, opt)
 		if err != nil {
-			return fmt.Errorf("search failed: %w", err)
+			itemErr := fmt.Errorf("search failed: %w", err)
+			results = append(results, magnetResult{
+				err:           itemErr,
+				errorEnvelope: pipeline.ErrorEnvelope(input, "search", "search", "fetch", itemErr.Error()),
+			})
+			continue
 		}
 		movies := res.Movies()
 		if hasMagnets {
 			movies = result.FilterMoviesWithMagnets(movies)
 		}
-		allMovies = append(allMovies, movies...)
+		for _, movie := range movies {
+			results = append(results, magnetResult{movie: movie})
+		}
 	}
 
 	// 并发获取每部影片的磁力。
-	type magnetResult struct {
-		movie   map[string]any
-		magnets []map[string]any
-		err     error
-	}
-	results := make([]magnetResult, len(allMovies))
 	var wait sync.WaitGroup
-	for i := range allMovies {
+	for i := range results {
+		if results[i].err != nil {
+			continue
+		}
 		wait.Add(1)
 		go func(i int) {
 			defer wait.Done()
-			mid := fmt.Sprint(allMovies[i]["id"])
+			mid := fmt.Sprint(results[i].movie["id"])
 			mags, err := c.MovieMagnets(context.Background(), mid)
 			if err != nil {
-				results[i] = magnetResult{movie: allMovies[i], err: err}
+				results[i].err = err
+				results[i].errorEnvelope = pipeline.ErrorEnvelope(
+					pipeline.New(pipeline.KindMagnet, fmt.Sprint(results[i].movie["number"]), mid),
+					"search", "magnets", "fetch", err.Error(),
+				)
 				return
 			}
 			mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
-			mags = javdb.RankMagnets(mags, magnetsCount)
-			results[i] = magnetResult{movie: allMovies[i], magnets: mags}
+			results[i].magnets = javdb.RankMagnets(mags, magnetsCount)
 		}(i)
 	}
 	wait.Wait()
@@ -557,6 +602,11 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 	case pipeline.OutputJSON:
 		moviesOut := make([]map[string]any, 0, len(results))
 		for _, r := range results {
+			if r.movie == nil {
+				failures++
+				moviesOut = append(moviesOut, map[string]any{"error": r.err.Error(), "envelope": r.errorEnvelope})
+				continue
+			}
 			entry := map[string]any{
 				"number":  r.movie["number"],
 				"id":      r.movie["id"],
@@ -574,10 +624,17 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 	case pipeline.OutputNDJSON:
 		writer := pipeline.NewWriter(streams.Out, pipeline.OutputNDJSON)
 		for _, r := range results {
+			if r.movie == nil {
+				if err := writer.Write(r.errorEnvelope); err != nil {
+					return err
+				}
+				failures++
+				continue
+			}
 			ref := fmt.Sprint(r.movie["number"])
 			id := fmt.Sprint(r.movie["id"])
 			if r.err != nil {
-				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMagnet, ref, id), "search", "magnets", "fetch", r.err.Error())); err != nil {
+				if err := writer.Write(r.errorEnvelope); err != nil {
 					return err
 				}
 				failures++
@@ -613,6 +670,13 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 		return fmt.Errorf("search --magnets completed with %d of %d movies failed", failures, len(results))
 	}
 	return nil
+}
+
+func pipelineErrorMessage(envelope pipeline.Envelope) string {
+	if message := scalar.String(envelope.Data["message"]); message != "" {
+		return message
+	}
+	return "upstream pipeline error"
 }
 
 // runImageSearchMagnets 执行以图搜番并直接获取磁力：使用 SkipMovieDetail 跳过

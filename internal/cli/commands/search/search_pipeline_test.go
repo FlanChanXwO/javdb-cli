@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	magnetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 )
 
 type failingWriter struct{ err error }
@@ -134,6 +137,110 @@ func TestSearchNDJSONFanOutMultipleMovies(t *testing.T) {
 		if envelope["kind"] != "movie" {
 			t.Errorf("line %d kind = %v, want movie", i, envelope["kind"])
 		}
+	}
+}
+
+// TestSearchNamedFanOutStableRefs 验证命名实体搜索按实体逐项输出，非 TTY
+// 文本与 NDJSON 的 ref 都来自实体本身，不回退为原始关键词。
+func TestSearchNamedFanOutStableRefs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+			"actors": []map[string]any{
+				{"id": "actor-1", "name": "Actor One"},
+				{"id": "actor-2", "name_zht": "Actor Two"},
+			},
+		}})
+	}))
+	defer server.Close()
+
+	textStreams := invocation.NewStreams(strings.NewReader("keyword\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	textCmd := New(&invocation.RootOptions{Host: server.URL}, textStreams)
+	textCmd.SetArgs([]string{"--type", "actor"})
+	if err := textCmd.Execute(); err != nil {
+		t.Fatalf("text execute: %v", err)
+	}
+	if got := textStreams.Out.(*bytes.Buffer).String(); got != "Actor One\nActor Two\n" {
+		t.Fatalf("named text output = %q", got)
+	}
+
+	ndjsonStreams := invocation.NewStreams(strings.NewReader("keyword\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	ndjsonCmd := New(&invocation.RootOptions{Host: server.URL}, ndjsonStreams)
+	ndjsonCmd.SetArgs([]string{"--type", "actor", "--ndjson"})
+	if err := ndjsonCmd.Execute(); err != nil {
+		t.Fatalf("ndjson execute: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(ndjsonStreams.Out.(*bytes.Buffer).String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("named NDJSON lines = %d, want 2", len(lines))
+	}
+	for i, want := range []string{"Actor One", "Actor Two"} {
+		var envelope map[string]any
+		if err := json.Unmarshal([]byte(lines[i]), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if envelope["kind"] != "actor" || envelope["ref"] != want {
+			t.Errorf("line %d envelope = %v", i, envelope)
+		}
+	}
+}
+
+// TestSearchMagnetsPassesThroughErrorEnvelope 验证上游错误不触发搜索请求，
+// 且 NDJSON 中保留原错误信封内容。
+func TestSearchMagnetsPassesThroughErrorEnvelope(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		http.NotFound(writer, request)
+	}))
+	defer server.Close()
+
+	input := `{"schema":"javdb.pipeline/v1","kind":"error","ref":"ABC-123","data":{"command":"upstream","stage":"resolve","code":"missing","message":"not found"}}` + "\n"
+	streams := invocation.NewStreams(strings.NewReader(input), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--magnets", "0", "--ndjson"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "1 of 1") {
+		t.Fatalf("error = %v, want propagated failure summary", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	wantEnvelope, err := pipeline.DecodeNDJSON(strings.TrimSpace(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotEnvelope, err := pipeline.DecodeNDJSON(strings.TrimSpace(streams.Out.(*bytes.Buffer).String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotEnvelope, wantEnvelope) {
+		t.Fatalf("propagated envelope = %#v, want %#v", gotEnvelope, wantEnvelope)
+	}
+
+	wrongKindInput := `{"schema":"javdb.pipeline/v1","kind":"actor","ref":"Actor One","id":"actor-1"}` + "\n"
+	wrongKindStreams := invocation.NewStreams(strings.NewReader(wrongKindInput), &bytes.Buffer{}, &bytes.Buffer{})
+	wrongKindCmd := New(&invocation.RootOptions{Host: server.URL}, wrongKindStreams)
+	wrongKindCmd.SetArgs([]string{"--magnets", "0", "--ndjson"})
+	if err := wrongKindCmd.Execute(); err == nil || !strings.Contains(err.Error(), "1 of 1") {
+		t.Fatalf("wrong-kind error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("wrong-kind requests = %d, want 0", requests.Load())
+	}
+	wrongKindEnvelope, err := pipeline.DecodeNDJSON(strings.TrimSpace(wrongKindStreams.Out.(*bytes.Buffer).String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrongKindEnvelope.Kind != pipeline.KindError || wrongKindEnvelope.Data["code"] != "kind" {
+		t.Fatalf("wrong-kind envelope = %#v", wrongKindEnvelope)
 	}
 }
 

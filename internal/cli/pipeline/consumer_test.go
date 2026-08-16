@@ -138,7 +138,7 @@ func TestConsumerSingleNDJSONLegacyShape(t *testing.T) {
 	}
 }
 
-func TestListProducerDefaultsToText(t *testing.T) {
+func TestListProducerDefaultsToStableRefs(t *testing.T) {
 	streams, out := testStreams("", false)
 	producer := &ListProducer{
 		Name: "watched",
@@ -155,19 +155,53 @@ func TestListProducerDefaultsToText(t *testing.T) {
 			return map[string]any{"movies": items}, nil
 		},
 		RowText: func(w io.Writer, _ io.Writer, items []map[string]any) error {
-			for _, item := range items {
-				if _, err := fmt.Fprintln(w, item["number"]); err != nil {
-					return err
-				}
-			}
-			return nil
+			_, err := fmt.Fprintln(w, "human table")
+			return err
 		},
 	}
 	if err := producer.Execute(streams, false, false); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if out.String() != "SSIS-589\nHZGD-246\n" {
-		t.Errorf("default output = %q", out.String())
+		t.Errorf("non-TTY output = %q, want stable refs", out.String())
+	}
+
+	ttyStreams, ttyOut := testStreams("", true)
+	if err := producer.Execute(ttyStreams, false, false); err != nil {
+		t.Fatalf("Execute TTY: %v", err)
+	}
+	if ttyOut.String() != "human table\n" {
+		t.Errorf("TTY output = %q, want human renderer", ttyOut.String())
+	}
+}
+
+func TestProducerTextAndHumanModes(t *testing.T) {
+	producer := &Producer{
+		Name: "tags",
+		Produce: func(context.Context) ([]Envelope, error) {
+			return []Envelope{New(KindTag, "tag-one", "id-1"), New(KindTag, "", "id-2")}, nil
+		},
+		RenderText: func(w io.Writer, envelopes []Envelope) error {
+			_, err := fmt.Fprintln(w, "# category\nTABLE")
+			return err
+		},
+		LegacyJSON: func(io.Writer) error { return nil },
+	}
+
+	streams, out := testStreams("", false)
+	if err := producer.Execute(streams, false, false); err != nil {
+		t.Fatalf("non-TTY Execute: %v", err)
+	}
+	if out.String() != "tag-one\nid-2\n" {
+		t.Fatalf("non-TTY output = %q, want stable refs", out.String())
+	}
+
+	ttyStreams, ttyOut := testStreams("", true)
+	if err := producer.Execute(ttyStreams, false, false); err != nil {
+		t.Fatalf("TTY Execute: %v", err)
+	}
+	if ttyOut.String() != "# category\nTABLE\n" {
+		t.Fatalf("TTY output = %q, want human renderer", ttyOut.String())
 	}
 }
 

@@ -165,6 +165,112 @@ func TestSearchImageFromStdinMagicDefaultsToText(t *testing.T) {
 	}
 }
 
+// TestSearchImageTextSkipsMovieDetail 验证非 TTY 稳定 ref 路径只解析影片 ID，
+// 不为成功候选追加 MovieDetail 请求。
+func TestSearchImageTextSkipsMovieDetail(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"results":[{"video_code":"SSIS-589","best_similarity":95.2,"frames":[]}]}`))
+	}))
+	defer provider.Close()
+	var detailRequests atomic.Int64
+	javdbServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/v2/search":
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"movies":[{"number":"SSIS-589","id":"9DGB5X"}]}}`))
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/9DGB5X"):
+			detailRequests.Add(1)
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"movie":{"id":"9DGB5X","number":"SSIS-589"}}}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer javdbServer.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})
+	if err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := streams.Out.(*bytes.Buffer).String(); got != "SSIS-589\n" {
+		t.Fatalf("text output = %q", got)
+	}
+	if detailRequests.Load() != 0 {
+		t.Fatalf("MovieDetail requests = %d, want 0", detailRequests.Load())
+	}
+}
+
+// TestSearchImageMagnetsEndToEnd 覆盖 provider → 严格 ID 解析 → 磁力请求，
+// 并锁定 text、NDJSON、JSON 三种输出；该快路径不得请求 MovieDetail。
+func TestSearchImageMagnetsEndToEnd(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"results":[{"video_code":"SSIS-589","best_similarity":95.2,"frames":[]}]}`))
+	}))
+	defer provider.Close()
+	var detailRequests atomic.Int64
+	javdbServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/v2/search":
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"movies":[{"number":"SSIS-589","id":"9DGB5X"}]}}`))
+		case request.URL.Path == "/api/v1/movies/9DGB5X/magnets":
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"magnets":[{"name":"HD","hash":"AAA","size":4096,"hd":true}]}}`))
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/9DGB5X"):
+			detailRequests.Add(1)
+			http.NotFound(writer, request)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer javdbServer.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	for _, tc := range []struct {
+		name string
+		flag string
+	}{
+		{name: "text"},
+		{name: "ndjson", flag: "--ndjson"},
+		{name: "json", flag: "--json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})
+			args := []string{"--magnets", "1", "--source", "test", "--no-cache"}
+			if tc.flag != "" {
+				args = append(args, tc.flag)
+			}
+			if err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL}, args...); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			out := streams.Out.(*bytes.Buffer).String()
+			switch tc.flag {
+			case "--ndjson":
+				var envelope map[string]any
+				if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope["kind"] != "magnet" || envelope["ref"] != "SSIS-589" {
+					t.Fatalf("NDJSON envelope = %v", envelope)
+				}
+			case "--json":
+				var payload map[string]any
+				if err := json.Unmarshal([]byte(out), &payload); err != nil {
+					t.Fatal(err)
+				}
+				matches, _ := payload["matches"].([]any)
+				if len(matches) != 1 {
+					t.Fatalf("JSON matches = %v", payload["matches"])
+				}
+			default:
+				if !strings.Contains(out, "magnet:?xt=urn:btih:AAA") {
+					t.Fatalf("text output = %q", out)
+				}
+			}
+		})
+	}
+	if detailRequests.Load() != 0 {
+		t.Fatalf("MovieDetail requests = %d, want 0", detailRequests.Load())
+	}
+}
+
 func TestSearchAmbiguousArgumentAndStdin(t *testing.T) {
 	// 位置参数（非图片路径）+ 非空 stdin 同时存在 → 歧义错误。
 	streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})

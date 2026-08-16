@@ -140,7 +140,14 @@ func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error
 	switch mode {
 	case OutputJSON:
 		return p.LegacyJSON(streams.Out)
-	case OutputText, OutputHuman:
+	case OutputText:
+		for _, envelope := range envelopes {
+			if err := writeRef(streams.Out, envelope); err != nil {
+				return err
+			}
+		}
+		return nil
+	case OutputHuman:
 		return p.RenderText(streams.Out, envelopes)
 	default:
 		writer := NewWriter(streams.Out, OutputNDJSON)
