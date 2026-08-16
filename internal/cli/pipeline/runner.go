@@ -17,6 +17,8 @@ import (
 //     信封并继续，最终非零；批量显式 --json 输出信封数组。
 type BatchRunner struct {
 	Name string
+	// Context 是本次命令调用的生命周期；未设置时使用 Background。
+	Context context.Context
 	// Kinds 是文本 ref 输入分配的 kind 与消费者接受的 kind。
 	Kinds []Kind
 	// ClientFactory 每次批量执行调用一次，返回携带默认 token 的 client。
@@ -93,6 +95,7 @@ func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []En
 	}
 	consumer := &Consumer{
 		Name:          b.Name,
+		Context:       b.Context,
 		AcceptedKinds: b.Kinds,
 		Concurrency:   b.Concurrency,
 		RenderText:    b.RenderText,

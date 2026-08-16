@@ -74,7 +74,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			if imageMode {
 				if cmd.Flags().Changed("magnets") {
-					return runImageSearchMagnets(options, streams, arg, reader, source, noCache, mode, magnets, cnsub, hd, minSize)
+					return runImageSearchMagnets(cmd.Context(), options, streams, arg, reader, source, noCache, mode, magnets, cnsub, hd, minSize)
 				}
 				return runImageSearch(options, streams, arg, reader, source, noCache, mode)
 			}
@@ -82,10 +82,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				return fmt.Errorf("keyword or an image")
 			}
 			if cmd.Flags().Changed("magnets") {
-				return runSearchMagnets(options, streams, inputs, mode, page, limit, zone, sort, filterBy, hasMagnets, magnets, cnsub, hd, minSize)
+				return runSearchMagnets(cmd.Context(), options, streams, inputs, mode, page, limit, zone, sort, filterBy, hasMagnets, magnets, cnsub, hd, minSize)
 			}
 			runner := &pipeline.BatchRunner{
 				Name:       "search",
+				Context:    cmd.Context(),
 				LegacyJSON: true,
 				// 非 TTY 单项也输出可供下游消费的稳定番号记录。
 				RouteTextThroughPipeline: true,
@@ -510,7 +511,7 @@ func writeJSON(w io.Writer, value any) error {
 
 // runSearchMagnets 执行关键词搜索并对每部影片获取磁力：筛选 → 排序 → 截取 N。
 // 结果按搜索结果顺序（影片）和磁力排序顺序输出。
-func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Streams, inputs []pipeline.Envelope, mode pipeline.OutputMode, page, limit int, zone, sort, filterBy string, hasMagnets bool, magnetsCount int, cnsub, hd bool, minSize string) error {
+func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, inputs []pipeline.Envelope, mode pipeline.OutputMode, page, limit int, zone, sort, filterBy string, hasMagnets bool, magnetsCount int, cnsub, hd bool, minSize string) error {
 	c, err := client.New(options, "")
 	if err != nil {
 		return err
@@ -553,7 +554,7 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 		opt := javdb.SearchOptions{
 			Page: page, Limit: limit, Zone: zone, Sort: sort, FilterBy: filterBy, Type: "movie",
 		}
-		res, err := c.Search(context.Background(), keyword, opt)
+		res, err := c.Search(ctx, keyword, opt)
 		if err != nil {
 			itemErr := fmt.Errorf("search failed: %w", err)
 			results = append(results, magnetResult{
@@ -571,29 +572,46 @@ func runSearchMagnets(options *invocation.RootOptions, streams *invocation.Strea
 		}
 	}
 
-	// 并发获取每部影片的磁力。
+	// 使用有界 worker 池获取磁力，避免结果量放大为无界 API 并发；索引写入
+	// 保留搜索结果顺序，ctx 取消时不再领取新任务。
+	const workers = 4
+	jobs := make(chan int)
 	var wait sync.WaitGroup
-	for i := range results {
-		if results[i].err != nil {
-			continue
-		}
+	for worker := 0; worker < workers; worker++ {
 		wait.Add(1)
-		go func(i int) {
+		go func() {
 			defer wait.Done()
-			mid := fmt.Sprint(results[i].movie["id"])
-			mags, err := c.MovieMagnets(context.Background(), mid)
-			if err != nil {
-				results[i].err = err
-				results[i].errorEnvelope = pipeline.ErrorEnvelope(
-					pipeline.New(pipeline.KindMagnet, fmt.Sprint(results[i].movie["number"]), mid),
-					"search", "magnets", "fetch", err.Error(),
-				)
-				return
+			for i := range jobs {
+				if results[i].err != nil {
+					continue
+				}
+				mid := fmt.Sprint(results[i].movie["id"])
+				mags, err := c.MovieMagnets(ctx, mid)
+				if err != nil {
+					results[i].err = err
+					results[i].errorEnvelope = pipeline.ErrorEnvelope(
+						pipeline.New(pipeline.KindMagnet, fmt.Sprint(results[i].movie["number"]), mid),
+						"search", "magnets", "fetch", err.Error(),
+					)
+					return
+				}
+				mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
+				results[i].magnets = javdb.RankMagnets(mags, magnetsCount)
 			}
-			mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
-			results[i].magnets = javdb.RankMagnets(mags, magnetsCount)
-		}(i)
+		}()
 	}
+	for i := range results {
+		if results[i].err == nil {
+			select {
+			case jobs <- i:
+			case <-ctx.Done():
+				close(jobs)
+				wait.Wait()
+				return ctx.Err()
+			}
+		}
+	}
+	close(jobs)
 	wait.Wait()
 
 	// 输出。
@@ -681,7 +699,7 @@ func pipelineErrorMessage(envelope pipeline.Envelope) string {
 
 // runImageSearchMagnets 执行以图搜番并直接获取磁力：使用 SkipMovieDetail 跳过
 // 完整详情，仅做番号→ID→磁力。结果按 provider 候选顺序输出。
-func runImageSearchMagnets(options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode, magnetsCount int, cnsub, hd bool, minSize string) error {
+func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode, magnetsCount int, cnsub, hd bool, minSize string) error {
 	setup, err := client.NewReverseSearchClient(options, "", source)
 	if err != nil {
 		return err
@@ -690,7 +708,7 @@ func runImageSearchMagnets(options *invocation.RootOptions, streams *invocation.
 	if err != nil {
 		return err
 	}
-	result, err := setup.Client.SearchByImage(context.Background(), javdb.ReverseSearchRequest{
+	result, err := setup.Client.SearchByImage(ctx, javdb.ReverseSearchRequest{
 		Image:       imageBytes.Bytes,
 		Filename:    imageBytes.Filename,
 		Source:      setup.Source,
@@ -708,37 +726,51 @@ func runImageSearchMagnets(options *invocation.RootOptions, streams *invocation.
 		}
 	}
 
-	// 并发获取每个候选的磁力。
+	// 使用有界 worker 池获取每个候选的磁力，并按候选索引保序。
 	type magnetResult struct {
 		match   javdb.ImageSearchMatch
 		magnets []map[string]any
 		err     error
 	}
 	results := make([]magnetResult, len(result.Matches))
+	const workers = 4
+	jobs := make(chan int)
 	var wait sync.WaitGroup
-	for i := range result.Matches {
+	for worker := 0; worker < workers; worker++ {
 		wait.Add(1)
-		go func(i int) {
+		go func() {
 			defer wait.Done()
-			match := result.Matches[i]
-			if match.Error != nil {
-				results[i] = magnetResult{match: match, err: fmt.Errorf("%s", match.Error.Message)}
-				return
+			for i := range jobs {
+				match := result.Matches[i]
+				if match.Error != nil {
+					results[i] = magnetResult{match: match, err: fmt.Errorf("%s", match.Error.Message)}
+					return
+				}
+				if match.MovieID == "" {
+					results[i] = magnetResult{match: match, err: fmt.Errorf("no movie id")}
+					return
+				}
+				mags, err := setup.Client.MovieMagnets(ctx, match.MovieID)
+				if err != nil {
+					results[i] = magnetResult{match: match, err: err}
+					return
+				}
+				mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
+				mags = javdb.RankMagnets(mags, magnetsCount)
+				results[i] = magnetResult{match: match, magnets: mags}
 			}
-			if match.MovieID == "" {
-				results[i] = magnetResult{match: match, err: fmt.Errorf("no movie id")}
-				return
-			}
-			mags, err := setup.Client.MovieMagnets(context.Background(), match.MovieID)
-			if err != nil {
-				results[i] = magnetResult{match: match, err: err}
-				return
-			}
-			mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
-			mags = javdb.RankMagnets(mags, magnetsCount)
-			results[i] = magnetResult{match: match, magnets: mags}
-		}(i)
+		}()
 	}
+	for i := range result.Matches {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			close(jobs)
+			wait.Wait()
+			return ctx.Err()
+		}
+	}
+	close(jobs)
 	wait.Wait()
 
 	failures := 0

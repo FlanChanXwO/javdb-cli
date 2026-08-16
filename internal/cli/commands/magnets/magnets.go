@@ -76,7 +76,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			return renderText(w, envelope, best)
 		},
 		Kinds: []pipeline.Kind{pipeline.KindMovie},
-		// 按输入并发请求磁力；结果按输入顺序写出。
+		// 逐项请求磁力并按输入顺序写出；保持串行以避免放大 API 请求。
 		Concurrency: 1,
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
@@ -133,6 +133,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List magnet links for a movie",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}

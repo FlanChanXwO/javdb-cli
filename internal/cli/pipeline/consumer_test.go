@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,57 @@ func testStreams(stdin string, terminal bool) (*invocation.Streams, *bytes.Buffe
 	streams.InIsTerminal = terminal
 	streams.OutIsTerminal = terminal
 	return streams, out
+}
+
+func TestConsumerConcurrencyIsBounded(t *testing.T) {
+	streams, _ := testStreams("", false)
+	inputs := make([]Envelope, 8)
+	for i := range inputs {
+		inputs[i] = New("", fmt.Sprintf("%d", i), "")
+	}
+	var active, maxActive int32
+	consumer := &Consumer{
+		Name:          "test",
+		AcceptedKinds: []Kind{KindMovie},
+		Concurrency:   2,
+		RunOne: func(context.Context, Envelope) (Envelope, error) {
+			current := atomic.AddInt32(&active, 1)
+			for {
+				old := atomic.LoadInt32(&maxActive)
+				if current <= old || atomic.CompareAndSwapInt32(&maxActive, old, current) {
+					break
+				}
+			}
+			time.Sleep(5 * time.Millisecond)
+			atomic.AddInt32(&active, -1)
+			return New(KindMovie, "ok", ""), nil
+		},
+	}
+	if err := consumer.RunInputs(streams, inputs, OutputNDJSON); err != nil {
+		t.Fatalf("RunInputs: %v", err)
+	}
+	if maxActive > 2 {
+		t.Fatalf("max concurrent calls = %d, want <= 2", maxActive)
+	}
+}
+
+func TestConsumerUsesCallContext(t *testing.T) {
+	streams, _ := testStreams("", false)
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("request"), "active")
+	consumer := &Consumer{
+		Name:    "test",
+		Context: ctx,
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			if got := ctx.Value(contextKey("request")); got != "active" {
+				t.Fatalf("context value = %v, want active", got)
+			}
+			return New(KindMovie, input.Ref, ""), nil
+		},
+	}
+	if err := consumer.RunInputs(streams, []Envelope{New("", "a", "")}, OutputNDJSON); err != nil {
+		t.Fatalf("RunInputs: %v", err)
+	}
 }
 
 func TestCollectInputsMatrix(t *testing.T) {
