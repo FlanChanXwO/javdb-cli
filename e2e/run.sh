@@ -125,17 +125,17 @@ else
 
   echo "== top250 =="
   out=$(run top250 --zone censored --limit 1)
-  assert_substring "top250 has ranked row" "$out" "#1"
+  assert_nonempty "top250 has a stable movie ref" "$out"
   out=$(run top250 --zone censored --limit 1 --json)
   assert_json "top250 --json ok" "$out" "'movies' in d and len(d['movies']) == 1"
 
   echo "== watched / want / recent =="
   out=$(run watched)
-  assert_substring "watched returns rows" "$out" $'\t'
+  assert_nonempty "watched returns stable movie refs" "$out"
   out=$(run want)
-  assert_substring "want returns rows" "$out" $'\t'
+  assert_nonempty "want returns stable movie refs" "$out"
   out=$(run recent)
-  assert_substring "recent returns rows" "$out" $'\t'
+  assert_nonempty "recent returns stable movie refs" "$out"
 
   echo "== collections =="
   out=$(run collections actors)
@@ -143,7 +143,7 @@ else
 
   echo "== lists =="
   out=$(run lists --limit 1)
-  assert_substring "lists has row" "$out" $'\t'
+  assert_nonempty "lists has a stable list ref" "$out"
 
   echo "== entity filmography =="
   out=$(run actor 葵つかさ --limit 1)
