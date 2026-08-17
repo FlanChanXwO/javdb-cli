@@ -20,6 +20,15 @@
       "sources": [
         "https://github.com/FlanChanXwO/javdb-cli/pull/29"
       ]
+    },
+    {
+      "category": "Maintenance",
+      "breaking": false,
+      "english": "Make release-note audit resolve squash-merged PRs by verifying the exact merge commit, and document the post-merge release preflight across project skills and maintainer guidance.",
+      "zh_cn": "让 release-note 审计通过核对精确 merge commit 识别 squash merge 的 PR，并在 project skills 和维护者文档中补充合并后的发布前置流程。",
+      "sources": [
+        "https://github.com/FlanChanXwO/javdb-cli/pull/30"
+      ]
     }
   ],
   "new_contributors": []
