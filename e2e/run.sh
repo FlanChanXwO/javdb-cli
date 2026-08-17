@@ -33,6 +33,15 @@ assert_substring() {
   fi
 }
 
+assert_nonempty() {
+  local label="$1" haystack="$2"
+  if [ -n "$haystack" ]; then
+    printf '  ok   %s\n' "$label"; PASS=$((PASS+1))
+  else
+    printf '  FAIL %s: output is empty\n' "$label"; FAIL=$((FAIL+1))
+  fi
+}
+
 # assert_json <label> <json> <python-expr-returning-bool>
 assert_json() {
   local label="$1" json="$2" expr="$3"
@@ -71,15 +80,15 @@ assert_json "search --ndjson emits a pipeline envelope" "$nout" "d.get('schema')
 
 echo "== rankings =="
 out=$(run rankings movies --period week)
-assert_substring "rankings movies week has a row" "$out" $'\t'
+assert_nonempty "rankings movies week has a stable ref" "$out"
 out=$(run rankings actors --period week)
-assert_substring "rankings actors week has tab row" "$out" $'\t'
+assert_nonempty "rankings actors week has a stable ref" "$out"
 out=$(run rankings playback --period week)
-assert_substring "rankings playback week has a row" "$out" $'\t'
+assert_nonempty "rankings playback week has a stable ref" "$out"
 
 echo "== browse =="
 out=$(run browse --zone censored --limit 1)
-assert_substring "browse returns a movie row" "$out" $'\t'
+assert_nonempty "browse returns a stable movie ref" "$out"
 
 echo "== detail (image fields) =="
 out=$(run detail SSIS-001)
@@ -92,7 +101,7 @@ assert_json "detail --json exposes cover_url key" "$jout" "'cover_url' in d"
 
 echo "== tags =="
 out=$(run tags --zone censored)
-assert_substring "tags lists main header" "$out" "main"
+assert_substring "tags lists a stable tag ref" "$out" "Playable"
 
 echo "== magnets (read-only; uses token if available) =="
 jout=$(run magnets SSIS-001 --best --json)
@@ -116,17 +125,17 @@ else
 
   echo "== top250 =="
   out=$(run top250 --zone censored --limit 1)
-  assert_substring "top250 has ranked row" "$out" "#1"
+  assert_nonempty "top250 has a stable movie ref" "$out"
   out=$(run top250 --zone censored --limit 1 --json)
   assert_json "top250 --json ok" "$out" "'movies' in d and len(d['movies']) == 1"
 
   echo "== watched / want / recent =="
   out=$(run watched)
-  assert_substring "watched returns rows" "$out" $'\t'
+  assert_nonempty "watched returns stable movie refs" "$out"
   out=$(run want)
-  assert_substring "want returns rows" "$out" $'\t'
+  assert_nonempty "want returns stable movie refs" "$out"
   out=$(run recent)
-  assert_substring "recent returns rows" "$out" $'\t'
+  assert_nonempty "recent returns stable movie refs" "$out"
 
   echo "== collections =="
   out=$(run collections actors)
@@ -134,7 +143,7 @@ else
 
   echo "== lists =="
   out=$(run lists --limit 1)
-  assert_substring "lists has row" "$out" $'\t'
+  assert_nonempty "lists has a stable list ref" "$out"
 
   echo "== entity filmography =="
   out=$(run actor 葵つかさ --limit 1)

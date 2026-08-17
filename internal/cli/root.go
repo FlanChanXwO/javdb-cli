@@ -51,6 +51,10 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	if file, ok := stdin.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
 		streams.InIsTerminal = true
 	}
+	// 非 TTY stdout 是管道/记录输出信号；探测只在 stdout 是真实终端时生效。
+	if file, ok := stdout.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
+		streams.OutIsTerminal = true
+	}
 	command := &cobra.Command{
 		Use:           "javdb",
 		Short:         "JavDB app API command-line client",

@@ -89,7 +89,7 @@ userID, username, err := client.ResolveUserID(ctx)
 | 评论 | `MovieComments` |
 | 本地媒体下载 | `DownloadMovieMedia`、`MovieMediaDownloadOptions`、`MovieMediaDownloadResult` |
 | 实体图 | `ResolveEntity`、`EntityDetail`、`EntityMovies`、`AllEntityMovies` |
-| 磁力 | `MovieMagnets`、`FilterMagnets`、`PickBestMagnet`、`MagnetURI` |
+| 磁力 | `MovieMagnets`、`FilterMagnets`、`PickBestMagnet`、`RankMagnets`、`MagnetURI` |
 | 排行 | `RankingsMovies`、`RankingsActors`、`RankingsPlayback`、`Top250` |
 | 个人状态 | `WatchedMovies`、`WantMovies`、`Mark`、`Unmark`、`Collected`、`RecentViewed` |
 | 合集 | `MyLists`、`ListInfo`、`RelatedLists` |
@@ -174,7 +174,8 @@ for _, match := range result.Matches {
   HTTP(S) source），返回规范化候选与帧；multipart 字段固定为 `file`。
 - `SearchByImage` 对每个候选并发执行大小写不敏感、完整相等的严格番号匹配
   （`ResolveMovieIDExact`，不回退首项）并恢复 provider 顺序；单候选失败是
-  `ImageSearchError`，绝不中止整批。
+  `ImageSearchError`，绝不中止整批。设置 `ImageSearchOptions{SkipMovieDetail: true}`
+  可仅解析 movie ID 而不获取完整详情——适用于只需 ID 的场景（如磁力查询）。
 - `ReverseSearchCache` 是可注入接口（`Get`/`Put` 的 key 为
   `"<source>:<原图 SHA-256>"`，不同 provider 永不共享条目）；SDK 绝不读取
   `~/.javdb-cli`。缓存命中跳过 provider，`BypassCache` 按请求禁用。缓存不得

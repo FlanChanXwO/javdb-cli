@@ -128,12 +128,16 @@ Usage:
   javdb search KEYWORD|IMAGE [flags]
 
 Flags:
+      --cnsub              Only magnets with Chinese subtitles (requires --magnets)
       --filter-by string   can_play|magnets|subtitle|single
       --has-magnets        Drop movie rows with magnets_count == 0
+      --hd                 Only HD magnets (requires --magnets)
   -h, --help               help for search
       --image              Treat the argument as an image path or HTTP(S) URL
       --json               Machine-readable JSON
       --limit int          Page size (0 = server default)
+      --magnets int        Fetch magnets for each result: 0=all, N=top N by best rule
+      --min-size string    Min magnet size e.g. 2000, 4GB, 500MB (requires --magnets)
       --ndjson             Pipeline NDJSON envelopes
       --no-cache           Bypass the reverse-search response cache
       --page int           Page number (default 1)

@@ -27,14 +27,14 @@ func PickBestMagnet(magnets []map[string]any) map[string]any {
 	}
 	best := magnets[0]
 	for _, m := range magnets[1:] {
-		if magnetBetter(m, best) {
+		if MagnetBetter(m, best) {
 			best = m
 		}
 	}
 	return best
 }
 
-func magnetBetter(a, b map[string]any) bool {
+func MagnetBetter(a, b map[string]any) bool {
 	ac, bc := boolScore(a["cnsub"]), boolScore(b["cnsub"])
 	if ac != bc {
 		return ac > bc

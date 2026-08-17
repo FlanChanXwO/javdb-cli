@@ -79,6 +79,7 @@ TOP250 and personal-list commands require the default account.
 ```bash
 javdb search KEYWORD|IMAGE [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
   [--type TYPE] [--page N] [--limit N] [--has-magnets] \
+  [--magnets N] [--cnsub] [--hd] [--min-size SIZE] \
   [--image] [--source NAME] [--no-cache] [--json|--ndjson]
 javdb detail NUMBER [--id] [--magnets] [--json|--ndjson]
 javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
@@ -99,6 +100,13 @@ shared by the commands above and below.
 `browse --tag` accepts a tag ID, English name, or Chinese name. Repeat
 `--main` for server-side category masks. Use `--json` for programs; human output
 uses tab-separated rows and is not a stable machine schema.
+
+`search --magnets N` fetches magnets for each result movie: `--cnsub`,
+`--hd`, and `--min-size` filter before ranking; `N` controls how many
+magnets to keep per movie (`0` = all, `N` = top N by best rule). Text
+output emits magnet URIs; `--ndjson` emits `kind=magnet` envelopes.
+`--magnets` is only supported for movie search and is mutually exclusive
+with non-movie `--type`.
 
 `comments` calls the movie reviews endpoint exactly once for the selected page;
 it never prefetches or follows another page. Its default is page `1` with a
@@ -192,12 +200,13 @@ Consumers check the kind strictly and prefer a valid `id`; incompatible input
 becomes an in-place `error` envelope. Batch processing preserves input order,
 continues after item failures, and exits non-zero with a summary on stderr.
 
-Output defaults to human-readable text. `--ndjson` and `--json` are mutually
+TTY stdout defaults to human-readable text; non-TTY stdout defaults to a
+stable, newline-delimited record stream. `--ndjson` and `--json` are mutually
 exclusive; JSON or NDJSON is emitted only when its flag is explicit.
 `--json` keeps the legacy single-item shape and emits a JSON array of envelopes
 for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
-`top250`, `watched`, `want`, `recent`) never read stdin and also default to
-text; use `--ndjson` to emit one envelope per record.
+`top250`, `watched`, `want`, `recent`) never read stdin and follow the same
+TTY/non-TTY text split; use `--ndjson` to emit one envelope per record.
 
 ## Entity and list navigation
 

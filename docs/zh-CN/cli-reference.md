@@ -66,6 +66,7 @@ token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令�
 ```bash
 javdb search KEYWORD|IMAGE [--zone ZONE] [--sort SORT] [--filter-by FILTER] \
   [--type TYPE] [--page N] [--limit N] [--has-magnets] \
+  [--magnets N] [--cnsub] [--hd] [--min-size SIZE] \
   [--image] [--source NAME] [--no-cache] [--json|--ndjson]
 javdb detail NUMBER [--id] [--magnets] [--json|--ndjson]
 javdb comments NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
@@ -80,6 +81,11 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
 
 `browse --tag` 接受 tag ID、英文名或中文名；`--main` 可重复传递服务端分类掩码。
 程序应使用 `--json`；制表符文本面向人阅读，不是稳定机器 schema。
+
+`search --magnets N` 为每部搜索结果影片获取磁力：`--cnsub`、`--hd`、`--min-size`
+在排序前筛选；`N` 控制每部影片保留的磁力数量（`0` = 全部，`N` = 按 best 规则取前 N）。
+文本模式输出磁力 URI；`--ndjson` 输出 `kind=magnet` 信封。`--magnets` 仅支持 movie
+搜索，与非 movie `--type` 互斥。
 
 `comments` 对所选页只调用一次影片评论接口，不会预取或自动跟随下一页。默认读取第 `1` 页、
 每页 `20` 条；需要其他**单页**时传入任意正数 `--page` 与 `--limit`。`--json` 会保留该页
@@ -155,10 +161,11 @@ SDK 嵌入方必须自行施加网络边界。
 消费者严格检查 kind 并优先使用合法 `id`；不兼容输入生成原位 `error` 信封。批处理保持输入
 顺序、单项失败继续执行，最终非零并在 stderr 输出汇总。
 
-输出默认使用人类可读文本。`--ndjson` 与 `--json` 互斥；只有显式指定对应 flag
-才输出 JSON 或 NDJSON。显式 `--json` 单项保持既有 shape，多项输出信封数组。生产者命令
+TTY stdout 默认使用人类可读文本；非 TTY stdout 默认输出逐行稳定记录流。`--ndjson` 与
+`--json` 互斥；只有显式指定对应 flag 才输出 JSON 或 NDJSON。显式 `--json` 单项保持既有
+shape，多项输出信封数组。生产者命令
 （如 `browse`、`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）
-不读 stdin 且同样默认文本；使用 `--ndjson` 才逐条输出信封。
+不读 stdin，且遵循相同的 TTY/非 TTY 文本分流；使用 `--ndjson` 才逐条输出信封。
 
 ## 实体与合集导航
 

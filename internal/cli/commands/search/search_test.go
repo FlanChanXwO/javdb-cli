@@ -46,6 +46,30 @@ func TestSearchTypeKey(t *testing.T) {
 	}
 }
 
+func TestSearchMagnetsFlagValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "cnsub requires magnets", args: []string{"--cnsub"}, want: "require --magnets"},
+		{name: "hd requires magnets", args: []string{"--hd"}, want: "require --magnets"},
+		{name: "min-size requires magnets", args: []string{"--min-size", "500MB"}, want: "require --magnets"},
+		{name: "magnets rejects negative", args: []string{"--magnets", "-1"}, want: "--magnets must be >= 0"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+			cmd := New(&invocation.RootOptions{}, streams)
+			cmd.SetArgs(tc.args)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 // TestExecuteMoviesJSONHasMagnetsFilter 覆盖 movie 分支 JSON + has-magnets 过滤。
 func TestExecuteMoviesJSONHasMagnetsFilter(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -92,6 +116,8 @@ func TestExecuteNamedText(t *testing.T) {
 	defer server.Close()
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	// 人类命名实体文本只在 TTY stdout 下验证；非 TTY 默认是稳定记录管道。
+	streams.OutIsTerminal = true
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"kw", "--type", "actor"})
 	if err := cmd.Execute(); err != nil {

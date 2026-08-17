@@ -31,6 +31,7 @@ var (
 	_ func(path string) (string, error)                                      = javdb.LoadOrCreateDeviceUUID
 	_ func(items []map[string]any, cnsub, hd bool, min int) []map[string]any = javdb.FilterMagnets
 	_ func(items []map[string]any) map[string]any                            = javdb.PickBestMagnet
+	_ func(items []map[string]any, count int) []map[string]any               = javdb.RankMagnets
 	_ func(m map[string]any) string                                          = javdb.MagnetURI
 	_ func(period string) string                                             = javdb.RankingPeriod
 	_ func(period string) string                                             = javdb.ActorPeriod
@@ -149,6 +150,31 @@ func TestExternalMagnetHelpersPureBehavior(t *testing.T) {
 	}
 	if got := javdb.MagnetURI(best); got != "magnet:?xt=urn:btih:AAA" {
 		t.Fatalf("MagnetURI = %q", got)
+	}
+}
+
+func TestExternalRankMagnetsStableSortAndTruncate(t *testing.T) {
+	items := []map[string]any{
+		{"name": "small", "size": float64(64), "hash": "BBB"},
+		{"name": "big", "size": float64(4096), "cnsub": true, "hash": "AAA"},
+		{"name": "mid", "size": float64(512), "hd": true, "hash": "CCC"},
+	}
+	// N=0: 全部排序，cnsub 优先 → big, hd 次之 → mid, 最后 small。
+	all := javdb.RankMagnets(items, 0)
+	if len(all) != 3 {
+		t.Fatalf("RankMagnets(0) len = %d, want 3", len(all))
+	}
+	if all[0]["hash"] != "AAA" || all[1]["hash"] != "CCC" || all[2]["hash"] != "BBB" {
+		t.Fatalf("RankMagnets(0) order = %+v", all)
+	}
+	// N=1: 截取第一个。
+	one := javdb.RankMagnets(items, 1)
+	if len(one) != 1 || one[0]["hash"] != "AAA" {
+		t.Fatalf("RankMagnets(1) = %+v, want [AAA]", one)
+	}
+	// 不修改输入。
+	if items[0]["name"] != "small" {
+		t.Fatal("input slice was modified")
 	}
 }
 

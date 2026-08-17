@@ -83,6 +83,7 @@ func TestSearchImagePathAutoDetectsAndOutputsMatches(t *testing.T) {
 
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	streams.InIsTerminal = true
+	streams.OutIsTerminal = true
 	err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL},
 		imagePath, "--source", "test", "--no-cache")
 	// 部分失败（GHOST-999 无法解析）必须在输出完成后非零。
@@ -99,8 +100,9 @@ func TestSearchImagePathAutoDetectsAndOutputsMatches(t *testing.T) {
 	if !strings.Contains(out, "9DGB5X") {
 		t.Errorf("output lacks matched movie projection:\n%s", out)
 	}
-	if !strings.Contains(out, "GHOST-999") || !strings.Contains(out, "失败") {
-		t.Errorf("output lacks per-item failure:\n%s", out)
+	errOut := streams.Err.(*bytes.Buffer).String()
+	if !strings.Contains(errOut, "GHOST-999") || !strings.Contains(errOut, "失败") {
+		t.Errorf("stderr lacks per-item failure:\n%s", errOut)
 	}
 	if !strings.Contains(err.Error(), "1 of 2 candidates failed") {
 		t.Errorf("error should count failures: %v", err)
@@ -150,15 +152,122 @@ func TestSearchImageFromStdinMagicDefaultsToText(t *testing.T) {
 		t.Fatal("partial failure must exit non-zero")
 	}
 	out := streams.Out.(*bytes.Buffer).String()
-	// 管道只负责输入分类，未显式指定结构化输出时仍使用纯文本。
-	if !strings.Contains(out, "SSIS-589") || !strings.Contains(out, "95.2%") {
-		t.Errorf("stdin image text output lacks candidate:\n%s", out)
+	// 非 TTY 纯文本 stdout 只保留成功番号，供 magnets 消费。
+	if out != "SSIS-589\n" {
+		t.Errorf("stdin image text output = %q, want stable movie ref", out)
 	}
-	if !strings.Contains(out, "GHOST-999") || !strings.Contains(out, "失败") {
-		t.Errorf("stdin image text output lacks failure:\n%s", out)
+	errOut := streams.Err.(*bytes.Buffer).String()
+	if !strings.Contains(errOut, "SSIS-589") || !strings.Contains(errOut, "01:04:53") || !strings.Contains(errOut, "GHOST-999") || !strings.Contains(errOut, "失败") {
+		t.Errorf("stdin image stderr lacks diagnostics:\n%s", errOut)
 	}
 	if strings.Contains(out, `"kind":`) {
 		t.Errorf("stdin image unexpectedly emitted NDJSON without --ndjson:\n%s", out)
+	}
+}
+
+// TestSearchImageTextSkipsMovieDetail 验证非 TTY 稳定 ref 路径只解析影片 ID，
+// 不为成功候选追加 MovieDetail 请求。
+func TestSearchImageTextSkipsMovieDetail(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"results":[{"video_code":"SSIS-589","best_similarity":95.2,"frames":[]}]}`))
+	}))
+	defer provider.Close()
+	var detailRequests atomic.Int64
+	javdbServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/v2/search":
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"movies":[{"number":"SSIS-589","id":"9DGB5X"}]}}`))
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/9DGB5X"):
+			detailRequests.Add(1)
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"movie":{"id":"9DGB5X","number":"SSIS-589"}}}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer javdbServer.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})
+	if err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := streams.Out.(*bytes.Buffer).String(); got != "SSIS-589\n" {
+		t.Fatalf("text output = %q", got)
+	}
+	if detailRequests.Load() != 0 {
+		t.Fatalf("MovieDetail requests = %d, want 0", detailRequests.Load())
+	}
+}
+
+// TestSearchImageMagnetsEndToEnd 覆盖 provider → 严格 ID 解析 → 磁力请求，
+// 并锁定 text、NDJSON、JSON 三种输出；该快路径不得请求 MovieDetail。
+func TestSearchImageMagnetsEndToEnd(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"results":[{"video_code":"SSIS-589","best_similarity":95.2,"frames":[]}]}`))
+	}))
+	defer provider.Close()
+	var detailRequests atomic.Int64
+	javdbServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/v2/search":
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"movies":[{"number":"SSIS-589","id":"9DGB5X"}]}}`))
+		case request.URL.Path == "/api/v1/movies/9DGB5X/magnets":
+			_, _ = writer.Write([]byte(`{"success":true,"data":{"magnets":[{"name":"HD","hash":"AAA","size":4096,"hd":true}]}}`))
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/9DGB5X"):
+			detailRequests.Add(1)
+			http.NotFound(writer, request)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer javdbServer.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	for _, tc := range []struct {
+		name string
+		flag string
+	}{
+		{name: "text"},
+		{name: "ndjson", flag: "--ndjson"},
+		{name: "json", flag: "--json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})
+			args := []string{"--magnets", "1", "--source", "test", "--no-cache"}
+			if tc.flag != "" {
+				args = append(args, tc.flag)
+			}
+			if err := executeSearch(t, streams, &invocation.RootOptions{Host: javdbServer.URL}, args...); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			out := streams.Out.(*bytes.Buffer).String()
+			switch tc.flag {
+			case "--ndjson":
+				var envelope map[string]any
+				if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope["kind"] != "magnet" || envelope["ref"] != "SSIS-589" {
+					t.Fatalf("NDJSON envelope = %v", envelope)
+				}
+			case "--json":
+				var payload map[string]any
+				if err := json.Unmarshal([]byte(out), &payload); err != nil {
+					t.Fatal(err)
+				}
+				matches, _ := payload["matches"].([]any)
+				if len(matches) != 1 {
+					t.Fatalf("JSON matches = %v", payload["matches"])
+				}
+			default:
+				if !strings.Contains(out, "magnet:?xt=urn:btih:AAA") {
+					t.Fatalf("text output = %q", out)
+				}
+			}
+		})
+	}
+	if detailRequests.Load() != 0 {
+		t.Fatalf("MovieDetail requests = %d, want 0", detailRequests.Load())
 	}
 }
 
@@ -233,7 +342,7 @@ func TestSearchImageURLGoesThroughProxy(t *testing.T) {
 	if !proxySawRequest.Load() {
 		t.Fatal("image URL request did not go through the configured proxy")
 	}
-	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") {
-		t.Errorf("proxy image result missing candidate")
+	if !strings.Contains(streams.Out.(*bytes.Buffer).String(), "SSIS-589") && !strings.Contains(streams.Err.(*bytes.Buffer).String(), "SSIS-589") {
+		t.Errorf("proxy image result missing candidate: stdout=%q stderr=%q", streams.Out.(*bytes.Buffer).String(), streams.Err.(*bytes.Buffer).String())
 	}
 }

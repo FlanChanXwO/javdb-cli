@@ -4,6 +4,7 @@ package magnets
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -23,24 +24,35 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		asJSON, asNDJSON      bool
 		minSize               string
 	)
-	fetch := func(c *javdb.Client, ctx context.Context, ref string, useID bool) (string, []map[string]any, error) {
-		mid := ref
+	fetch := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope, useID bool) (string, []map[string]any, error) {
+		mid := pipeline.ConsumerRef(input)
 		var err error
 		if !useID {
-			mid, err = c.ResolveMovieID(ctx, ref)
+			mid, err = c.ResolveMovieID(ctx, mid)
 			if err != nil {
 				return "", nil, err
 			}
 		}
-		detail, err := c.MovieDetail(ctx, mid)
-		if err != nil {
-			return "", nil, fmt.Errorf("magnets failed: %w", err)
-		}
+		// 若输入信封已携带 magnets_count，跳过重复 MovieDetail 请求。
+		count, hasCount := knownMagnetCount(input)
 		var items []map[string]any
-		if magnetCount(detail["magnets_count"]) == 0 {
+		if hasCount && count == 0 {
 			items = nil
 		} else {
-			items, err = c.MovieMagnets(ctx, mid)
+			if hasCount {
+				// magnets_count > 0：直接取磁力，不做详情请求。
+				items, err = c.MovieMagnets(ctx, mid)
+			} else {
+				detail, derr := c.MovieDetail(ctx, mid)
+				if derr != nil {
+					return "", nil, fmt.Errorf("magnets failed: %w", derr)
+				}
+				if magnetCount(detail["magnets_count"]) == 0 {
+					items = nil
+				} else {
+					items, err = c.MovieMagnets(ctx, mid)
+				}
+			}
 			if err != nil {
 				return "", nil, fmt.Errorf("magnets failed: %w", err)
 			}
@@ -58,13 +70,22 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	runner := &pipeline.BatchRunner{
 		Name:       "magnets",
 		LegacyJSON: true,
-		Kinds:      []pipeline.Kind{pipeline.KindMovie},
+		// 非 TTY 单项也输出可供下游消费的磁力 URI。
+		RouteTextThroughPipeline: true,
+		RenderText: func(w io.Writer, envelope pipeline.Envelope) error {
+			return renderText(w, envelope, best)
+		},
+		Kinds: []pipeline.Kind{pipeline.KindMovie},
+		// 逐项请求磁力并按输入顺序写出；保持串行以避免放大 API 请求。
+		Concurrency: 1,
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
-			ref := pipeline.ConsumerRef(input)
-			mid, items, err := fetch(c, ctx, ref, isID && input.ID == "")
+			// 管道信封携带 id 时直接按内部 ID 请求，不做番号解析。
+			// --id flag 仅对位置参数（无信封 id）生效。
+			useID := input.ID != "" || isID
+			mid, items, err := fetch(c, ctx, input, useID)
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
@@ -79,7 +100,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Legacy: func(args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
 				ctx := context.Background()
-				mid, items, err := fetch(c, ctx, args[0], isID)
+				mid, items, err := fetch(c, ctx, pipeline.New("", args[0], ""), isID)
 				if err != nil {
 					return err
 				}
@@ -112,6 +133,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List magnet links for a movie",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
@@ -123,6 +145,30 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON")
 	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
+}
+
+// renderText 将磁力信封投影为可继续传给下游的 magnet URI；不把人类表格列
+// 混入 stdout，也不吞写入错误。
+func renderText(w io.Writer, envelope pipeline.Envelope, best bool) error {
+	if best {
+		uri, _ := envelope.Data["magnet_uri"].(string)
+		if uri == "" {
+			return nil
+		}
+		_, err := fmt.Fprintln(w, uri)
+		return err
+	}
+	magnets, _ := envelope.Data["magnets"].([]map[string]any)
+	for _, magnet := range magnets {
+		uri := javdb.MagnetURI(magnet)
+		if uri == "" {
+			continue
+		}
+		if _, err := fmt.Fprintln(w, uri); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ParseSizeMiB parses the CLI magnet size filter without changing its unit rules.
@@ -166,4 +212,22 @@ func magnetCount(v any) int {
 		}
 		return 0
 	}
+}
+
+// knownMagnetCount 从输入信封中提取已知的 magnets_count（上游 search 信封的
+// data.movie 携带该字段时可用）。返回 (count, true) 表示已知，(0, false) 表示
+// 未知，需要请求 MovieDetail。
+func knownMagnetCount(input pipeline.Envelope) (int, bool) {
+	if input.Data == nil {
+		return 0, false
+	}
+	movie, ok := input.Data["movie"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	raw, exists := movie["magnets_count"]
+	if !exists {
+		return 0, false
+	}
+	return magnetCount(raw), true
 }

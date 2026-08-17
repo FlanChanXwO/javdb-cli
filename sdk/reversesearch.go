@@ -69,9 +69,13 @@ type ReverseSearchOptions struct {
 	RequestTimeout time.Duration
 }
 
-// ImageSearchOptions 控制候选到 JavDB 的联动解析；当前固定严格精确匹配，
-// 保留该类型以便未来扩展（并发数、解析重试等）。
-type ImageSearchOptions struct{}
+// ImageSearchOptions 控制候选到 JavDB 的联动解析。
+type ImageSearchOptions struct {
+	// SkipMovieDetail 为 true 时只做严格番号 → ID 解析，跳过完整详情请求。
+	// 用于纯 ref/磁力路径：magnets 只需要 movie ID 即可获取磁力列表，不需要
+	// 完整详情。默认 false 保持现有行为（解析 ID + 完整详情）。
+	SkipMovieDetail bool
+}
 
 // ImageSearchError 是单候选联动失败的稳定错误。
 type ImageSearchError struct {
@@ -162,10 +166,11 @@ func (c *Client) ReverseSearch(ctx context.Context, request ReverseSearchRequest
 	return normalized, nil
 }
 
-// SearchByImage 反搜并对全部候选并发执行严格番号解析与完整详情；结果按
-// provider 原始顺序恢复。候选级失败写入 ImageSearchMatch.Error 并继续，
-// provider 顶层失败直接返回 error。
-func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest, _ ImageSearchOptions) (ImageSearchResult, error) {
+// SearchByImage 反搜并对全部候选并发执行严格番号解析与（可选）完整详情；
+// 结果按 provider 原始顺序恢复。候选级失败写入 ImageSearchMatch.Error 并继续，
+// provider 顶层失败直接返回 error。opts.SkipMovieDetail 为 true 时跳过完整详情
+// 请求，仅保留 movie ID（用于纯 ref/磁力路径）。
+func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest, opts ImageSearchOptions) (ImageSearchResult, error) {
 	response, err := c.ReverseSearch(ctx, request)
 	if err != nil {
 		return ImageSearchResult{}, err
@@ -187,14 +192,17 @@ func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest
 				matches[index] = match
 				return
 			}
-			movie, err := c.MovieDetail(ctx, movieID)
-			if err != nil {
-				match.Error = &ImageSearchError{Stage: "link", Code: "detail", Message: err.Error()}
-				match.MovieID = movieID
+			match.MovieID = movieID
+			if opts.SkipMovieDetail {
 				matches[index] = match
 				return
 			}
-			match.MovieID = movieID
+			movie, err := c.MovieDetail(ctx, movieID)
+			if err != nil {
+				match.Error = &ImageSearchError{Stage: "link", Code: "detail", Message: err.Error()}
+				matches[index] = match
+				return
+			}
 			match.Movie = movie
 			matches[index] = match
 		}(index, candidate)
