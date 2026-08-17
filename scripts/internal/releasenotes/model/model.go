@@ -21,12 +21,13 @@ type GitHubUser struct {
 
 // GitHubPullRequest 是 release-note 审计所需的 PR 字段。
 type GitHubPullRequest struct {
-	Number   int        `json:"number"`
-	Title    string     `json:"title"`
-	Body     string     `json:"body"`
-	HTMLURL  string     `json:"html_url"`
-	MergedAt *time.Time `json:"merged_at"`
-	User     GitHubUser `json:"user"`
+	Number         int        `json:"number"`
+	Title          string     `json:"title"`
+	Body           string     `json:"body"`
+	HTMLURL        string     `json:"html_url"`
+	MergedAt       *time.Time `json:"merged_at"`
+	MergeCommitSHA string     `json:"merge_commit_sha"`
+	User           GitHubUser `json:"user"`
 }
 
 // GitHubPullRequestSearchResult 是 GitHub search/issues 响应的最小模型。
