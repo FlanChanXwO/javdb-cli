@@ -123,8 +123,8 @@ jobs:
             tar -xzf "${archive}.tar.gz" -C smoke
           fi
           test -f "$smoked_binary"
-          "./$smoked_binary" version --json | tee "$RUNNER_TEMP/javdb-version.json"
-          grep -F "\"version\":\"v${version}\"" "$RUNNER_TEMP/javdb-version.json"
+          "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
+          grep -F "javdb version ${version}" "$RUNNER_TEMP/javdb-version.txt"
 
   # 稳定汇总 job 是唯一受保护的平台检查；文档变更接受矩阵 skipped，代码变更要求 success。
   platform_smoke_gate:

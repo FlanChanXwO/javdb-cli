@@ -29,7 +29,6 @@ class {{FORMULA_CLASS}} < Formula
   end
 
   test do
-    version_info = JSON.parse(shell_output("#{bin}/javdb version --json"))
-    assert_equal "v#{version}", version_info["version"]
+    assert_match "javdb version #{version}", shell_output("#{bin}/javdb --version")
   end
 end

@@ -1,0 +1,40 @@
+name: PR Triage
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Ensure triage labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create "area: docs" --repo "$REPO" --color "0E8A16" --description "Documentation changes" || true
+          gh label create "area: cli" --repo "$REPO" --color "1D76DB" --description "CLI changes" || true
+          gh label create "area: sdk" --repo "$REPO" --color "5319E7" --description "Public SDK changes" || true
+          gh label create "area: api" --repo "$REPO" --color "6F42C1" --description "JavDB API or protocol changes" || true
+          gh label create "area: tests" --repo "$REPO" --color "C5DEF5" --description "Test changes" || true
+          gh label create "area: github-actions" --repo "$REPO" --color "FBCA04" --description "GitHub workflow or repository automation changes" || true
+          gh label create "release" --repo "$REPO" --color "BFD4F2" --description "Release metadata or changelog changes" || true
+
+      - name: Apply path labels
+        # actions/labeler v5
+        uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+
+      - name: Assign maintainer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr edit "$PR_URL" --add-assignee FlanChanXwO

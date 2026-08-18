@@ -116,7 +116,7 @@ Copy this prompt into Codex, Claude Code, Cursor, or another local coding agent
 with terminal access:
 
 ```text
-Install the latest stable javdb-cli from https://github.com/FlanChanXwO/javdb-cli for this machine. Detect the operating system and architecture, download only official GitHub Release assets, require the matching published SHA-256 from checksums.txt before installing, ask before creating or changing any PATH directory, never read or output ~/.javdb-cli/auth.json or credentials, verify with javdb version --json, and report the installed version plus every changed file.
+Install the latest stable javdb-cli from https://github.com/FlanChanXwO/javdb-cli for this machine. Detect the operating system and architecture, download only official GitHub Release assets, require the matching published SHA-256 from checksums.txt before installing, ask before creating or changing any PATH directory, never read or output ~/.javdb-cli/auth.json or credentials, verify with javdb --version, and report the installed version plus every changed file.
 
 Also install the complete skills/javdb-cli/ directory from the same stable release tag into the agent skills directory that I confirm. Do not guess that skills path, do not use the main branch for the skill, and preserve all reference files.
 ```

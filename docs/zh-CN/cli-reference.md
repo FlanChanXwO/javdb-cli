@@ -36,7 +36,7 @@ javdb config unset KEY
 `[[reverse_search.sources]]` 手工编辑，见「以图搜番」。
 
 全新机器上第一个真实命令会创建 `~/.javdb-cli/config.toml`，只包含上述常用键；help、
-裸/父命令、`version`、completion、参数校验失败以及缺失配置上的 `config unset` 都不会创建
+裸/父命令、`--version`、completion、参数校验失败以及缺失配置上的 `config unset` 都不会创建
 或覆盖它。默认 `host` 为 `auto`：每个真实命令前 CLI 先用一次签名 `/startup` 请求验证缓存
 线路，仅在验证失败时才重跑全量发现，并把新主机持久化到 `~/.javdb-cli/route.json`（mode
 `0600`，只保存已验证的 host URL）。损坏缓存、重选失败或写入失败都是显式错误，绝不静默回退。
@@ -224,8 +224,7 @@ javdb update [--check] [--prerelease] [--json]
 ```
 
 `javdb --version` 对正式版输出两行（`javdb version 0.7.0 (2026-08-12)` 与 Release
-URL，展示版本不带 `v`），开发版输出单行且不显示 Release URL。旧的
-`javdb version --json` shim 仍保留供旧版更新器调用，但已从 help 与 completion 隐藏。
+URL，展示版本不带 `v`），开发版输出单行且不显示 Release URL。
 
 `update` 只在用户显式调用时执行，不会后台自动更新。`update --check` 只查询 GitHub Releases，
 输出 `source`、`current_version`、`latest_version`、`latest_prerelease` 与 `update_available`。
@@ -240,13 +239,6 @@ host，因为它不会访问 App API。
 
 开发构建（`version=dev`）会明确拒绝自更新，应先安装已发布版本。Windows 成功替换后会暂存旧二进制
 为 `.old`，下一次启动 javdb 时自动清理。
-
-```bash
-javdb version [--json]
-```
-
-`version --json` 输出 `version`、`commit`、`build_date`。支持 `--json` 的命令会将
-stdout 保留为 JSON 结果；请求失败会以非零退出码和 stderr 诊断显式呈现，不伪造为空结果。
 
 ## 安全自动化流程
 

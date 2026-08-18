@@ -42,7 +42,7 @@ hand-edited TOML under `[[reverse_search.sources]]`; see
 [Reverse image search](#reverse-image-search).
 
 The first real command on a fresh machine creates `~/.javdb-cli/config.toml`
-with only the common keys shown above; help, bare/parent commands, `version`,
+with only the common keys shown above; help, bare/parent commands, `--version`,
 completion, argument-validation failures, and `config unset` on a missing file
 never create or overwrite it. The default `host` is `auto`: before each real
 command the CLI verifies the cached route with one signed `/startup` request
@@ -277,8 +277,7 @@ only when a newer selected release exists.
 `javdb --version` prints a release build as two lines
 (`javdb version 0.7.0 (2026-08-12)` plus the Release URL, without the leading
 `v`) and a development build as one line; development builds never show a
-Release URL. The legacy `javdb version --json` shim still exists for older
-updaters but is hidden from help and completion.
+Release URL.
 
 The command preserves the installation channel: Homebrew uses its Formula,
 `go install` re-runs the exact release tag, and a Release archive downloads only

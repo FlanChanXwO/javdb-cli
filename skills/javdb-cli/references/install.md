@@ -10,7 +10,7 @@
 2. macOS/Linux：用户明确选用 Homebrew 时，执行 `brew install FlanChanXwO/tap/javdb-cli`。
 3. 源码构建：在仓库根目录执行 `sh scripts/build.sh`，产物为 `build/javdb`。
 
-安装后运行 `javdb version --json`，只报告版本、提交和构建时间，不读取账号文件。
+安装后运行 `javdb --version`，只报告版本和构建信息，不读取账号文件。
 
 已安装的发布版本可先运行 `javdb update --check --json` 查看来源和最新版本。只有用户明确要求
 升级时才执行 `javdb update`；该命令会依据安装来源调用 Homebrew、`go install`，或下载并校验当前
