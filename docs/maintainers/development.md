@@ -120,6 +120,11 @@ sh scripts/test-releasenotes.sh
 release-prep PR 直接编辑目标版本的双语 changelog 和两个索引，`sync-history --apply` 会修改
 GitHub Release 正文。外部写入不是默认回归，不得在测试中使用真实仓库凭据或隐式写入。
 
+release-prep PR 合并后，必须以最终 `main` commit 重新运行 `audit`，再用同一份报告运行
+`validate --audit`，确认 changelog 引用的来源属于发布区间后才能创建 tag。Squash merge 的最终
+commit 可能没有 GitHub 的直接 PR 关联；审计工具只在提交标题带有 GitHub 生成的 `(#N)` 后缀且
+对应 PR 的 `merge_commit_sha` 精确匹配时回溯该 PR，不能猜测 PR 号或把未确认的 commit 写入 notes。
+
 ## 构建、打包与平台
 
 Release 只支持六个原生目标：`darwin/amd64`、`darwin/arm64`、`linux/amd64`、

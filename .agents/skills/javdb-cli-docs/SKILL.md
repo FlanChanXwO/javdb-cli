@@ -14,7 +14,8 @@ description: Maintain javdb-cli documentation; locale and maintainer routing liv
 2. 按目标 locale 写作；命令、路径、包名和 code-id 保持英文。
 3. 修改已翻译的 public contract 时保持行为语义对应；允许自然调整句式，不得让不同语言出现不同契约。
 4. 发布说明只写入 `changelog/`：release-prep PR 直接更新目标版本的双语 notes；feature PR 不填写 release-note metadata。
-5. 同一规则只写一处，其他位置使用链接路由；完成后检查链接、locale 导航和 `git diff --check`。
+5. 构建、发布、workflow 或 CI 门禁文档变化时，同步检查 `docs/maintainers/development.md`、相关 workflow 测试和 README；不要只更新用户 locale 文档。
+6. 同一规则只写一处，其他位置使用链接路由；完成后检查链接、locale 导航和 `git diff --check`，并运行受影响的脚本门禁。
 
 ## 约束
 

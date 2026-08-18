@@ -1,6 +1,8 @@
 // Package model 保存 release-note 流程跨领域传递的稳定数据模型。
 package model
 
+import "time"
+
 // GitHubUser 是 release-note 审计所需的 GitHub 用户字段。
 type GitHubUser struct {
 	Login   string `json:"login"`
@@ -10,10 +12,12 @@ type GitHubUser struct {
 
 // GitHubPullRequest 是 release-note 审计所需的 PR 字段。
 type GitHubPullRequest struct {
-	Number  int        `json:"number"`
-	Title   string     `json:"title"`
-	HTMLURL string     `json:"html_url"`
-	User    GitHubUser `json:"user"`
+	Number         int        `json:"number"`
+	Title          string     `json:"title"`
+	HTMLURL        string     `json:"html_url"`
+	MergedAt       *time.Time `json:"merged_at"`
+	MergeCommitSHA string     `json:"merge_commit_sha"`
+	User           GitHubUser `json:"user"`
 }
 
 // AuditSource 是 audit 报告中的一个 PR 或直接 commit 来源。

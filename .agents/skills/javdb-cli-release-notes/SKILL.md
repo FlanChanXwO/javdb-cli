@@ -1,11 +1,11 @@
 ---
 name: javdb-cli-release-notes
-description: Manage javdb-cli bilingual changelog releases, historical GitHub Release synchronization, and approved version releases.
+description: Manage javdb-cli bilingual changelog releases, squash-merge source attribution, historical GitHub Release synchronization, and approved version releases.
 ---
 
 # javdb-cli release notes and release workflow
 
-在 release-prep、changelog、tag、GitHub Release 或历史 Release 正文同步时使用。
+在 release-prep、changelog、merge、tag、GitHub Release 或历史 Release 正文同步时使用。
 先读取 `docs/maintainers/development.md`；它是长期 policy reference。
 
 ## 授权边界
@@ -31,6 +31,11 @@ description 或执行 `sync-history --apply` 前，必须在当前会话取得�
      --to COMMIT_OR_TAG \
      --output /tmp/javdb-release-audit.json
    ```
+
+   release-prep PR 合并后、创建 tag 前，必须以最终 `main` commit 重新运行 `audit`，再用同一份报告运行
+   `validate --audit`。审计失败、GitHub API 来源查询失败或出现未归因 direct commit 时停止，不创建 tag。
+   GitHub 的 squash merge 可能不会让 `/commits/{sha}/pulls` 返回 PR；审计工具只接受提交标题末尾的
+   GitHub `(#N)` 后缀，并再次确认 PR 的 `merge_commit_sha` 精确等于提交 SHA，不能靠标题猜测来源。
 
 3. 在 release-prep PR 中直接编辑 `changelog/vX.Y.Z/en.md`、`changelog/vX.Y.Z/zh-CN.md`，同步
    `changelog/README.md` 和 `changelog/README.zh-CN.md`。每个条目必须带 PR 或 direct-commit 来源，
