@@ -39,6 +39,18 @@ grep -F 'git merge-base --is-ancestor' "$clawhub_workflow" >/dev/null
 grep -F "releases/tags/\$RELEASE_TAG" "$clawhub_workflow" >/dev/null
 grep -F "ref: $github_expr{{ steps.release_tag.outputs.value }}" "$clawhub_workflow" >/dev/null
 
+ruby - "$clawhub_workflow" <<'RUBY'
+path = ARGV.fetch(0)
+text = File.read(path)
+start = text.index("      - name: Verify immutable release and exact skill source")
+finish = text.index("      - name: Install pinned ClawHub CLI without credentials", start)
+abort("could not isolate ClawHub skill validation step") unless start && finish
+block = text[start...finish]
+needle = 'test "$skill_version" = "${RELEASE_TAG#v}"'
+abort("skill version must be checked only for changed skills") unless block.scan(needle).length == 2
+abort("skill version check must follow previous-tag diff detection") unless block.index("previous_tag=") < block.index(needle)
+RUBY
+
 grep -F 'clawhub@0.23.1' "$clawhub_workflow" >/dev/null
 grep -F 'clawhub skill publish skills/javdb-cli' "$clawhub_workflow" >/dev/null
 grep -F -- "--source-commit \"\$RELEASE_COMMIT\"" "$clawhub_workflow" >/dev/null

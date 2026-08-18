@@ -41,14 +41,20 @@ description 或执行 `sync-history --apply` 前，必须在当前会话取得�
    `changelog/README.md` 和 `changelog/README.zh-CN.md`。每个条目必须带 PR 或 direct-commit 来源，
    两个 locale 的来源集合必须一致。`changelog/unreleased/` 只是可选人工草稿区，不会被发布 workflow 读取。
 
-4. 运行本地门禁：
+4. 维护随版本发布的 `skills/javdb-cli/`：若 `previous..main` 包含该目录的变更，必须在同一个
+   release-prep PR 中把 `skills/javdb-cli/SKILL.md` front matter 的唯一 `version:` 更新为目标
+   SemVer；若该目录没有变更，不要为发版机械修改版本号，ClawHub handoff 会跳过未改变的 skill。
+   创建 tag 前检查：变更时 `version` 必须等于目标版本，未变更时保留上一版本并确认 handoff
+   的 skip 分支可通过。
+
+5. 运行本地门禁：
 
    ```bash
    sh scripts/test-releasenotes.sh
    go run ./scripts/releasenotes validate --version X.Y.Z --previous "$previous" --dir changelog/vX.Y.Z
    ```
 
-5. 创建 release-prep PR，运行 required CI 并等待审查；tag 只能指向已合并的 release-prep commit。
+6. 创建 release-prep PR，运行 required CI 并等待审查；tag 只能指向已合并的 release-prep commit。
 
 `audit` 只确认 changelog 中引用的来源属于发布区间，不要求区间内每个 PR/commit 都必须出现在 notes 中；
 PR 正文不再承载或声明发布分类、摘要或版本升级信息。
