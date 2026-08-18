@@ -92,7 +92,8 @@ assert_nonempty "browse returns a stable movie ref" "$out"
 
 echo "== detail (image fields) =="
 out=$(run detail SSIS-001)
-assert_substring "detail has 番号" "$out" "番号"
+# CI stdout 非 TTY 时 detail 默认输出稳定引用，而非 TTY 人类文本字段。
+assert_substring "detail has stable ref" "$out" "SSIS-001"
 jout=$(run detail SSIS-001 --json)
 # preview_images 在 CI/地区差异下可能为空数组,校验键存在与类型即可。
 assert_json "detail --json exposes preview_images list" "$jout" "isinstance(d.get('preview_images'), list)"

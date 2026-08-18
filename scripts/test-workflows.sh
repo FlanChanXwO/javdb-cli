@@ -20,6 +20,10 @@ platform_workflow="$repo_root/.github/workflows/platform-smoke.yml"
 quality_workflow="$repo_root/.github/workflows/ci.yml"
 release_workflow="$repo_root/.github/workflows/release.yml"
 
+# quality 的 release-note hook 需要历史 tags；不能只依赖默认浅 checkout。
+quality_checkout=$(sed -n '/^  quality:/,/^      - uses: actions\/setup-go@/p' "$quality_workflow")
+printf '%s\n' "$quality_checkout" | grep -F 'fetch-depth: 0' >/dev/null
+
 for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
 	grep -F "goos: ${target%/*}" "$platform_workflow" >/dev/null
 	grep -F "goarch: ${target#*/}" "$platform_workflow" >/dev/null
