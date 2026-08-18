@@ -222,7 +222,7 @@ jobs:
           else
             tar -xzf "${archive}.tar.gz" -C smoke
           fi
-          # 公开版本契约是根 --version 文本；version --json 只是隐藏升级 shim。
+          # 公开版本契约是根 --version 文本。
           "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
           grep -F "javdb version ${VERSION} (" "$RUNNER_TEMP/javdb-version.txt"
 

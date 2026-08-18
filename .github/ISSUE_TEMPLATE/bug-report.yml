@@ -55,7 +55,7 @@ body:
     attributes:
       label: 版本 / Version
       description: "`javdb --version` 输出。 / Output of `javdb --version`."
-      placeholder: javdb version ...
+      placeholder: javdb version ... (output of --version)
     validations:
       required: true
 

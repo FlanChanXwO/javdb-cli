@@ -9,9 +9,15 @@ for workflow in \
 	"$repo_root/.github/workflows/platform-smoke.yml" \
 	"$repo_root/.github/workflows/release.yml" \
 	"$repo_root/.github/workflows/e2e.yml" \
-	"$repo_root/.github/workflows/publish-clawhub.yml"; do
+	"$repo_root/.github/workflows/publish-clawhub.yml" \
+	"$repo_root/.github/workflows/auto-assign.yml" \
+	"$repo_root/.github/workflows/pr-triage.yml"; do
 	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
 done
+
+ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_file(path) }' \
+	"$repo_root/.github/auto_assign.yml" \
+	"$repo_root/.github/labeler.yml"
 
 change_scope_action="$repo_root/.github/actions/classify-change-scope/action.yml"
 ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$change_scope_action"
@@ -85,3 +91,15 @@ grep -F "'docs/**'" "$e2e_workflow" >/dev/null
 grep -F "'CHANGELOG.md'" "$e2e_workflow" >/dev/null
 grep -F "'skills/**'" "$e2e_workflow" >/dev/null
 grep -F 'secrets.JAVDB_E2E_USERNAME' "$e2e_workflow" >/dev/null
+
+# PR 自动化只使用目标仓库权限，并固定第三方 action 的不可变提交。
+auto_assign_workflow="$repo_root/.github/workflows/auto-assign.yml"
+triage_workflow="$repo_root/.github/workflows/pr-triage.yml"
+grep -F 'pull_request_target:' "$auto_assign_workflow" >/dev/null
+grep -F 'pull-requests: write' "$auto_assign_workflow" >/dev/null
+grep -F 'kentaro-m/auto-assign-action@f4648c0a9fdb753479e9e75fc251f507ce17bb7e' "$auto_assign_workflow" >/dev/null
+grep -F 'pull_request_target:' "$triage_workflow" >/dev/null
+grep -F 'issues: write' "$triage_workflow" >/dev/null
+grep -F 'actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9' "$triage_workflow" >/dev/null
+grep -F 'configuration-path: .github/labeler.yml' "$triage_workflow" >/dev/null
+grep -F 'sync-labels: true' "$triage_workflow" >/dev/null

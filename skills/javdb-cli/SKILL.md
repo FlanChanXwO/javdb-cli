@@ -17,7 +17,7 @@ description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影�
 
 ## 预检与账号检查
 
-1. 运行 `javdb version --json`。这是唯一默认环境检查；二进制不存在或不可执行时，说明阻塞原因。只有用户明确要求安装或修复时，才阅读 `references/install.md`，不得猜测安装方式。
+1. 运行 `javdb --version`。这是唯一默认环境检查；二进制不存在或不可执行时，说明阻塞原因。只有用户明确要求安装或修复时，才阅读 `references/install.md`，不得猜测安装方式。
 2. 不要在每轮会话枚举本地账号。只有认证、默认账号选择或用户明确要求时才运行 `javdb auth list`；账号存在不代表 token 有效。
 3. 仅在确实需要联网验证身份时运行 `javdb auth check --json`。它不会打印 token，但会发出 API 请求。
 
@@ -34,7 +34,7 @@ description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影�
 
 | 类型 | 命令 | Agent 行为 |
 | --- | --- | --- |
-| 只读 | `search`、`detail`、`comments`、`magnets`、实体命令、`rankings`、`tags`、`browse`、`version`、`config get/path`、`update --check` | 用户任务需要时执行 |
+| 只读 | `search`、`detail`、`comments`、`magnets`、实体命令、`rankings`、`tags`、`browse`、`--version`、`config get/path`、`update --check` | 用户任务需要时执行 |
 | 软件更新 | `update` | 仅在用户明确要求升级时执行；会联网并替换二进制，或调用 Homebrew／`go install` |
 | 认证诊断 | `auth list/check` | 仅在账号选择或认证判定需要时执行 |
 | 远端状态写入 | `mark`、`unmark` | 执行前说明影片与将要设置/删除的状态 |
@@ -61,7 +61,7 @@ token，token 失效则自动回退匿名请求。
 执行前仍需用 `--help` 核对标志；以下示例是导航，不是稳定 API 合约。
 
 ```text
-javdb version --json
+javdb --version
 javdb update --check --json
 javdb config path
 javdb config get host

@@ -57,7 +57,7 @@ HTTP、签名或上游响应解码。目录职责如下：
   `MagnetRow`/`ProjectMagnet`、`NamedRow`/`ProjectNamed`）。
 - `cli/entity`：只保留六类实体命令共享的查询用例 `Execute`；命名实体投影位于
   `cli/result`。
-- `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update,version}`：
+- `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
   `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info

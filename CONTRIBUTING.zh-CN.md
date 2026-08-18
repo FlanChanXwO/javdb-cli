@@ -20,7 +20,7 @@
 ```bash
 go test ./...
 sh scripts/build.sh
-./build/javdb version --json
+./build/javdb --version
 ```
 
 opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/maintainers/development.md)。

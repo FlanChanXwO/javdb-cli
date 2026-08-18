@@ -82,14 +82,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./build/javdb version
-          ./build/javdb version --json | tee /tmp/javdb-version.json
-          python3 - <<'PY'
-          import json
-          data = json.load(open('/tmp/javdb-version.json'))
-          assert data['version'], data
-          print('version ok:', data['version'])
-          PY
+          ./build/javdb --version | tee /tmp/javdb-version.txt
+          grep -F 'javdb version' /tmp/javdb-version.txt >/dev/null
 
       - name: Test release packaging and workflow policy
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}

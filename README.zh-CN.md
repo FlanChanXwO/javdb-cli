@@ -74,7 +74,7 @@ go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.2.0
 
 ```bash
 sh scripts/build.sh
-./build/javdb version --json
+./build/javdb --version
 ```
 
 发布契约覆盖 macOS、Linux、Windows 的 amd64 与 arm64。可复现目标构建及归档内容见
@@ -100,7 +100,7 @@ javdb update
 把以下 prompt 复制给能访问本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：
 
 ```text
-请为这台机器安装 https://github.com/FlanChanXwO/javdb-cli 的最新 stable 版本。检测操作系统和架构，只下载官方 GitHub Release 资产，必须先用 checksums.txt 中对应的 SHA-256 校验通过才安装；创建或修改任何 PATH 目录前先询问；绝不读取或输出 ~/.javdb-cli/auth.json 或凭据；最后运行 javdb version --json 验证，并报告安装版本和所有变更文件。
+请为这台机器安装 https://github.com/FlanChanXwO/javdb-cli 的最新 stable 版本。检测操作系统和架构，只下载官方 GitHub Release 资产，必须先用 checksums.txt 中对应的 SHA-256 校验通过才安装；创建或修改任何 PATH 目录前先询问；绝不读取或输出 ~/.javdb-cli/auth.json 或凭据；最后运行 javdb --version 验证，并报告安装版本和所有变更文件。
 
 同时从相同 stable release tag 安装完整的 skills/javdb-cli/ 目录到我确认的 Agent skills 目录。不要猜测 skills 路径，不要使用 main 分支的 skill 内容，并保留全部 references 文件。
 ```

@@ -63,10 +63,8 @@ run_capture() {
 host_args() { [ -n "$HOST" ] && printf '%s\n' --host "$HOST"; }
 
 echo "== version =="
-out=$(run version)
-assert_substring "version prints name" "$out" "javdb"
-jout=$(run version --json)
-assert_json "version --json has version/commit/build_date" "$jout" "all(k in d for k in ('version','commit','build_date'))"
+out=$(run --version)
+assert_substring "--version prints name" "$out" "javdb version"
 
 echo "== search =="
 out=$(run search SSIS-001 --limit 1)

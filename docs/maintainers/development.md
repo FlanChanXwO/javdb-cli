@@ -35,7 +35,7 @@ pre-commit run --all-files
 ```
 
 构建产物是 `build/javdb`（Windows 为 `build/javdb.exe`）。可用
-`./build/javdb version --json` 复核 linker metadata。
+`./build/javdb --version` 复核 linker metadata。
 
 ## 目录地图
 
@@ -55,7 +55,7 @@ internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 
 internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
 internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
 internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）
-internal/cli/commands/{lists,update,version}/ # 列表、更新和版本命令域（update 拥有 proxy/coordinator/buildinfo）
+internal/cli/commands/{lists,update}/         # 列表和更新命令域（update 拥有 proxy/coordinator/buildinfo）
 internal/javdb/appapi/                  # 真实 Client 组合层（client.go）
 internal/javdb/appapi/{client,model}/   # transport 与 wire/domain model
 internal/javdb/appapi/endpoint/*        # auth/browse/entity/lists/magnets/movie/rankings/search/user
@@ -196,7 +196,8 @@ JAVDB_RELEASE_ED25519_PRIVATE_KEYS="[\"$seed\"]" go run ./scripts/sign-release -
 ### 桥接与兼容
 
 v0.6.1 是发布桥：交付签名清单更新器、把 `publish` job 绑定受保护的 `release`
-environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt`，保证 v0.6.0 可直接
+environment；旧兼容阶段已经结束，当前版本使用根 `--version`，并继续发布兼容
+`checksums.txt`，保证 v0.6.0 可直接
 验证并安装后续版本。v0.6.1 的精确 bridge commit 记录在 goal-1 完成记录中；创建 v0.6.1 tag
 必须由维护者明确授权。
 
@@ -204,7 +205,7 @@ environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt
 
 1. Quality workflow 在 PR 与 `main` 上运行范围分类；仅限 README、贡献指南、changelog、docs、skills、
    repo-local skills 和 Issue/PR template 的改动走文档门禁，其他路径运行格式、测试、vet、构建和静态脚本门禁。
-2. Platform smoke workflow 对代码改动在六个原生 runner 测试、打包、解包并执行 `javdb version --json`；
+2. Platform smoke workflow 对代码改动在六个原生 runner 测试、打包、解包并执行 `javdb --version`；
    纯文档改动直接跳过矩阵。`Platform smoke gate` 是唯一受保护的平台检查：文档改动要求矩阵 skipped，
    代码改动要求矩阵成功。
 3. feature PR 不填写 release-note metadata；`changelog/unreleased/` 仅是可选人工草稿区。release-prep PR

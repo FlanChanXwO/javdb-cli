@@ -18,8 +18,8 @@ type Info struct {
 }
 
 // Current returns embedded build metadata.
-// Version is normalized to include a leading "v" when it looks like a SemVer
-// without one, so brew tests can assert `version_info["version"] == "v#{version}"`.
+// Version is normalized to include a leading "v" for release/update metadata;
+// the public root --version display removes that prefix for human-readable output.
 func Current() Info {
 	return Info{
 		Version:     NormalizeVersion(Version),

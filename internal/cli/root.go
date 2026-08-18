@@ -35,7 +35,6 @@ import (
 	top250cmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/top250"
 	unmarkcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/unmark"
 	updatecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/update"
-	versioncmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/version"
 	wantcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/want"
 	watchedcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/watched"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
@@ -93,7 +92,6 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	command.AddCommand(top250cmd.New(options, streams))
 	command.AddCommand(listscmd.New(options, streams))
 	command.AddCommand(updatecmd.New(options, streams))
-	command.AddCommand(versioncmd.New())
 	return command
 }
 

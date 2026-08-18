@@ -20,7 +20,7 @@ Build and test from the repository root:
 ```bash
 go test ./...
 sh scripts/build.sh
-./build/javdb version --json
+./build/javdb --version
 ```
 
 See the [development guide (Simplified Chinese)](docs/maintainers/development.md) for opt-in real API tests, release gates, and platform details.
