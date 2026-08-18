@@ -38,9 +38,9 @@ jobs:
 
   packaged_binary_smoke:
     needs: classify_changes
-    # 纯文档改动不创建六个占位 check；required check 由下方聚合 gate 统一承接。
+    # 纯文档改动不运行矩阵；静态 job 名称避免 job-level skip 时渲染未展开的 matrix 表达式。
     if: needs.classify_changes.outputs.docs_only != 'true'
-    name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Packaged binary smoke
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
