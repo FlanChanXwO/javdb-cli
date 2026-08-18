@@ -54,8 +54,8 @@ body:
     id: version
     attributes:
       label: 版本 / Version
-      description: "`javdb version --json` 输出。 / Output of `javdb version --json`."
-      placeholder: '{"version":"v0.7.2","commit":"..."}'
+      description: "`javdb --version` 输出。 / Output of `javdb --version`."
+      placeholder: javdb version ...
     validations:
       required: true
 
@@ -66,7 +66,7 @@ body:
       description: 可选。只粘贴排查所需的脱敏输出。 / Optional. Paste only what's needed to debug, redacted.
       render: shell
       placeholder: |
-        $ javdb version --json
-        {"version":"v0.7.2","commit":"..."}
+        $ javdb --version
+        javdb version ...
         $ javdb ...
         (redacted output)
