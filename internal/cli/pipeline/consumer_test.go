@@ -372,6 +372,32 @@ func TestBatchRunnerTTYStdoutRoutesToLegacy(t *testing.T) {
 	}
 }
 
+func TestBatchRunnerNonTTYPositionalRoutesThroughPipelineWhenEnabled(t *testing.T) {
+	streams, out := testStreams("", false)
+	legacyCalled := false
+	runner := &BatchRunner{
+		Name:                     "detail",
+		Kinds:                    []Kind{KindMovie},
+		RouteTextThroughPipeline: true,
+		RunOne: func(_ *javdb.Client, _ context.Context, input Envelope) (Envelope, error) {
+			return New(KindMovie, input.Ref, "movie-id"), nil
+		},
+		Legacy: func([]string) error {
+			legacyCalled = true
+			return nil
+		},
+	}
+	if err := runner.ExecuteWithInputs(streams, []Envelope{New("", "SSIS-589", "")}, OutputText); err != nil {
+		t.Fatalf("ExecuteWithInputs: %v", err)
+	}
+	if legacyCalled {
+		t.Fatal("non-TTY positional input must not use the legacy path when routing is enabled")
+	}
+	if got := out.String(); got != "SSIS-589\n" {
+		t.Fatalf("output = %q, want stable ref", got)
+	}
+}
+
 // TestConsumerTextModeErrorsToStderr 文本/人类模式下失败项只写 stderr，
 // 不向 stdout 输出任何内容（不伪造成功 ref）；成功项写 stdout。
 func TestConsumerTextModeErrorsToStderr(t *testing.T) {
@@ -497,6 +523,33 @@ func TestConsumerPassesThroughErrorEnvelope(t *testing.T) {
 	}
 	if streams2.Out.(*bytes.Buffer).String() != "" {
 		t.Errorf("stdout should be empty for error-only input, got %q", streams2.Out.(*bytes.Buffer).String())
+	}
+}
+
+func TestConsumerMalformedErrorMessageUsesStableFallback(t *testing.T) {
+	for name, message := range map[string]any{
+		"missing": nil,
+		"number":  42,
+	} {
+		t.Run(name, func(t *testing.T) {
+			streams, _ := testStreams("", false)
+			errBuf := &bytes.Buffer{}
+			streams.Err = errBuf
+			errInput := Envelope{
+				Schema: Schema,
+				Kind:   KindError,
+				Ref:    "SSIS-589",
+				Data:   map[string]any{"message": message},
+			}
+			consumer := &Consumer{Name: "detail"}
+			err := consumer.RunInputs(streams, []Envelope{errInput}, OutputText)
+			if err == nil {
+				t.Fatal("expected failure summary")
+			}
+			if strings.Contains(errBuf.String(), "%!") || !strings.Contains(errBuf.String(), "upstream pipeline error") {
+				t.Fatalf("stderr = %q, want stable fallback", errBuf.String())
+			}
+		})
 	}
 }
 

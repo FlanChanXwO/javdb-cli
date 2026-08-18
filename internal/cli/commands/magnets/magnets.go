@@ -67,6 +67,31 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		items = javdb.FilterMagnets(items, cnsub, hd, minMiB)
 		return mid, items, nil
 	}
+	runOne := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		// 管道信封携带 id 时直接按内部 ID 请求，不做番号解析。
+		// --id flag 仅对位置参数（无信封 id）生效。
+		useID := input.ID != "" || isID
+		mid, items, err := fetch(c, ctx, input, useID)
+		if err != nil {
+			return pipeline.Envelope{}, err
+		}
+		data := map[string]any{"movie_id": mid, "magnets": items}
+		if best {
+			b := javdb.PickBestMagnet(items)
+			data["best"] = b
+			data["magnet_uri"] = javdb.MagnetURI(b)
+		}
+		return pipeline.New(pipeline.KindMagnet, input.Ref, mid).WithData(data), nil
+	}
+	runWithOptionalAuth := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		var output pipeline.Envelope
+		err := client.RetryAnonymousAuth(c, streams.Err, func() error {
+			var runErr error
+			output, runErr = runOne(c, ctx, input)
+			return runErr
+		})
+		return output, err
+	}
 	runner := &pipeline.BatchRunner{
 		Name:       "magnets",
 		LegacyJSON: true,
@@ -82,20 +107,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			return client.NewWithDefaultToken(options)
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
-			// 管道信封携带 id 时直接按内部 ID 请求，不做番号解析。
-			// --id flag 仅对位置参数（无信封 id）生效。
-			useID := input.ID != "" || isID
-			mid, items, err := fetch(c, ctx, input, useID)
-			if err != nil {
-				return pipeline.Envelope{}, err
-			}
-			data := map[string]any{"movie_id": mid, "magnets": items}
-			if best {
-				b := javdb.PickBestMagnet(items)
-				data["best"] = b
-				data["magnet_uri"] = javdb.MagnetURI(b)
-			}
-			return pipeline.New(pipeline.KindMagnet, input.Ref, mid).WithData(data), nil
+			return runWithOptionalAuth(c, ctx, input)
 		},
 		Legacy: func(args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {

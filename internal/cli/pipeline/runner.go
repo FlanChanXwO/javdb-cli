@@ -15,6 +15,9 @@ import (
 //     与可选认证/匿名重试行为）。
 //   - 其余情况（多项，或单项显式 --ndjson）走逐项 RunOne：单项失败原位错误
 //     信封并继续，最终非零；批量显式 --json 输出信封数组。
+//
+// 管道执行保持三条不变量：输入索引决定输出顺序；RunMany 只在对应输入槽内
+// fan-out；错误项只产生错误信封或 stderr 诊断，不伪造成功 ref。
 type BatchRunner struct {
 	Name string
 	// Context 是本次命令调用的生命周期；未设置时使用 Background。
@@ -70,7 +73,9 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson
 	return b.ExecuteWithInputs(streams, inputs, mode)
 }
 
-// ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
+// ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。输入分类一旦完成，
+// 不再根据来源（位置参数或 stdin）改变显式 NDJSON/JSON 的 cardinality；只有
+// 纯文本单项的 legacy 分支保留命令原有 JSON/TTY shape。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// 单项 TTY 人类文本或显式 --json（且 Legacy 支持 JSON）
 	// 且输入是纯文本 ref（无 kind）时走既有路径，保持 shape 与认证语义；

@@ -6,7 +6,7 @@ import (
 )
 
 // main 只保留入口分派：无参数、help、未知命令与各子命令的分派错误。
-// 各子命令的行为测试已迁移到 document/audit/github/prepare/history 领域包。
+// 各子命令的行为测试已迁移到 document/audit/github/history 领域包。
 
 func TestRunRequiresSubcommand(t *testing.T) {
 	if err := run(nil); err == nil || !strings.Contains(err.Error(), "subcommand is required") {
@@ -30,7 +30,7 @@ func TestRunUnknownSubcommand(t *testing.T) {
 }
 
 func TestRunDispatchesEverySubcommand(t *testing.T) {
-	for _, name := range []string{"validate", "audit", "prepare", "render", "pr-validate", "sync-history"} {
+	for _, name := range []string{"validate", "audit", "render", "sync-history"} {
 		err := run([]string{name})
 		if err == nil {
 			t.Fatalf("run(%s) with no args unexpectedly succeeded", name)

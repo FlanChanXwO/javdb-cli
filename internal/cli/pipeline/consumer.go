@@ -72,6 +72,8 @@ func (c *Consumer) Execute(streams *invocation.Streams, args []string, ndjson, j
 // 输出顺序与单项错误可观测性。
 //
 // Concurrency > 0 时批量请求并发执行，结果按输入顺序写出。
+// processAll 只按索引写入独立结果槽，所有 worker 完成后才进入渲染阶段，
+// 因而 fan-out、失败信封和文本输出都不会因请求完成顺序改变协议顺序。
 func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// legacy JSON shape 只适用于纯文本 ref 输入；NDJSON 信封先过 kind 校验。
 	if mode == OutputJSON && len(inputs) == 1 && inputs[0].Kind == "" && c.LegacyJSON != nil {
@@ -196,7 +198,7 @@ func (c *Consumer) processOne(input Envelope) itemResult {
 	if input.Kind == KindError {
 		return itemResult{
 			envelopes: []Envelope{input},
-			err:       fmt.Errorf("%s", input.Data["message"]),
+			err:       errors.New(ErrorMessage(input)),
 		}
 	}
 	if !c.accepts(input) {

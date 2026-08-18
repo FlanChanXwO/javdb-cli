@@ -63,6 +63,14 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 					return fmt.Errorf("--magnets is only supported for movie search (got --type %q)", typ)
 				}
 			}
+			minMiB := 0
+			if cmd.Flags().Changed("magnets") && minSize != "" {
+				minMiB, err = magnetspkg.ParseSizeMiB(minSize)
+				if err != nil {
+					// 这是纯本地 flag 校验，必须先于图片读取、上传和 JavDB 联动。
+					return err
+				}
+			}
 			reader := bufio.NewReader(streams.In)
 			arg := ""
 			if len(args) == 1 {
@@ -74,15 +82,15 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			if imageMode {
 				if cmd.Flags().Changed("magnets") {
-					return runImageSearchMagnets(cmd.Context(), options, streams, arg, reader, source, noCache, mode, magnets, cnsub, hd, minSize)
+					return runImageSearchMagnets(cmd.Context(), options, streams, arg, reader, source, noCache, mode, magnets, cnsub, hd, minMiB)
 				}
-				return runImageSearch(options, streams, arg, reader, source, noCache, mode)
+				return runImageSearch(cmd.Context(), options, streams, arg, reader, source, noCache, mode)
 			}
 			if len(inputs) == 0 {
 				return fmt.Errorf("keyword or an image")
 			}
 			if cmd.Flags().Changed("magnets") {
-				return runSearchMagnets(cmd.Context(), options, streams, inputs, mode, page, limit, zone, sort, filterBy, hasMagnets, magnets, cnsub, hd, minSize)
+				return runSearchMagnets(cmd.Context(), options, streams, inputs, mode, page, limit, zone, sort, filterBy, hasMagnets, magnets, cnsub, hd, minMiB)
 			}
 			runner := &pipeline.BatchRunner{
 				Name:       "search",
@@ -101,7 +109,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 					return runSearchMany(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
 				},
 				Legacy: func(args []string) error {
-					return runTextSearch(options, streams, args[0], page, limit, zone, sort, filterBy, typ, hasMagnets, asJSON)
+					return runTextSearch(cmd.Context(), options, streams, args[0], page, limit, zone, sort, filterBy, typ, hasMagnets, asJSON)
 				},
 			}
 			return runner.ExecuteWithInputs(streams, inputs, mode)
@@ -269,7 +277,7 @@ func namedEntityRef(item map[string]any) (string, string) {
 	}
 	return id, id
 }
-func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams, keyword string, page, limit int, zone, sort, filterBy, typ string, hasMagnets, asJSON bool) error {
+func runTextSearch(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, keyword string, page, limit int, zone, sort, filterBy, typ string, hasMagnets, asJSON bool) error {
 	c, err := client.New(options, "")
 	if err != nil {
 		return err
@@ -282,7 +290,7 @@ func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams,
 		FilterBy: filterBy,
 		Type:     typ,
 	}
-	res, err := c.Search(context.Background(), keyword, opt)
+	res, err := c.Search(ctx, keyword, opt)
 	if err != nil {
 		return fmt.Errorf("search failed: %w", err)
 	}
@@ -307,16 +315,16 @@ func runTextSearch(options *invocation.RootOptions, streams *invocation.Streams,
 // runImageSearch 执行以图搜番：读取并校验原始图片（路径/URL/stdin），调用
 // 公开 SDK 反搜+严格联动，输出候选、相似度、帧、匹配详情与逐项错误。
 // provider 顶层失败直接报错；候选部分失败在完成输出后返回非零。
-func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode) error {
+func runImageSearch(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode) error {
 	setup, err := client.NewReverseSearchClient(options, "", source)
 	if err != nil {
 		return err
 	}
-	imageBytes, err := readInputImage(arg, reader, setup.HTTPClient)
+	imageBytes, err := readInputImage(ctx, arg, reader, setup.HTTPClient)
 	if err != nil {
 		return err
 	}
-	result, err := setup.Client.SearchByImage(context.Background(), javdb.ReverseSearchRequest{
+	result, err := setup.Client.SearchByImage(ctx, javdb.ReverseSearchRequest{
 		Image:       imageBytes.Bytes,
 		Filename:    imageBytes.Filename,
 		Source:      setup.Source,
@@ -370,14 +378,14 @@ func runImageSearch(options *invocation.RootOptions, streams *invocation.Streams
 	return nil
 }
 
-func readInputImage(arg string, reader *bufio.Reader, httpClient *http.Client) (*image.Image, error) {
+func readInputImage(ctx context.Context, arg string, reader *bufio.Reader, httpClient *http.Client) (*image.Image, error) {
 	if arg == "" {
 		return image.ReadStream(reader, "<stdin>")
 	}
 	if isHTTPURL(arg) {
 		// 复用最终代理配置（与 provider/JavDB 请求一致）；nil 时 image 包回退
 		// http.DefaultClient。
-		return image.ReadURL(context.Background(), httpClient, arg)
+		return image.ReadURL(ctx, httpClient, arg)
 	}
 	return image.ReadFile(arg)
 }
@@ -509,22 +517,34 @@ func writeJSON(w io.Writer, value any) error {
 	return err
 }
 
+// movieFromEnvelope 将已解析的 movie 信封投影为磁力请求所需的最小 movie
+// 对象；保留上游详情字段，同时确保 number/id 缺失时仍可用信封字段补齐。
+func movieFromEnvelope(input pipeline.Envelope) map[string]any {
+	movie := make(map[string]any)
+	if raw, ok := input.Data["movie"].(map[string]any); ok {
+		for key, value := range raw {
+			movie[key] = value
+		}
+	}
+	if scalar.String(movie["number"]) == "" {
+		movie["number"] = input.Ref
+	}
+	if scalar.String(movie["id"]) == "" {
+		movie["id"] = input.ID
+	}
+	return movie
+}
+
 // runSearchMagnets 执行关键词搜索并对每部影片获取磁力：筛选 → 排序 → 截取 N。
 // 结果按搜索结果顺序（影片）和磁力排序顺序输出。
-func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, inputs []pipeline.Envelope, mode pipeline.OutputMode, page, limit int, zone, sort, filterBy string, hasMagnets bool, magnetsCount int, cnsub, hd bool, minSize string) error {
+func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, inputs []pipeline.Envelope, mode pipeline.OutputMode, page, limit int, zone, sort, filterBy string, hasMagnets bool, magnetsCount int, cnsub, hd bool, minMiB int) error {
 	c, err := client.New(options, "")
 	if err != nil {
 		return err
 	}
-	minMiB := 0
-	if minSize != "" {
-		minMiB, err = magnetspkg.ParseSizeMiB(minSize)
-		if err != nil {
-			return err
-		}
-	}
 
 	type magnetResult struct {
+		input         pipeline.Envelope
 		movie         map[string]any
 		magnets       []map[string]any
 		err           error
@@ -537,7 +557,8 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 	for _, input := range inputs {
 		if input.Kind == pipeline.KindError {
 			results = append(results, magnetResult{
-				err:           errors.New(pipelineErrorMessage(input)),
+				input:         input,
+				err:           errors.New(pipeline.ErrorMessage(input)),
 				errorEnvelope: input,
 			})
 			continue
@@ -545,8 +566,18 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 		if input.Kind != "" && input.Kind != pipeline.KindMovie {
 			itemErr := fmt.Errorf("unsupported kind %q", input.Kind)
 			results = append(results, magnetResult{
+				input:         input,
 				err:           itemErr,
 				errorEnvelope: pipeline.ErrorEnvelope(input, "search", "input", "kind", itemErr.Error()),
+			})
+			continue
+		}
+		if input.Kind == pipeline.KindMovie && input.ID != "" {
+			// search --ndjson | search --magnets --json：上游已经解析出影片，
+			// 直接沿用其 ID，不能把内部 ID 当作新的番号关键词再搜索一次。
+			results = append(results, magnetResult{
+				input: input,
+				movie: movieFromEnvelope(input),
 			})
 			continue
 		}
@@ -558,6 +589,7 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 		if err != nil {
 			itemErr := fmt.Errorf("search failed: %w", err)
 			results = append(results, magnetResult{
+				input:         input,
 				err:           itemErr,
 				errorEnvelope: pipeline.ErrorEnvelope(input, "search", "search", "fetch", itemErr.Error()),
 			})
@@ -568,7 +600,7 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 			movies = result.FilterMoviesWithMagnets(movies)
 		}
 		for _, movie := range movies {
-			results = append(results, magnetResult{movie: movie})
+			results = append(results, magnetResult{input: input, movie: movie})
 		}
 	}
 
@@ -593,7 +625,7 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 						pipeline.New(pipeline.KindMagnet, fmt.Sprint(results[i].movie["number"]), mid),
 						"search", "magnets", "fetch", err.Error(),
 					)
-					return
+					continue
 				}
 				mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
 				results[i].magnets = javdb.RankMagnets(mags, magnetsCount)
@@ -618,6 +650,32 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 	failures := 0
 	switch mode {
 	case pipeline.OutputJSON:
+		if len(inputs) > 1 {
+			// 批量 JSON 遵循 pipeline cardinality：每个影片/错误都是一个
+			// envelope，并在 meta 中保留产生它的输入关键词，不能再扁平化成
+			// 一个没有来源信息的 {"movies": [...]} 对象。
+			batchOut := make([]pipeline.Envelope, 0, len(results))
+			for _, r := range results {
+				if r.err != nil {
+					failures++
+				}
+				if r.movie == nil || r.err != nil {
+					batchOut = append(batchOut, withInputMeta(r.errorEnvelope, r.input))
+					continue
+				}
+				ref := fmt.Sprint(r.movie["number"])
+				id := fmt.Sprint(r.movie["id"])
+				batchOut = append(batchOut, withInputMeta(
+					pipeline.New(pipeline.KindMagnet, ref, id).
+						WithData(map[string]any{"movie": r.movie, "magnets": r.magnets}),
+					r.input,
+				))
+			}
+			if err := writeJSON(streams.Out, batchOut); err != nil {
+				return err
+			}
+			break
+		}
 		moviesOut := make([]map[string]any, 0, len(results))
 		for _, r := range results {
 			if r.movie == nil {
@@ -690,21 +748,31 @@ func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, stre
 	return nil
 }
 
-func pipelineErrorMessage(envelope pipeline.Envelope) string {
-	if message := scalar.String(envelope.Data["message"]); message != "" {
-		return message
+func withInputMeta(envelope, input pipeline.Envelope) pipeline.Envelope {
+	meta := make(map[string]any, len(envelope.Meta)+2)
+	for key, value := range envelope.Meta {
+		meta[key] = value
 	}
-	return "upstream pipeline error"
+	if input.Ref != "" {
+		meta["input_ref"] = input.Ref
+	}
+	if input.ID != "" {
+		meta["input_id"] = input.ID
+	}
+	if len(meta) == 0 {
+		return envelope
+	}
+	return envelope.WithMeta(meta)
 }
 
 // runImageSearchMagnets 执行以图搜番并直接获取磁力：使用 SkipMovieDetail 跳过
 // 完整详情，仅做番号→ID→磁力。结果按 provider 候选顺序输出。
-func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode, magnetsCount int, cnsub, hd bool, minSize string) error {
+func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode, magnetsCount int, cnsub, hd bool, minMiB int) error {
 	setup, err := client.NewReverseSearchClient(options, "", source)
 	if err != nil {
 		return err
 	}
-	imageBytes, err := readInputImage(arg, reader, setup.HTTPClient)
+	imageBytes, err := readInputImage(ctx, arg, reader, setup.HTTPClient)
 	if err != nil {
 		return err
 	}
@@ -718,19 +786,13 @@ func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions,
 		return fmt.Errorf("reverse search failed: %w", err)
 	}
 
-	minMiB := 0
-	if minSize != "" {
-		minMiB, err = magnetspkg.ParseSizeMiB(minSize)
-		if err != nil {
-			return err
-		}
-	}
-
 	// 使用有界 worker 池获取每个候选的磁力，并按候选索引保序。
 	type magnetResult struct {
-		match   javdb.ImageSearchMatch
-		magnets []map[string]any
-		err     error
+		match      javdb.ImageSearchMatch
+		magnets    []map[string]any
+		err        error
+		errorStage string
+		errorCode  string
 	}
 	results := make([]magnetResult, len(result.Matches))
 	const workers = 4
@@ -743,17 +805,22 @@ func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions,
 			for i := range jobs {
 				match := result.Matches[i]
 				if match.Error != nil {
-					results[i] = magnetResult{match: match, err: fmt.Errorf("%s", match.Error.Message)}
-					return
+					results[i] = magnetResult{
+						match:      match,
+						err:        errors.New(match.Error.Message),
+						errorStage: match.Error.Stage,
+						errorCode:  match.Error.Code,
+					}
+					continue
 				}
 				if match.MovieID == "" {
-					results[i] = magnetResult{match: match, err: fmt.Errorf("no movie id")}
-					return
+					results[i] = magnetResult{match: match, err: errors.New("no movie id"), errorStage: "link", errorCode: "resolve"}
+					continue
 				}
 				mags, err := setup.Client.MovieMagnets(ctx, match.MovieID)
 				if err != nil {
-					results[i] = magnetResult{match: match, err: err}
-					return
+					results[i] = magnetResult{match: match, err: err, errorStage: "magnets", errorCode: "fetch"}
+					continue
 				}
 				mags = javdb.FilterMagnets(mags, cnsub, hd, minMiB)
 				mags = javdb.RankMagnets(mags, magnetsCount)
@@ -798,7 +865,14 @@ func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions,
 			ref := r.match.Candidate.VideoCode
 			id := r.match.MovieID
 			if r.err != nil {
-				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMagnet, ref, id), "search", "magnets", "fetch", r.err.Error())); err != nil {
+				stage, code := r.errorStage, r.errorCode
+				if stage == "" {
+					stage = "magnets"
+				}
+				if code == "" {
+					code = "fetch"
+				}
+				if err := writer.Write(pipeline.ErrorEnvelope(pipeline.New(pipeline.KindMagnet, ref, id), "search", stage, code, r.err.Error())); err != nil {
 					return err
 				}
 				failures++

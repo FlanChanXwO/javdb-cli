@@ -26,27 +26,12 @@ go test ./...
 sh scripts/build.sh
 ```
 
-## Release note declaration / Release note 声明
-
-<!--
-English: This required metadata is validated by the Quality gate. It is used only after merge to prepare the bilingual release notes; do not edit changelog/unreleased in a feature PR. Select exactly one category: Added, Changed, Fixed, Security, Documentation, Maintenance, or None. Set breaking to true for every user-visible compatibility break; pre-1.0 releases may represent it with a minor version. None requires a concrete reason.
-中文：Quality gate 会校验此必填 metadata。它仅在合并后用于准备双语 release note；feature PR 中不要编辑 changelog/unreleased。只能选择一个类别：Added、Changed、Fixed、Security、Documentation、Maintenance 或 None。每项面向用户的兼容性破坏都应将 breaking 设为 true；pre-1.0 版本可以用 minor 版本表示这类变更。None 必须提供具体理由。
--->
-
-<!-- release-note
-category: __REQUIRED__
-breaking: __REQUIRED__
-summary: __REQUIRED__
-none_reason: __REQUIRED__
--->
-
 ## Checklist / 检查清单
 
 - [ ] The change is focused and linked to an issue when appropriate. / 改动目标明确，并在适用时关联 Issue。
 - [ ] I added or updated focused tests for changed behavior. / 我已为变更行为新增或更新聚焦测试。
 - [ ] I ran the relevant tests and recorded the results above. / 我已运行相关测试并在上方记录结果。
 - [ ] I updated the required CLI reference, SDK, README, maintainer, and operator-skill documentation. / 我已更新所需的 CLI reference、SDK、README、维护者和 operator-skill 文档。
-- [ ] I completed the required release-note declaration above; `None` has a concrete reason when selected. / 我已填写上方必需的 release-note 声明；选择 `None` 时已提供具体理由。
 - [ ] I documented every new timeout, retry, pagination or result limit, truncation, fallback, or downgrade and its evidence. / 我已记录每项新增 timeout、retry、pagination 或结果限制、truncation、fallback 或 downgrade 及其证据。
 - [ ] I did not add passwords, JWTs, `~/.javdb-cli/auth.json` contents, proxy credentials, private URLs, local state, or private API responses. / 我没有添加密码、JWT、`~/.javdb-cli/auth.json` 内容、代理凭据、私有 URL、本地状态或私有 API 响应。
 - [ ] I updated migration guidance for every breaking change. / 我已为每个破坏性变更更新迁移指引。

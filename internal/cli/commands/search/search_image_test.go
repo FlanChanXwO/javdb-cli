@@ -2,7 +2,9 @@ package search
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
@@ -268,6 +271,75 @@ func TestSearchImageMagnetsEndToEnd(t *testing.T) {
 	}
 	if detailRequests.Load() != 0 {
 		t.Fatalf("MovieDetail requests = %d, want 0", detailRequests.Load())
+	}
+}
+
+func TestSearchImageMagnetsRejectsInvalidMinSizeBeforeUpload(t *testing.T) {
+	var uploads atomic.Int64
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		uploads.Add(1)
+		_, _ = writer.Write([]byte(`{"results":[]}`))
+	}))
+	defer provider.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})
+	err := executeSearch(t, streams, &invocation.RootOptions{}, "--magnets", "1", "--min-size", "invalid", "--source", "test", "--no-cache")
+	if err == nil || !strings.Contains(err.Error(), "invalid --min-size") {
+		t.Fatalf("error = %v, want local min-size validation", err)
+	}
+	if uploads.Load() != 0 {
+		t.Fatalf("provider uploads = %d, want 0 before local validation", uploads.Load())
+	}
+}
+
+func TestSearchImageMagnetsWorkerContinuesAfterLinkFailures(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"results":[
+			{"video_code":"BAD-001","best_similarity":90},
+			{"video_code":"BAD-002","best_similarity":89},
+			{"video_code":"BAD-003","best_similarity":88},
+			{"video_code":"BAD-004","best_similarity":87},
+			{"video_code":"BAD-005","best_similarity":86}
+		]}`))
+	}))
+	defer provider.Close()
+	javdbServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api/v2/search" {
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{"movies": []map[string]any{}}})
+			return
+		}
+		http.NotFound(writer, request)
+	}))
+	defer javdbServer.Close()
+	writeReverseSearchConfig(t, provider.URL)
+
+	streams := invocation.NewStreams(bytes.NewReader(testJPEG), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: javdbServer.URL}, streams)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd.SetContext(ctx)
+	cmd.SetArgs([]string{"--magnets", "1", "--source", "test", "--no-cache", "--ndjson"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "5 of 5 candidates failed") {
+		t.Fatalf("error = %v, want complete candidate failure summary", err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("image magnet worker pool timed out after link failures")
+	}
+	lines := strings.Split(strings.TrimSpace(streams.Out.(*bytes.Buffer).String()), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("NDJSON lines = %d, want 5", len(lines))
+	}
+	for index, line := range lines {
+		var envelope map[string]any
+		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := envelope["data"].(map[string]any)
+		if envelope["kind"] != "error" || data["stage"] != "link" || data["code"] != "resolve" {
+			t.Errorf("line %d envelope = %v, want link/resolve error", index, envelope)
+		}
 	}
 }
 

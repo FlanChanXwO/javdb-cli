@@ -88,6 +88,10 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Validate all versioned changelog indexes
+        shell: bash
+        run: sh scripts/test-releasenotes.sh
+
       - name: Validate the audited bilingual release notes
         shell: bash
         env:
@@ -95,33 +99,14 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
-          plan="changelog/plans/${RELEASE_TAG}.json"
-          test -f "$plan"
-          previous=$(python3 - "$plan" "$version" <<'PY'
-          import json, sys
-          plan = json.load(open(sys.argv[1]))
-          if plan.get("version") != sys.argv[2]:
-              raise SystemExit(f"manifest version mismatch: {plan.get('version')!r}")
-          previous = plan.get("previous_tag")
-          compare = plan.get("compare_url")
-          if previous is None:
-              if sys.argv[2] != "0.1.0" or compare is not None:
-                  raise SystemExit("only v0.1.0 may omit previous_tag and compare_url")
-              print("")
-          else:
-              expected = f"https://github.com/FlanChanXwO/javdb-cli/compare/{previous}...v{sys.argv[2]}"
-              if compare != expected:
-                  raise SystemExit(f"manifest compare_url mismatch: {compare!r}, want {expected!r}")
-              print(previous)
-          PY
-          )
+          test -s "changelog/v${version}/en.md"
+          test -s "changelog/v${version}/zh-CN.md"
+          previous=$(sh scripts/previous-release-tag.sh "$RELEASE_TAG")
           args=(validate --version "$version" --dir "changelog/v$version")
           if [ -n "$previous" ]; then
             args+=(--previous "$previous")
           fi
           go run ./scripts/releasenotes "${args[@]}"
-          # 直接 push 的 commit 没有 PR 归属；audit 报告会逐条列出，由 release-prep
-          # 人工核对。require-classified 只对 PR 来源强制，v0.7 起 feature 走 PR 流程。
           go run ./scripts/releasenotes audit \
             --repo "$GITHUB_REPOSITORY" \
             --from "$previous" \

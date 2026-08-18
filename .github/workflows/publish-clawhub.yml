@@ -89,17 +89,7 @@ jobs:
           test "$(grep -c '^version: ' skills/javdb-cli/SKILL.md)" = 1
           test "$skill_version" = "${RELEASE_TAG#v}"
           git cat-file -e "$RELEASE_TAG:skills/javdb-cli/SKILL.md"
-          previous_tag=
-          while IFS= read -r tag; do
-            if [ "$tag" != "$RELEASE_TAG" ] &&
-              test -f "changelog/$tag/en.md" &&
-              test -f "changelog/$tag/zh-CN.md"; then
-              previous_tag=$tag
-              break
-            fi
-          done <<EOF
-          $(git tag --merged "$RELEASE_TAG" --list 'v[0-9]*' --sort=-v:refname)
-          EOF
+          previous_tag=$(sh scripts/previous-release-tag.sh "$RELEASE_TAG")
           if [ -z "$previous_tag" ]; then
             printf 'publish=true\n' >> "$GITHUB_OUTPUT"
           elif git diff --quiet "$previous_tag" "$RELEASE_TAG" -- skills/javdb-cli; then
