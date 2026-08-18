@@ -3,20 +3,15 @@ package github
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/FlanChanXwO/javdb-cli/scripts/internal/releasenotes/document"
 	"github.com/FlanChanXwO/javdb-cli/scripts/internal/releasenotes/model"
 )
 
-func TestClientReadsPullRequestAndFindsFirstMergedPullRequest(t *testing.T) {
+func TestClientReadsPullRequestSources(t *testing.T) {
 	t.Parallel()
-
-	mergedAt := time.Date(2026, time.July, 30, 0, 0, 0, 0, time.UTC)
 
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -24,27 +19,11 @@ func TestClientReadsPullRequestAndFindsFirstMergedPullRequest(t *testing.T) {
 			_ = json.NewEncoder(response).Encode([]model.GitHubPullRequest{{Number: 42}})
 		case "/repos/owner/project/pulls/42":
 			_ = json.NewEncoder(response).Encode(model.GitHubPullRequest{
-				Number:   42,
-				Title:    "feat: add APNG",
-				Body:     "<!-- release-note\ncategory: Added\nbreaking: false\nsummary: Add APNG output.\nnone_reason:\n-->",
-				HTMLURL:  "https://github.com/owner/project/pull/42",
-				MergedAt: &mergedAt,
-				User:     model.GitHubUser{Login: "new-contributor", Type: "User"},
+				Number:  42,
+				Title:   "feat: add APNG",
+				HTMLURL: "https://github.com/owner/project/pull/42",
+				User:    model.GitHubUser{Login: "maintainer", Type: "User"},
 			})
-		case "/search/issues":
-			if got, want := request.URL.Query().Get("q"), "repo:owner/project type:pr author:new-contributor is:merged"; got != want {
-				http.Error(response, fmt.Sprintf("search query = %q, want %q", got, want), http.StatusInternalServerError)
-				return
-			}
-			if got, want := request.URL.Query().Get("per_page"), "100"; got != want {
-				http.Error(response, fmt.Sprintf("search per_page = %q, want %q", got, want), http.StatusInternalServerError)
-				return
-			}
-			if got, want := request.URL.Query().Get("page"), "1"; got != want {
-				http.Error(response, fmt.Sprintf("search page = %q, want %q", got, want), http.StatusInternalServerError)
-				return
-			}
-			_ = json.NewEncoder(response).Encode(model.GitHubPullRequestSearchResult{Items: []model.GitHubPullRequest{{Number: 42}}})
 		default:
 			http.Error(response, "unexpected GitHub API path "+request.URL.Path, http.StatusInternalServerError)
 		}
@@ -63,18 +42,8 @@ func TestClientReadsPullRequestAndFindsFirstMergedPullRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pull request: %v", err)
 	}
-	if pull.User.Type != "User" || pull.User.Login == "owner" {
-		t.Fatalf("pull %#v should be an eligible external contributor", pull)
-	}
-	first, err := client.FirstMergedPullRequest(context.Background(), "owner/project", pull.User.Login)
-	if err != nil {
-		t.Fatalf("first merged pull request: %v", err)
-	}
-	if first.Number != pull.Number {
-		t.Fatalf("first merged pull = %#v, want #%d", first, pull.Number)
-	}
-	if _, err := document.ParseReleaseNoteDeclaration(pull.Body); err != nil {
-		t.Fatalf("parse pull release note: %v", err)
+	if pull.Title != "feat: add APNG" || pull.HTMLURL != "https://github.com/owner/project/pull/42" {
+		t.Fatalf("pull %#v should preserve source metadata", pull)
 	}
 }
 

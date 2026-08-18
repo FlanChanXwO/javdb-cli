@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/authstore"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/storage/auth"
 )
 
 func TestNewHelpListsFlags(t *testing.T) {
@@ -190,6 +192,61 @@ func TestMagnetsPositionalTextModeOutputsMagnetURIs(t *testing.T) {
 	}
 	if got := streams.Out.(*bytes.Buffer).String(); got != "magnet:?xt=urn:btih:AAA\nmagnet:?xt=urn:btih:BBB\n" {
 		t.Fatalf("text output = %q, want magnet URIs", got)
+	}
+}
+
+func TestMagnetsNonTTYFallsBackToAnonymousAfterTokenRejection(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(home))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(home, filepath.VolumeName(home)))
+	fs, store, err := authstore.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Upsert(auth.Account{UserID: 1, Username: "u", Token: "expired-token"}, true)
+	if err := fs.Commit(store); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("authorization") != "" {
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"success": false, "action": "JWTVerificationError", "message": "expired",
+			})
+			return
+		}
+		switch request.URL.Path {
+		case "/api/v2/search":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1"}},
+			}})
+		case "/api/v4/movies/id-1":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movie": map[string]any{"magnets_count": float64(1)},
+			}})
+		case "/api/v1/movies/id-1/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"hash": "AAA"}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"SSIS-001"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := streams.Out.(*bytes.Buffer).String(); got != "magnet:?xt=urn:btih:AAA\n" {
+		t.Fatalf("text output = %q, want anonymous magnet result", got)
+	}
+	if got := streams.Err.(*bytes.Buffer).String(); !strings.Contains(got, "匿名") {
+		t.Fatalf("stderr = %q, want token fallback diagnostic", got)
 	}
 }
 

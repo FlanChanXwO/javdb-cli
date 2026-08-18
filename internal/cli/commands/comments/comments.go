@@ -18,31 +18,42 @@ import (
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var page, limit int
 	var isID, asJSON, asNDJSON bool
+	runOne := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		movieID := input.ID
+		if movieID == "" {
+			movieID = input.Ref
+		}
+		var err error
+		if !isID && input.ID == "" {
+			movieID, err = c.ResolveMovieID(ctx, movieID)
+			if err != nil {
+				return pipeline.Envelope{}, err
+			}
+		}
+		reviews, err := c.MovieComments(ctx, movieID, page, limit)
+		if err != nil {
+			return pipeline.Envelope{}, fmt.Errorf("comments failed: %w", err)
+		}
+		return pipeline.New(pipeline.KindComment, input.Ref, movieID).
+			WithData(map[string]any{"movie_id": movieID, "page": page, "limit": limit, "reviews": reviews}), nil
+	}
 	runner := &pipeline.BatchRunner{
 		Name:       "comments",
 		LegacyJSON: true,
-		Kinds:      []pipeline.Kind{pipeline.KindMovie},
+		// 非 TTY 单项与 stdin 批量统一输出稳定影片 ref；TTY 仍使用 Legacy 人类渲染。
+		RouteTextThroughPipeline: true,
+		Kinds:                    []pipeline.Kind{pipeline.KindMovie},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
-			movieID := input.ID
-			if movieID == "" {
-				movieID = input.Ref
-			}
-			var err error
-			if !isID && input.ID == "" {
-				movieID, err = c.ResolveMovieID(ctx, movieID)
-				if err != nil {
-					return pipeline.Envelope{}, err
-				}
-			}
-			reviews, err := c.MovieComments(ctx, movieID, page, limit)
-			if err != nil {
-				return pipeline.Envelope{}, fmt.Errorf("comments failed: %w", err)
-			}
-			return pipeline.New(pipeline.KindComment, input.Ref, movieID).
-				WithData(map[string]any{"movie_id": movieID, "page": page, "limit": limit, "reviews": reviews}), nil
+			var output pipeline.Envelope
+			err := client.RetryAnonymousAuth(c, streams.Err, func() error {
+				var runErr error
+				output, runErr = runOne(c, ctx, input)
+				return runErr
+			})
+			return output, err
 		},
 		Legacy: func(args []string) error {
 			if page < 1 {
@@ -94,6 +105,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if limit < 1 {
 				return fmt.Errorf("--limit must be positive")
 			}
+			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}

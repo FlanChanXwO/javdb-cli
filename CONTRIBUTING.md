@@ -54,7 +54,7 @@ Update documentation in the same pull request when changing a command, flag, SDK
 - Keep `README.md` and `README.zh-CN.md` behaviorally aligned.
 - Keep both locale versions under `docs/en/` and `docs/zh-CN/` behaviorally aligned; never use untranslated placeholder content.
 - Update `docs/sdk.md` / `docs/sdk.zh-CN.md`, `docs/maintainers/architecture.md`, or `docs/maintainers/development.md` according to their documented responsibility.
-- Complete the required release-note declaration in the pull-request template for every contribution. Choose `Added`, `Changed`, `Fixed`, `Security`, `Documentation`, `Maintenance`, or `None`; `None` includes a concrete reason. After merge, the release-prep PR groups reviewed outcomes into matching English and Simplified Chinese version notes, with inline PR or direct-commit sources and a Full Changelog link. See the [development guide](docs/maintainers/development.md) for the exact process.
+- Release notes are maintained directly in the release-prep PR under `changelog/vX.Y.Z/{en.md,zh-CN.md}`. Keep English and Simplified Chinese entries aligned, include a PR or direct-commit source in every entry, and update both changelog indexes. See the [development guide](docs/maintainers/development.md) for the exact process.
 - Check `skills/javdb-cli/` when CLI commands, flags, or safety semantics change.
 
 Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.
@@ -68,7 +68,7 @@ Before requesting review:
 - [ ] `go test ./... -count=1` passes.
 - [ ] `go vet ./...` passes.
 - [ ] `sh scripts/build.sh` passes.
-- [ ] The release-sensitive checks pass (`scripts/test-package-release.sh`, `test-homebrew-formula.sh`, `test-workflows.sh`, `test-documentation.sh`, `test-architecture.sh`).
+- [ ] The release-sensitive checks pass (`scripts/test-package-release.sh`, `test-homebrew-formula.sh`, `test-workflows.sh`).
 - [ ] `python -m pre_commit run --all-files` passes when pre-commit is available.
 - [ ] `git diff --check` passes.
 - [ ] English and Simplified Chinese documentation are synchronized where required.

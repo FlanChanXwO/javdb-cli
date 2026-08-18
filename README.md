@@ -28,6 +28,9 @@ terms and the laws that apply to you.
   filmographies, magnets, rankings, TOP250, collections, authenticated
   watch/want data, and reverse image search with strict number linking
   (`javdb search IMAGE`, `javdb cache reverse-search`).
+- **Integrated magnet search** — `javdb search KEYWORD --magnets N` combines movie search,
+  filtering, ranking, and magnet retrieval; text output emits magnet URIs and `--ndjson`
+  emits pipeline envelopes.
 - **Composable pipelines** — most commands accept non-TTY stdin batches;
   TTY stdout defaults to human-readable text, non-TTY to stable record streams;
   explicit `--ndjson` emits `javdb.pipeline/v1` envelopes so command output can

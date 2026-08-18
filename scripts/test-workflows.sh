@@ -30,6 +30,8 @@ done
 grep -F 'ref: ${{ env.RELEASE_TAG }}' "$release_workflow" >/dev/null
 grep -F 'release_notes_audit:' "$release_workflow" >/dev/null
 grep -F 'pull-requests: read' "$release_workflow" >/dev/null
+grep -F 'scripts/previous-release-tag.sh' "$release_workflow" >/dev/null
+grep -F 'sh scripts/test-releasenotes.sh' "$release_workflow" >/dev/null
 grep -F 'needs: [validate, verify_release_source, release_notes_audit]' "$release_workflow" >/dev/null
 grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
 grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
@@ -51,17 +53,20 @@ for workflow in "$quality_workflow" "$platform_workflow"; do
 	grep -F './.github/actions/classify-change-scope' "$workflow" >/dev/null
 done
 grep -F 'go run ./scripts/changescope' "$change_scope_action" >/dev/null
-grep -F 'Validate pull request release-note declaration' "$quality_workflow" >/dev/null
+if grep -F 'Validate pull request release-note declaration' "$quality_workflow" >/dev/null; then
+	echo 'quality workflow must not validate PR release-note metadata' >&2
+	exit 1
+fi
 grep -F 'docs_only' "$quality_workflow" >/dev/null
 grep -F 'platform_smoke_gate:' "$platform_workflow" >/dev/null
 grep -F 'name: Platform smoke gate' "$platform_workflow" >/dev/null
+grep -F "if: needs.classify_changes.outputs.docs_only != 'true'" "$platform_workflow" >/dev/null
 grep -F 'MATRIX_RESULT' "$platform_workflow" >/dev/null
-# 六个受保护的 matrix check 必须在文档 PR 上同样展开；只允许把昂贵步骤切成轻量确认。
+# 代码变更保留六个平台原生矩阵；文档变更由聚合 gate 接管，不创建占位 checks。
 grep -F 'name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}' "$platform_workflow" >/dev/null
-grep -F "runs-on: \${{ needs.classify_changes.outputs.docs_only == 'true' && 'ubuntu-24.04' || matrix.runner }}" "$platform_workflow" >/dev/null
-grep -F 'Confirm docs-only native smoke skip' "$platform_workflow" >/dev/null
-if grep -Eq '^    if:.*docs_only' "$platform_workflow"; then
-	echo 'platform smoke matrix must not use a docs-only job-level condition' >&2
+grep -F 'runs-on: ${{ matrix.runner }}' "$platform_workflow" >/dev/null
+if grep -F 'Confirm docs-only native smoke skip' "$platform_workflow" >/dev/null; then
+	echo 'platform smoke must not create docs-only placeholder checks' >&2
 	exit 1
 fi
 

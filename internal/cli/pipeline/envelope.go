@@ -79,6 +79,15 @@ func ErrorEnvelope(input Envelope, command, stage, code, message string) Envelop
 	}
 }
 
+// ErrorMessage 提取上游错误信封的可展示 message；缺失、null 或非字符串值
+// 统一使用稳定回退，避免把协议数据的类型错误泄露成 fmt 的诊断占位符。
+func ErrorMessage(envelope Envelope) string {
+	if message, ok := envelope.Data["message"].(string); ok && message != "" {
+		return message
+	}
+	return "upstream pipeline error"
+}
+
 // Validate 校验信封 schema 与 kind；ref/id 至少一个存在。
 func (e Envelope) Validate() error {
 	if e.Schema != Schema {

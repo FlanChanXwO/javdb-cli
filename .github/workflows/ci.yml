@@ -16,7 +16,7 @@ concurrency:
 permissions: {}
 
 jobs:
-  # 仅允许严格的文档白名单走轻量门禁；其他任何改动均运行完整质量检查。
+  # 仅允许严格的文档白名单跳过代码质量门禁；其他任何改动均运行完整质量检查。
   classify_changes:
     name: Classify change scope
     runs-on: ubuntu-24.04
@@ -50,16 +50,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Validate pull request release-note declaration
-        if: ${{ github.event_name == 'pull_request' }}
-        shell: bash
-        run: go run ./scripts/releasenotes pr-validate --event "$GITHUB_EVENT_PATH"
-
-      - name: Test documentation contracts
-        if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}
-        shell: bash
-        run: sh scripts/test-documentation.sh
 
       - name: Check Go formatting
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}

@@ -3,7 +3,7 @@
 This directory contains the versioned release notes. Each release has matching English and Simplified Chinese files.
 GitHub Release bodies present the two versions together, with English first and Simplified Chinese second. Entries are
 grouped by user outcome and carry inline PR or historical direct-commit sources; empty standard sections are omitted.
-`unreleased/` is the release-prep staging area, while feature PRs declare their category and summary in the PR template.
+`unreleased/` is an optional manual drafting area. It is not read by the release workflow; published releases use only the matching version directory.
 
 | Version | Date | Release notes |
 | --- | --- | --- |

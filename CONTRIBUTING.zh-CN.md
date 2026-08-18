@@ -54,7 +54,7 @@ opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/mai
 - 保持 `README.md` 与 `README.zh-CN.md` 的行为语义对应。
 - 保持 `docs/en/` 与 `docs/zh-CN/` 下两个语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
 - 按文件职责更新 `docs/sdk.md` / `docs/sdk.zh-CN.md`、`docs/maintainers/architecture.md` 或 `docs/maintainers/development.md`。
-- 每个贡献都要完成 PR 模板中的 release-note 声明，分类为 `Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance` 或 `None`；选择 `None` 时说明具体理由。合并后由 release-prep PR 将已审核结果归并为英文与简体中文版本说明，并在每个条目内标注 PR 或历史 direct commit 来源及完整变更链接。具体流程见[开发流程](docs/maintainers/development.md)。
+- 发布说明由 release-prep PR 直接维护在 `changelog/vX.Y.Z/{en.md,zh-CN.md}`；英文与简体中文条目必须对应，每条都要包含 PR 或 direct commit 来源，并同步更新两个 changelog 索引。具体流程见[开发流程](docs/maintainers/development.md)。
 - CLI 命令、flag 或安全语义变化时检查 `skills/javdb-cli/`。
 
 稳定规则只在一个权威文档中定义，其他位置应链接过去，避免复制大段内容。
@@ -68,7 +68,7 @@ opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/mai
 - [ ] `go test ./... -count=1` 通过。
 - [ ] `go vet ./...` 通过。
 - [ ] `sh scripts/build.sh` 通过。
-- [ ] 发布敏感检查通过（`scripts/test-package-release.sh`、`test-homebrew-formula.sh`、`test-workflows.sh`、`test-documentation.sh`、`test-architecture.sh`）。
+- [ ] 发布敏感检查通过（`scripts/test-package-release.sh`、`test-homebrew-formula.sh`、`test-workflows.sh`）。
 - [ ] pre-commit 可用时，`python -m pre_commit run --all-files` 通过。
 - [ ] `git diff --check` 通过。
 - [ ] 需要同步的英文与简体中文文档已对应。
