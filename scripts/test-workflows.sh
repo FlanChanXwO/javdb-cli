@@ -66,8 +66,12 @@ grep -F 'platform_smoke_gate:' "$platform_workflow" >/dev/null
 grep -F 'name: Platform smoke gate' "$platform_workflow" >/dev/null
 grep -F "if: needs.classify_changes.outputs.docs_only != 'true'" "$platform_workflow" >/dev/null
 grep -F 'MATRIX_RESULT' "$platform_workflow" >/dev/null
-# 代码变更保留六个平台原生矩阵；文档变更由聚合 gate 接管，不创建占位 checks。
-grep -F 'name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}' "$platform_workflow" >/dev/null
+# 代码变更保留六个平台原生矩阵；文档变更由聚合 gate 接管，job 名称不得暴露未展开的 matrix 表达式。
+grep -F 'name: Packaged binary smoke' "$platform_workflow" >/dev/null
+if grep -F 'name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}' "$platform_workflow" >/dev/null; then
+	echo 'platform smoke job name must not expose an unexpanded matrix expression' >&2
+	exit 1
+fi
 grep -F 'runs-on: ${{ matrix.runner }}' "$platform_workflow" >/dev/null
 if grep -F 'Confirm docs-only native smoke skip' "$platform_workflow" >/dev/null; then
 	echo 'platform smoke must not create docs-only placeholder checks' >&2
