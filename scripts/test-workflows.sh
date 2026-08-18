@@ -102,3 +102,4 @@ grep -F 'pull_request_target:' "$triage_workflow" >/dev/null
 grep -F 'issues: write' "$triage_workflow" >/dev/null
 grep -F 'actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9' "$triage_workflow" >/dev/null
 grep -F 'configuration-path: .github/labeler.yml' "$triage_workflow" >/dev/null
+grep -F 'sync-labels: true' "$triage_workflow" >/dev/null
