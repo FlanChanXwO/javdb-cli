@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/javdb-cli/scripts/internal/releasenotes/document"
@@ -26,6 +28,8 @@ type Config struct {
 	To         string
 	Client     github.Client
 }
+
+var squashPullRequestPattern = regexp.MustCompile(`\(#([1-9][0-9]*)\)\s*$`)
 
 // Run 执行 audit 子命令。
 func Run(arguments []string) error {
@@ -119,15 +123,15 @@ func Collect(ctx context.Context, config Config) (model.AuditReport, error) {
 	seenContributors := make(map[string]struct{})
 	firstMergedPulls := make(map[string]int)
 	for _, commit := range commits {
-		pulls, err := config.Client.PullRequestsForCommit(ctx, config.Repository, commit)
+		title, author, detailErr := gitCommitDetail(ctx, commit)
+		if detailErr != nil {
+			return model.AuditReport{}, detailErr
+		}
+		pulls, err := pullRequestsForCommit(ctx, config.Client, config.Repository, commit, title)
 		if err != nil {
-			return model.AuditReport{}, fmt.Errorf("lookup PRs for commit %s: %w", commit, err)
+			return model.AuditReport{}, err
 		}
 		if len(pulls) == 0 {
-			title, author, detailErr := gitCommitDetail(ctx, commit)
-			if detailErr != nil {
-				return model.AuditReport{}, detailErr
-			}
 			report.Sources = append(report.Sources, model.AuditSource{
 				Kind:   "commit",
 				URL:    "https://github.com/" + config.Repository + "/commit/" + commit,
@@ -253,6 +257,56 @@ func gitRevisionList(ctx context.Context, from, to string) ([]string, error) {
 		return nil, fmt.Errorf("no commits found for %s", revision)
 	}
 	return lines, nil
+}
+
+// pullRequestsForCommit 先使用 GitHub 的关联查询；squash merge 的最终 commit
+// 可能没有关联结果，此时仅在提交标题带有 GitHub 生成的 (#N) 后缀、且 PR
+// 的 merge_commit_sha 精确匹配时回溯 PR。这样既兼容 squash merge，也不会猜测来源。
+func pullRequestsForCommit(ctx context.Context, client github.Client, repository, commit, title string) ([]model.GitHubPullRequest, error) {
+	pulls, requestErr := client.PullRequestsForCommit(ctx, repository, commit)
+	if requestErr != nil {
+		pull, found, fallbackErr := squashPullRequest(ctx, client, repository, commit, title)
+		if fallbackErr == nil && found {
+			return []model.GitHubPullRequest{pull}, nil
+		}
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("lookup PRs for commit %s: %w (squash fallback: %v)", commit, requestErr, fallbackErr)
+		}
+		return nil, fmt.Errorf("lookup PRs for commit %s: %w", commit, requestErr)
+	}
+	if len(pulls) > 0 {
+		return pulls, nil
+	}
+	pull, found, fallbackErr := squashPullRequest(ctx, client, repository, commit, title)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("resolve squash PR for commit %s: %w", commit, fallbackErr)
+	}
+	if found {
+		return []model.GitHubPullRequest{pull}, nil
+	}
+	return pulls, nil
+}
+
+func squashPullRequest(ctx context.Context, client github.Client, repository, commit, title string) (model.GitHubPullRequest, bool, error) {
+	matches := squashPullRequestPattern.FindStringSubmatch(title)
+	if len(matches) != 2 {
+		return model.GitHubPullRequest{}, false, nil
+	}
+	number, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return model.GitHubPullRequest{}, true, fmt.Errorf("parse PR number from commit title %q: %w", title, err)
+	}
+	pull, err := client.PullRequest(ctx, repository, number)
+	if err != nil {
+		return model.GitHubPullRequest{}, true, fmt.Errorf("lookup PR #%d: %w", number, err)
+	}
+	if pull.MergedAt == nil {
+		return model.GitHubPullRequest{}, true, fmt.Errorf("PR #%d is not merged", number)
+	}
+	if !strings.EqualFold(strings.TrimSpace(pull.MergeCommitSHA), commit) {
+		return model.GitHubPullRequest{}, true, fmt.Errorf("PR #%d merge_commit_sha %q does not match %s", number, pull.MergeCommitSHA, commit)
+	}
+	return pull, true, nil
 }
 
 func gitCommitDetail(ctx context.Context, commit string) (title, author string, err error) {

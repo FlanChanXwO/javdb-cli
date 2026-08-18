@@ -122,6 +122,12 @@ sh scripts/test-releasenotes.sh
 检查或 dry-run；`prepare --apply` 会写入本地 changelog，`sync-history --apply` 会修改
 GitHub Release 正文。后两者不是默认回归，不得在测试中使用真实仓库凭据或隐式写入。
 
+release-prep PR 合并后，必须以最终 `main` commit 重新运行 `audit`，再用同一份报告运行
+`validate --audit`，并确认报告来源集合与版本 plan、双语 notes 完全一致后才能创建 tag。Squash
+merge 的最终 commit 可能没有 GitHub 的直接 PR 关联；审计工具只在提交标题带有 GitHub 生成的
+`(#N)` 后缀且对应 PR 的 `merge_commit_sha` 精确匹配时回溯该 PR，不能猜测 PR 号或把未确认的
+commit 写入 notes。
+
 ## 构建、打包与平台
 
 Release 只支持六个原生目标：`darwin/amd64`、`darwin/arm64`、`linux/amd64`、
@@ -207,7 +213,8 @@ environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt
    上用同名 checks 显式确认原生 smoke 被跳过。`Platform smoke gate` 始终汇总并要求矩阵成功。
 3. feature PR 只填写 `.github/PULL_REQUEST_TEMPLATE.md` 中唯一的 release-note declaration；不要
    编辑 `changelog/unreleased/`。release-prep PR 将审核后的双语计划放入
-   `changelog/plans/vX.Y.Z.json`，然后运行 `prepare` 与 `validate` 生成版本目录。
+   `changelog/plans/vX.Y.Z.json`，并在 PR 编号确定后将自身 PR URL 纳入 plan，然后运行 `prepare`
+   与 `validate` 生成版本目录。
 4. `vX.Y.Z` tag 必须不可变且可追溯到 `main`；Release workflow 在打包前校验版本化双语 notes、
    审计来源，并以同一渲染正文创建 GitHub Release。
 5. `publish` job 绑定受保护的 `release` environment，从 `JAVDB_RELEASE_ED25519_PRIVATE_KEYS`
