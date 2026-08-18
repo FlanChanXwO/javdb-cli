@@ -224,7 +224,8 @@ environment；旧兼容阶段已经结束，当前版本使用根 `--version`，
    `Release` workflow 会由 `publish-clawhub.yml` 通过 `workflow_run` 消费；它 checkout 该 tag、验证
    它属于默认分支，并跳过未改变的 `skills/javdb-cli/`。若该 skill 在发布区间发生变更，
    `skills/javdb-cli/SKILL.md` 的 front matter `version` 必须同步为目标发布版本；未变更时保留上一版本，
-   不应为发版机械改号。ClawHub 使用锁定的 `clawhub@0.23.1` 先做
+   不应为发版机械改号。README 两个 locale 中 ClawHub 的当前 skill 版本也必须与该 front matter 一致。
+   ClawHub 使用锁定的 `clawhub@0.23.1` 先做
    无凭据 dry-run，再在最后发布步骤读取 `CLAWHUB_TOKEN`。该 token 只应配置为仓库或受保护
    environment secret，绝不能写入 skill、workflow 日志或 Release notes。
 

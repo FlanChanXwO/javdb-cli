@@ -67,3 +67,7 @@ for field in slug version displayName summary license homepage tags name descrip
 		exit 1
 	}
 done
+
+skill_version=$(sed -n 's/^version: //p' "$skill")
+grep -F "currently \`$skill_version\`" "$repo_root/README.md" >/dev/null
+grep -F "当前为 \`$skill_version\`" "$repo_root/README.zh-CN.md" >/dev/null

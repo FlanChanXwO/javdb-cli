@@ -45,7 +45,8 @@ description 或执行 `sync-history --apply` 前，必须在当前会话取得�
    release-prep PR 中把 `skills/javdb-cli/SKILL.md` front matter 的唯一 `version:` 更新为目标
    SemVer；若该目录没有变更，不要为发版机械修改版本号，ClawHub handoff 会跳过未改变的 skill。
    创建 tag 前检查：变更时 `version` 必须等于目标版本，未变更时保留上一版本并确认 handoff
-   的 skip 分支可通过。
+   的 skip 分支可通过。同时同步 `README.md` 与 `README.zh-CN.md` 中 ClawHub 的当前 skill 版本；
+   该版本表示最新已发布的 skill，不是必须跟随 CLI 版本的独立数字，两处必须与 `SKILL.md` 一致。
 
 5. 运行本地门禁：
 
