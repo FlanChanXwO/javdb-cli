@@ -188,7 +188,7 @@ func main() {
 
 使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
 [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)；请将已安装的 skill 固定到对应的
-published release 版本（当前为 `0.5.2`），不要跟随无版本的 `latest` tag。
+published release 版本（当前为 `0.7.2`），不要跟随无版本的 `latest` tag。
 
 ## 认证与凭据安全
 
