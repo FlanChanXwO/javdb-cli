@@ -1,4 +1,4 @@
-// Package document 负责 release-note 文档、来源链接和 PR 声明的解析校验。
+// Package document 负责双语 release-note 文档、来源链接和 Release 正文校验。
 package document
 
 import (
@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/javdb-cli/scripts/internal/releasenotes/model"
@@ -21,20 +20,8 @@ var (
 	sectionPattern         = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
 	sourcePattern          = regexp.MustCompile(`https://github\.com/FlanChanXwO/javdb-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
 	linkPattern            = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/javdb-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
-	releaseNotePattern     = regexp.MustCompile(`(?s)<!--\s*release-note\s*\n(.*?)-->`)
 	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
-	datePattern            = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 )
-
-var releaseNoteCategories = map[string]struct{}{
-	"Added":         {},
-	"Changed":       {},
-	"Fixed":         {},
-	"Security":      {},
-	"Documentation": {},
-	"Maintenance":   {},
-	"None":          {},
-}
 
 var (
 	englishSectionOrder = []string{
@@ -57,29 +44,6 @@ var (
 		"维护",
 		"新贡献者",
 	}
-	releaseContentSections = struct {
-		English []string
-		Chinese []string
-	}{
-		English: []string{
-			"Breaking changes",
-			"Added",
-			"Changed",
-			"Fixed",
-			"Security",
-			"Documentation",
-			"Maintenance",
-		},
-		Chinese: []string{
-			"破坏性变更",
-			"新增",
-			"变更",
-			"修复",
-			"安全",
-			"文档",
-			"维护",
-		},
-	}
 )
 
 type releaseDocument struct {
@@ -95,112 +59,6 @@ type releaseSection struct {
 
 // IsSemanticVersion 判断不带 v 前缀的版本字符串是否符合 release-note 契约。
 func IsSemanticVersion(version string) bool { return semanticVersionPattern.MatchString(version) }
-
-// IsReleaseNoteCategory 判断 PR 声明中的 category 是否受支持。
-func IsReleaseNoteCategory(category string) bool {
-	_, ok := releaseNoteCategories[category]
-	return ok
-}
-
-// ParseReleaseNoteDeclaration 读取 PR 正文中的机器可读注释。
-// 注释不直接显示在 GitHub 页面上，便于 CI 在离线事件载荷中稳定校验。
-func ParseReleaseNoteDeclaration(body string) (model.ReleaseNote, error) {
-	match := releaseNotePattern.FindStringSubmatch(body)
-	if len(match) != 2 {
-		return model.ReleaseNote{}, errors.New("missing release-note declaration")
-	}
-	values := make(map[string]string)
-	for _, rawLine := range strings.Split(match[1], "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line == "" {
-			continue
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			return model.ReleaseNote{}, fmt.Errorf("invalid release-note line %q", line)
-		}
-		key = strings.TrimSpace(key)
-		if _, exists := values[key]; exists {
-			return model.ReleaseNote{}, fmt.Errorf("release-note repeats %q", key)
-		}
-		values[key] = strings.TrimSpace(value)
-	}
-	for _, key := range []string{"category", "breaking", "summary", "none_reason"} {
-		if _, ok := values[key]; !ok {
-			return model.ReleaseNote{}, fmt.Errorf("release-note is missing %s", key)
-		}
-	}
-	for key := range values {
-		switch key {
-		case "category", "breaking", "summary", "none_reason":
-		default:
-			return model.ReleaseNote{}, fmt.Errorf("release-note contains unsupported key %q", key)
-		}
-	}
-	if !IsReleaseNoteCategory(values["category"]) {
-		return model.ReleaseNote{}, fmt.Errorf("release-note has unsupported category %q", values["category"])
-	}
-	breaking, err := strconv.ParseBool(values["breaking"])
-	if err != nil {
-		return model.ReleaseNote{}, fmt.Errorf("release-note breaking: %w", err)
-	}
-	note := model.ReleaseNote{
-		Category:   values["category"],
-		Breaking:   breaking,
-		Summary:    values["summary"],
-		NoneReason: values["none_reason"],
-	}
-	if note.Summary == "" {
-		return model.ReleaseNote{}, errors.New("release-note summary is required")
-	}
-	if note.Category == "None" {
-		if note.Breaking {
-			return model.ReleaseNote{}, errors.New("release-note None category cannot be breaking")
-		}
-		if note.NoneReason == "" {
-			return model.ReleaseNote{}, errors.New("release-note none_reason is required for category None")
-		}
-	} else if note.NoneReason != "" {
-		return model.ReleaseNote{}, errors.New("release-note none_reason is only valid for category None")
-	}
-	return note, nil
-}
-
-// RecommendedVersionBump 根据 release-note 声明计算建议的版本级别。
-func RecommendedVersionBump(notes []model.ReleaseNote) string {
-	bump := "none"
-	for _, note := range notes {
-		if note.Category == "None" {
-			continue
-		}
-		if note.Breaking {
-			return "major"
-		}
-		if note.Category == "Added" {
-			bump = "minor"
-			continue
-		}
-		if bump == "none" {
-			bump = "patch"
-		}
-	}
-	return bump
-}
-
-// RenderSourceLink 将受支持的 PR/commit URL 转为稳定的 changelog 链接。
-func RenderSourceLink(source string) (string, error) {
-	if !sourcePattern.MatchString(source) || sourcePattern.FindString(source) != source {
-		return "", fmt.Errorf("unsupported source URL %q", source)
-	}
-	if pull, ok := strings.CutPrefix(source, "https://github.com/FlanChanXwO/javdb-cli/pull/"); ok {
-		return "[#" + pull + "](" + source + ")", nil
-	}
-	commit, _ := strings.CutPrefix(source, "https://github.com/FlanChanXwO/javdb-cli/commit/")
-	if len(commit) < 7 {
-		return "", fmt.Errorf("commit source URL has a short hash %q", source)
-	}
-	return "[`" + commit[:7] + "`](" + source + ")", nil
-}
 
 // ChangelogCompareLink 返回版本说明底部的比较链接。
 func ChangelogCompareLink(version, previous string) string {
@@ -243,7 +101,9 @@ func ValidateReleaseDirectory(directory, version, previous string) error {
 	return nil
 }
 
-// ValidateSourceCoverage 将已渲染的说明与审计报告逐项对照。
+// ValidateSourceCoverage 将 changelog 中的来源逐项对照审计报告。
+// 发布说明是人工维护的唯一内容来源，因此允许审计区间内存在未列入 notes 的来源；
+// 但 notes 不能引用区间之外或无法解析的 PR/commit。
 func ValidateSourceCoverage(directory, version, previous string, report model.AuditReport) error {
 	if err := ValidateReleaseDirectory(directory, version, previous); err != nil {
 		return err
@@ -252,42 +112,11 @@ func ValidateSourceCoverage(directory, version, previous string, report model.Au
 	if err != nil {
 		return err
 	}
-	// 只要求 PR 来源被分类覆盖；直接 push 的 commit 由审计报告人工核对
-	// （release workflow 记录在案），不强制要求 notes 逐一引用。
-	expected := make(map[string]struct{})
-	for _, source := range report.Sources {
-		if source.Kind != "pull_request" {
-			continue
-		}
-		if source.Note == nil || source.Issue != "" {
-			return fmt.Errorf("audit source %s is not classified: %s", source.URL, source.Issue)
-		}
-		if source.Note.Category == "None" {
-			continue
-		}
-		expected[source.URL] = struct{}{}
-	}
-	for _, contributor := range report.NewContributors {
-		expected[contributor.PullURL] = struct{}{}
-	}
-	// notes 中引用的每个 source 都必须真实存在于审计报告。
-	present := make(map[string]struct{}, len(report.Sources)+len(report.NewContributors))
+	present := make(map[string]struct{}, len(report.Sources))
 	for _, source := range report.Sources {
 		present[source.URL] = struct{}{}
 	}
-	for _, contributor := range report.NewContributors {
-		present[contributor.PullURL] = struct{}{}
-	}
-	actual := make(map[string]struct{}, len(english.sources))
 	for _, source := range english.sources {
-		actual[source] = struct{}{}
-	}
-	for source := range expected {
-		if _, ok := actual[source]; !ok {
-			return fmt.Errorf("release notes does not cover audited source %s", source)
-		}
-	}
-	for source := range actual {
 		if _, ok := present[source]; !ok {
 			return fmt.Errorf("release notes source %s is not present in the audit report", source)
 		}
@@ -295,7 +124,7 @@ func ValidateSourceCoverage(directory, version, previous string, report model.Au
 	return nil
 }
 
-// ReadAuditReport 读取 prepare/validate 共用的 audit JSON 报告。
+// ReadAuditReport 读取 validate 共用的 audit JSON 报告。
 func ReadAuditReport(path string) (model.AuditReport, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -315,7 +144,7 @@ func RunValidate(arguments []string) error {
 	version := flags.String("version", "", "semantic version without v")
 	directory := flags.String("dir", "", "directory containing en.md and zh-CN.md")
 	previous := flags.String("previous", "", "previous v-prefixed tag; empty for the initial release")
-	auditPath := flags.String("audit", "", "optional audit JSON report whose source set must match")
+	auditPath := flags.String("audit", "", "optional audit JSON report whose source set must contain all changelog sources")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}

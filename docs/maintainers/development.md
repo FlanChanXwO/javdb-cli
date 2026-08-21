@@ -6,7 +6,7 @@
 ## 环境与快速验证
 
 - 使用 `go.mod` 声明的 Go 版本。
-- 单元测试、race、vet、构建和文档/发布结构检查默认不需要真实 JavDB 凭据。
+- 单元测试、race、vet、构建和发布结构检查默认不需要真实 JavDB 凭据。
 - 不安装缺失的系统依赖或执行带凭据的在线命令，除非用户明确授权。
 
 ```bash
@@ -19,8 +19,6 @@ sh scripts/test-releasenotes.sh
 sh scripts/test-package-release.sh
 sh scripts/test-homebrew-formula.sh
 sh scripts/test-workflows.sh
-sh scripts/test-documentation.sh
-sh scripts/test-architecture.sh
 ```
 
 `gopls check ./...` 在部分 gopls 版本会把 `./...` 当作文件路径；若命令行版本不接受
@@ -37,7 +35,7 @@ pre-commit run --all-files
 ```
 
 构建产物是 `build/javdb`（Windows 为 `build/javdb.exe`）。可用
-`./build/javdb version --json` 复核 linker metadata。
+`./build/javdb --version` 复核 linker metadata。
 
 ## 目录地图
 
@@ -57,7 +55,7 @@ internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 
 internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
 internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
 internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）
-internal/cli/commands/{lists,update,version}/ # 列表、更新和版本命令域（update 拥有 proxy/coordinator/buildinfo）
+internal/cli/commands/{lists,update}/         # 列表和更新命令域（update 拥有 proxy/coordinator/buildinfo）
 internal/javdb/appapi/                  # 真实 Client 组合层（client.go）
 internal/javdb/appapi/{client,model}/   # transport 与 wire/domain model
 internal/javdb/appapi/endpoint/*        # auth/browse/entity/lists/magnets/movie/rankings/search/user
@@ -74,11 +72,11 @@ internal/update/manifest/               # v1 签名发布清单协议、Ed25519 
 internal/update/{release,source,process}/ # Release、来源和进程/平台边界
 scripts/releasenotes/                   # release-note command 入口（仅分派）
 scripts/sign-release/                   # 从环境私钥生成/签名 v1 发布清单与兼容 checksums
-scripts/internal/releasenotes/{model,github,audit,document,prepare,history}/ # release-note 领域实现
+scripts/internal/releasenotes/{model,github,audit,document,history}/ # release-note 领域实现
 scripts/                                # 构建、打包和静态检查
 skills/javdb-cli/                  # 面向产品使用者的 agent skill
 .agents/skills/                    # 仓库 review/docs/commit/release skills
-changelog/                         # 双语版本化发布说明与 release-prep plans
+changelog/                         # 双语版本化发布说明与人工草稿区
 docs/en/, docs/zh-CN/              # 公开接口文档
 docs/maintainers/                  # 维护者架构、流程与协作规则
 ```
@@ -110,17 +108,22 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 
 ## Release-note 工具
 
-`scripts/releasenotes` 的入口保留 `validate`、`audit`、`prepare`、`render`、`pr-validate`
-和 `sync-history` 六个子命令；业务实现按 `scripts/internal/releasenotes/` 下的
-`model`、`github`、`audit`、`document`、`prepare`、`history` 分域。脚本的专门行为门禁为：
+`scripts/releasenotes` 的入口保留 `validate`、`audit`、`render` 和 `sync-history` 四个子命令；
+业务实现按 `scripts/internal/releasenotes/` 下的 `model`、`github`、`audit`、`document`、`history`
+分域。脚本的专门行为门禁为：
 
 ```bash
 sh scripts/test-releasenotes.sh
 ```
 
-`validate`、`render`、`audit` 和不带 `--apply` 的 `prepare`/`sync-history` 可以离线
-检查或 dry-run；`prepare --apply` 会写入本地 changelog，`sync-history --apply` 会修改
-GitHub Release 正文。后两者不是默认回归，不得在测试中使用真实仓库凭据或隐式写入。
+`validate`、`render`、`audit` 和不带 `--apply` 的 `sync-history` 可以离线检查或 dry-run；
+release-prep PR 直接编辑目标版本的双语 changelog 和两个索引，`sync-history --apply` 会修改
+GitHub Release 正文。外部写入不是默认回归，不得在测试中使用真实仓库凭据或隐式写入。
+
+release-prep PR 合并后，必须以最终 `main` commit 重新运行 `audit`，再用同一份报告运行
+`validate --audit`，确认 changelog 引用的来源属于发布区间后才能创建 tag。Squash merge 的最终
+commit 可能没有 GitHub 的直接 PR 关联；审计工具只在提交标题带有 GitHub 生成的 `(#N)` 后缀且
+对应 PR 的 `merge_commit_sha` 精确匹配时回溯该 PR，不能猜测 PR 号或把未确认的 commit 写入 notes。
 
 ## 构建、打包与平台
 
@@ -193,21 +196,20 @@ JAVDB_RELEASE_ED25519_PRIVATE_KEYS="[\"$seed\"]" go run ./scripts/sign-release -
 ### 桥接与兼容
 
 v0.6.1 是发布桥：交付签名清单更新器、把 `publish` job 绑定受保护的 `release`
-environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt`，保证 v0.6.0 可直接
+environment；旧兼容阶段已经结束，当前版本使用根 `--version`，并继续发布兼容
+`checksums.txt`，保证 v0.6.0 可直接
 验证并安装后续版本。v0.6.1 的精确 bridge commit 记录在 goal-1 完成记录中；创建 v0.6.1 tag
 必须由维护者明确授权。
 
 ## CI 与发布
 
-1. Quality workflow 在 PR 与 `main` 上运行 release-note metadata 校验。仅限 README、贡献指南、
-   changelog、docs、skills、repo-local skills 和 Issue/PR template 的改动走文档门禁；其他任何路径
-   都运行格式、测试、vet、构建和静态脚本门禁。
-2. Platform smoke workflow 始终展开六个固定名称的 matrix checks，以满足分支保护。非文档改动在六个
-   原生 runner 测试、打包、解包并执行 `javdb version --json`；纯文档改动则在轻量 Ubuntu runner
-   上用同名 checks 显式确认原生 smoke 被跳过。`Platform smoke gate` 始终汇总并要求矩阵成功。
-3. feature PR 只填写 `.github/PULL_REQUEST_TEMPLATE.md` 中唯一的 release-note declaration；不要
-   编辑 `changelog/unreleased/`。release-prep PR 将审核后的双语计划放入
-   `changelog/plans/vX.Y.Z.json`，然后运行 `prepare` 与 `validate` 生成版本目录。
+1. Quality workflow 在 PR 与 `main` 上运行范围分类；仅限 README、贡献指南、changelog、docs、skills、
+   repo-local skills 和 Issue/PR template 的改动走文档门禁，其他路径运行格式、测试、vet、构建和静态脚本门禁。
+2. Platform smoke workflow 对代码改动在六个原生 runner 测试、打包、解包并执行 `javdb --version`；
+   纯文档改动直接跳过矩阵。`Platform smoke gate` 是唯一受保护的平台检查：文档改动要求矩阵 skipped，
+   代码改动要求矩阵成功。
+3. feature PR 不填写 release-note metadata；`changelog/unreleased/` 仅是可选人工草稿区。release-prep PR
+   直接编辑 `changelog/vX.Y.Z/{en.md,zh-CN.md}`，同步两个 changelog 索引，再运行 `validate`。
 4. `vX.Y.Z` tag 必须不可变且可追溯到 `main`；Release workflow 在打包前校验版本化双语 notes、
    审计来源，并以同一渲染正文创建 GitHub Release。
 5. `publish` job 绑定受保护的 `release` environment，从 `JAVDB_RELEASE_ED25519_PRIVATE_KEYS`
@@ -220,7 +222,10 @@ environment，同时继续公开 `version --json` 并发布兼容 `checksums.txt
 6. `.github/CODEOWNERS` 将默认 review 路由到唯一维护者；它只会为未来 PR 请求 reviewer，不能让 PR 作者批准自己的 PR，也不替代 `main` 的分支保护要求。
 7. Release 在公开 GitHub Release 后上传只含不可变 tag 的 `clawhub-release-tag` artifact。成功结束的
    `Release` workflow 会由 `publish-clawhub.yml` 通过 `workflow_run` 消费；它 checkout 该 tag、验证
-   它属于默认分支，并跳过未改变的 `skills/javdb-cli/`。ClawHub 使用锁定的 `clawhub@0.23.1` 先做
+   它属于默认分支，并跳过未改变的 `skills/javdb-cli/`。若该 skill 在发布区间发生变更，
+   `skills/javdb-cli/SKILL.md` 的 front matter `version` 必须同步为目标发布版本；未变更时保留上一版本，
+   不应为发版机械改号。README 两个 locale 中 ClawHub 的当前 skill 版本也必须与该 front matter 一致。
+   ClawHub 使用锁定的 `clawhub@0.23.1` 先做
    无凭据 dry-run，再在最后发布步骤读取 `CLAWHUB_TOKEN`。该 token 只应配置为仓库或受保护
    environment secret，绝不能写入 skill、workflow 日志或 Release notes。
 

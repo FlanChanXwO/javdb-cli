@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/javdb-cli/scripts/internal/releasenotes/model"
@@ -50,52 +49,6 @@ func (client Client) PullRequest(ctx context.Context, repository string, number 
 		return model.GitHubPullRequest{}, err
 	}
 	return pull, nil
-}
-
-// FirstMergedPullRequest 找出某作者最早合并的 PR。
-// Search API 不支持按 merged_at 排序，因此逐页取得完整候选详情后再比较时间。
-func (client Client) FirstMergedPullRequest(ctx context.Context, repository, login string) (model.GitHubPullRequest, error) {
-	pulls, err := client.MergedPullRequestsByAuthor(ctx, repository, login)
-	if err != nil {
-		return model.GitHubPullRequest{}, err
-	}
-	if len(pulls) == 0 {
-		return model.GitHubPullRequest{}, fmt.Errorf("no merged pull request found")
-	}
-	first := pulls[0]
-	for _, pull := range pulls[1:] {
-		if pull.MergedAt.Before(*first.MergedAt) {
-			first = pull
-		}
-	}
-	return first, nil
-}
-
-// MergedPullRequestsByAuthor 读取某作者的全部已合并 PR。
-func (client Client) MergedPullRequestsByAuthor(ctx context.Context, repository, login string) ([]model.GitHubPullRequest, error) {
-	query := url.Values{}
-	query.Set("q", "repo:"+repository+" type:pr author:"+login+" is:merged")
-	query.Set("per_page", "100")
-	pulls := make([]model.GitHubPullRequest, 0)
-	for page := 1; ; page++ {
-		query.Set("page", strconv.Itoa(page))
-		var result model.GitHubPullRequestSearchResult
-		if err := client.GetJSON(ctx, "/search/issues?"+query.Encode(), &result); err != nil {
-			return nil, err
-		}
-		for _, summary := range result.Items {
-			pull, err := client.PullRequest(ctx, repository, summary.Number)
-			if err != nil {
-				return nil, err
-			}
-			if pull.MergedAt != nil {
-				pulls = append(pulls, pull)
-			}
-		}
-		if len(result.Items) < 100 {
-			return pulls, nil
-		}
-	}
 }
 
 // GetJSON 执行 GitHub REST GET 请求。

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,79 @@ func testStreams(stdin string, terminal bool) (*invocation.Streams, *bytes.Buffe
 	streams.InIsTerminal = terminal
 	streams.OutIsTerminal = terminal
 	return streams, out
+}
+
+func TestConsumerConcurrencyIsBounded(t *testing.T) {
+	streams, _ := testStreams("", false)
+	inputs := make([]Envelope, 8)
+	for i := range inputs {
+		inputs[i] = New("", fmt.Sprintf("%d", i), "")
+	}
+	var active, maxActive int32
+	consumer := &Consumer{
+		Name:          "test",
+		AcceptedKinds: []Kind{KindMovie},
+		Concurrency:   2,
+		RunOne: func(context.Context, Envelope) (Envelope, error) {
+			current := atomic.AddInt32(&active, 1)
+			for {
+				old := atomic.LoadInt32(&maxActive)
+				if current <= old || atomic.CompareAndSwapInt32(&maxActive, old, current) {
+					break
+				}
+			}
+			time.Sleep(5 * time.Millisecond)
+			atomic.AddInt32(&active, -1)
+			return New(KindMovie, "ok", ""), nil
+		},
+	}
+	if err := consumer.RunInputs(streams, inputs, OutputNDJSON); err != nil {
+		t.Fatalf("RunInputs: %v", err)
+	}
+	if maxActive > 2 {
+		t.Fatalf("max concurrent calls = %d, want <= 2", maxActive)
+	}
+}
+
+func TestConsumerUsesCallContext(t *testing.T) {
+	streams, _ := testStreams("", false)
+	type contextKey string
+	ctx := context.WithValue(context.Background(), contextKey("request"), "active")
+	consumer := &Consumer{
+		Name:    "test",
+		Context: ctx,
+		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
+			if got := ctx.Value(contextKey("request")); got != "active" {
+				t.Fatalf("context value = %v, want active", got)
+			}
+			return New(KindMovie, input.Ref, ""), nil
+		},
+	}
+	if err := consumer.RunInputs(streams, []Envelope{New("", "a", "")}, OutputNDJSON); err != nil {
+		t.Fatalf("RunInputs: %v", err)
+	}
+}
+
+func TestConsumerCustomErrorRenderer(t *testing.T) {
+	streams, _ := testStreams("", false)
+	errBuf := &bytes.Buffer{}
+	streams.Err = errBuf
+	consumer := &Consumer{
+		Name: "internal-name",
+		RenderError: func(w io.Writer, err error) error {
+			_, writeErr := fmt.Fprintf(w, "localized: %s\n", err)
+			return writeErr
+		},
+		RunOne: func(context.Context, Envelope) (Envelope, error) {
+			return Envelope{}, testError("boom")
+		},
+	}
+	if err := consumer.RunInputs(streams, []Envelope{New("", "a", "")}, OutputText); err == nil {
+		t.Fatal("expected item failure")
+	}
+	if got := errBuf.String(); got != "localized: boom\n" {
+		t.Fatalf("stderr = %q, want localized error", got)
+	}
 }
 
 func TestCollectInputsMatrix(t *testing.T) {
@@ -138,7 +212,7 @@ func TestConsumerSingleNDJSONLegacyShape(t *testing.T) {
 	}
 }
 
-func TestListProducerDefaultsToText(t *testing.T) {
+func TestListProducerDefaultsToStableRefs(t *testing.T) {
 	streams, out := testStreams("", false)
 	producer := &ListProducer{
 		Name: "watched",
@@ -155,19 +229,53 @@ func TestListProducerDefaultsToText(t *testing.T) {
 			return map[string]any{"movies": items}, nil
 		},
 		RowText: func(w io.Writer, _ io.Writer, items []map[string]any) error {
-			for _, item := range items {
-				if _, err := fmt.Fprintln(w, item["number"]); err != nil {
-					return err
-				}
-			}
-			return nil
+			_, err := fmt.Fprintln(w, "human table")
+			return err
 		},
 	}
 	if err := producer.Execute(streams, false, false); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if out.String() != "SSIS-589\nHZGD-246\n" {
-		t.Errorf("default output = %q", out.String())
+		t.Errorf("non-TTY output = %q, want stable refs", out.String())
+	}
+
+	ttyStreams, ttyOut := testStreams("", true)
+	if err := producer.Execute(ttyStreams, false, false); err != nil {
+		t.Fatalf("Execute TTY: %v", err)
+	}
+	if ttyOut.String() != "human table\n" {
+		t.Errorf("TTY output = %q, want human renderer", ttyOut.String())
+	}
+}
+
+func TestProducerTextAndHumanModes(t *testing.T) {
+	producer := &Producer{
+		Name: "tags",
+		Produce: func(context.Context) ([]Envelope, error) {
+			return []Envelope{New(KindTag, "tag-one", "id-1"), New(KindTag, "", "id-2")}, nil
+		},
+		RenderText: func(w io.Writer, envelopes []Envelope) error {
+			_, err := fmt.Fprintln(w, "# category\nTABLE")
+			return err
+		},
+		LegacyJSON: func(io.Writer) error { return nil },
+	}
+
+	streams, out := testStreams("", false)
+	if err := producer.Execute(streams, false, false); err != nil {
+		t.Fatalf("non-TTY Execute: %v", err)
+	}
+	if out.String() != "tag-one\nid-2\n" {
+		t.Fatalf("non-TTY output = %q, want stable refs", out.String())
+	}
+
+	ttyStreams, ttyOut := testStreams("", true)
+	if err := producer.Execute(ttyStreams, false, false); err != nil {
+		t.Fatalf("TTY Execute: %v", err)
+	}
+	if ttyOut.String() != "# category\nTABLE\n" {
+		t.Fatalf("TTY output = %q, want human renderer", ttyOut.String())
 	}
 }
 
@@ -261,6 +369,32 @@ func TestBatchRunnerTTYStdoutRoutesToLegacy(t *testing.T) {
 	}
 	if !legacyCalled {
 		t.Error("TTY stdout must route single text input through the legacy human path")
+	}
+}
+
+func TestBatchRunnerNonTTYPositionalRoutesThroughPipelineWhenEnabled(t *testing.T) {
+	streams, out := testStreams("", false)
+	legacyCalled := false
+	runner := &BatchRunner{
+		Name:                     "detail",
+		Kinds:                    []Kind{KindMovie},
+		RouteTextThroughPipeline: true,
+		RunOne: func(_ *javdb.Client, _ context.Context, input Envelope) (Envelope, error) {
+			return New(KindMovie, input.Ref, "movie-id"), nil
+		},
+		Legacy: func([]string) error {
+			legacyCalled = true
+			return nil
+		},
+	}
+	if err := runner.ExecuteWithInputs(streams, []Envelope{New("", "SSIS-589", "")}, OutputText); err != nil {
+		t.Fatalf("ExecuteWithInputs: %v", err)
+	}
+	if legacyCalled {
+		t.Fatal("non-TTY positional input must not use the legacy path when routing is enabled")
+	}
+	if got := out.String(); got != "SSIS-589\n" {
+		t.Fatalf("output = %q, want stable ref", got)
 	}
 }
 
@@ -389,6 +523,33 @@ func TestConsumerPassesThroughErrorEnvelope(t *testing.T) {
 	}
 	if streams2.Out.(*bytes.Buffer).String() != "" {
 		t.Errorf("stdout should be empty for error-only input, got %q", streams2.Out.(*bytes.Buffer).String())
+	}
+}
+
+func TestConsumerMalformedErrorMessageUsesStableFallback(t *testing.T) {
+	for name, message := range map[string]any{
+		"missing": nil,
+		"number":  42,
+	} {
+		t.Run(name, func(t *testing.T) {
+			streams, _ := testStreams("", false)
+			errBuf := &bytes.Buffer{}
+			streams.Err = errBuf
+			errInput := Envelope{
+				Schema: Schema,
+				Kind:   KindError,
+				Ref:    "SSIS-589",
+				Data:   map[string]any{"message": message},
+			}
+			consumer := &Consumer{Name: "detail"}
+			err := consumer.RunInputs(streams, []Envelope{errInput}, OutputText)
+			if err == nil {
+				t.Fatal("expected failure summary")
+			}
+			if strings.Contains(errBuf.String(), "%!") || !strings.Contains(errBuf.String(), "upstream pipeline error") {
+				t.Fatalf("stderr = %q, want stable fallback", errBuf.String())
+			}
+		})
 	}
 }
 

@@ -15,8 +15,13 @@ import (
 //     与可选认证/匿名重试行为）。
 //   - 其余情况（多项，或单项显式 --ndjson）走逐项 RunOne：单项失败原位错误
 //     信封并继续，最终非零；批量显式 --json 输出信封数组。
+//
+// 管道执行保持三条不变量：输入索引决定输出顺序；RunMany 只在对应输入槽内
+// fan-out；错误项只产生错误信封或 stderr 诊断，不伪造成功 ref。
 type BatchRunner struct {
 	Name string
+	// Context 是本次命令调用的生命周期；未设置时使用 Background。
+	Context context.Context
 	// Kinds 是文本 ref 输入分配的 kind 与消费者接受的 kind。
 	Kinds []Kind
 	// ClientFactory 每次批量执行调用一次，返回携带默认 token 的 client。
@@ -30,6 +35,8 @@ type BatchRunner struct {
 	Legacy func(args []string) error
 	// RenderText 是 pipeline 文本/人类模式的领域投影；nil 时输出稳定 ref。
 	RenderText func(io.Writer, Envelope) error
+	// RenderError 是 pipeline 文本/人类模式的错误投影；nil 使用 Name 前缀。
+	RenderError func(io.Writer, error) error
 	// RouteTextThroughPipeline 让单项纯文本输入的非 TTY OutputText 走 Consumer。
 	// 未启用时保留本地/有副作用命令的既有 Legacy 文本语义；需要稳定记录的
 	// 只读命令应显式启用此选项。
@@ -66,7 +73,9 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson
 	return b.ExecuteWithInputs(streams, inputs, mode)
 }
 
-// ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。
+// ExecuteWithInputs 处理已收集的输入（调用方已完成分类）。输入分类一旦完成，
+// 不再根据来源（位置参数或 stdin）改变显式 NDJSON/JSON 的 cardinality；只有
+// 纯文本单项的 legacy 分支保留命令原有 JSON/TTY shape。
 func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// 单项 TTY 人类文本或显式 --json（且 Legacy 支持 JSON）
 	// 且输入是纯文本 ref（无 kind）时走既有路径，保持 shape 与认证语义；
@@ -93,9 +102,11 @@ func (b *BatchRunner) ExecuteWithInputs(streams *invocation.Streams, inputs []En
 	}
 	consumer := &Consumer{
 		Name:          b.Name,
+		Context:       b.Context,
 		AcceptedKinds: b.Kinds,
 		Concurrency:   b.Concurrency,
 		RenderText:    b.RenderText,
+		RenderError:   b.RenderError,
 		RunOne: func(ctx context.Context, input Envelope) (Envelope, error) {
 			return b.RunOne(client, ctx, input)
 		},
@@ -140,7 +151,14 @@ func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error
 	switch mode {
 	case OutputJSON:
 		return p.LegacyJSON(streams.Out)
-	case OutputText, OutputHuman:
+	case OutputText:
+		for _, envelope := range envelopes {
+			if err := writeRef(streams.Out, envelope); err != nil {
+				return err
+			}
+		}
+		return nil
+	case OutputHuman:
 		return p.RenderText(streams.Out, envelopes)
 	default:
 		writer := NewWriter(streams.Out, OutputNDJSON)

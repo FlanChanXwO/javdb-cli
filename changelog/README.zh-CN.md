@@ -1,10 +1,11 @@
 # 更新日志
 
-本目录按版本存放发布说明。每个版本均有对应的英文和简体中文文件；GitHub Release 正文先显示英文，再显示简体中文。条目按用户结果归并，内联标注 PR 或历史 direct commit 来源；空的标准章节不输出。`unreleased/` 是 release-prep 暂存区，功能 PR 在模板中声明分类和摘要。
+本目录按版本存放发布说明。每个版本均有对应的英文和简体中文文件；GitHub Release 正文先显示英文，再显示简体中文。条目按用户结果归并，内联标注 PR 或历史 direct commit 来源；空的标准章节不输出。`unreleased/` 是可选的人工草稿区，不会被发布 workflow 读取；发布时只使用对应的版本目录。
 
 | 版本 | 日期 | 发布说明 |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.7.2](https://github.com/FlanChanXwO/javdb-cli/compare/v0.7.1...v0.7.2) | 2026-08-18 | [English](v0.7.2/en.md) · [简体中文](v0.7.2/zh-CN.md) |
 | [v0.7.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.7.0...v0.7.1) | 2026-08-14 | [English](v0.7.1/en.md) · [简体中文](v0.7.1/zh-CN.md) |
 | [v0.7.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.6.1...v0.7.0) | 2026-08-14 | [English](v0.7.0/en.md) · [简体中文](v0.7.0/zh-CN.md) |
 | [v0.6.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.6.0...v0.6.1) | 2026-08-13 | [English](v0.6.1/en.md) · [简体中文](v0.6.1/zh-CN.md) |

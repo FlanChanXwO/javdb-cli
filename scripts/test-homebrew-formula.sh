@@ -30,7 +30,7 @@ grep -F 'version "0.1.1"' "$formula" >/dev/null
 grep -F 'https://github.com/FlanChanXwO/javdb-cli/releases/download/v0.1.1/javdb-cli_0.1.1_darwin_arm64.tar.gz' "$formula" >/dev/null
 grep -F 'sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$formula" >/dev/null
 grep -F 'bin.install "javdb"' "$formula" >/dev/null
-grep -F 'assert_equal "v#{version}", version_info["version"]' "$formula" >/dev/null
+grep -F 'assert_match "javdb version #{version}", shell_output("#{bin}/javdb --version")' "$formula" >/dev/null
 
 if rg -i 'windows|depends_on' "$formula" >/dev/null; then
 	printf '%s\n' 'Formula unexpectedly selects Windows or declares a build dependency' >&2

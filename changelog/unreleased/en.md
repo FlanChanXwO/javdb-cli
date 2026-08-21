@@ -1,4 +1,4 @@
 # Unreleased
 
-> Release-prep staging area. Feature pull requests declare their release-note category and summary in the PR template;
-> the approved release-prep manifest groups those sources into the next versioned notes.
+> Optional manual drafting area. The release workflow does not read this file; move finalized bilingual notes
+> into the target `changelog/vX.Y.Z/` directory before creating the release-prep PR.

@@ -2,16 +2,22 @@ package search
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	magnetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 )
 
 type failingWriter struct{ err error }
@@ -137,6 +143,110 @@ func TestSearchNDJSONFanOutMultipleMovies(t *testing.T) {
 	}
 }
 
+// TestSearchNamedFanOutStableRefs 验证命名实体搜索按实体逐项输出，非 TTY
+// 文本与 NDJSON 的 ref 都来自实体本身，不回退为原始关键词。
+func TestSearchNamedFanOutStableRefs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+			"actors": []map[string]any{
+				{"id": "actor-1", "name": "Actor One"},
+				{"id": "actor-2", "name_zht": "Actor Two"},
+			},
+		}})
+	}))
+	defer server.Close()
+
+	textStreams := invocation.NewStreams(strings.NewReader("keyword\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	textCmd := New(&invocation.RootOptions{Host: server.URL}, textStreams)
+	textCmd.SetArgs([]string{"--type", "actor"})
+	if err := textCmd.Execute(); err != nil {
+		t.Fatalf("text execute: %v", err)
+	}
+	if got := textStreams.Out.(*bytes.Buffer).String(); got != "Actor One\nActor Two\n" {
+		t.Fatalf("named text output = %q", got)
+	}
+
+	ndjsonStreams := invocation.NewStreams(strings.NewReader("keyword\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	ndjsonCmd := New(&invocation.RootOptions{Host: server.URL}, ndjsonStreams)
+	ndjsonCmd.SetArgs([]string{"--type", "actor", "--ndjson"})
+	if err := ndjsonCmd.Execute(); err != nil {
+		t.Fatalf("ndjson execute: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(ndjsonStreams.Out.(*bytes.Buffer).String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("named NDJSON lines = %d, want 2", len(lines))
+	}
+	for i, want := range []string{"Actor One", "Actor Two"} {
+		var envelope map[string]any
+		if err := json.Unmarshal([]byte(lines[i]), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if envelope["kind"] != "actor" || envelope["ref"] != want {
+			t.Errorf("line %d envelope = %v", i, envelope)
+		}
+	}
+}
+
+// TestSearchMagnetsPassesThroughErrorEnvelope 验证上游错误不触发搜索请求，
+// 且 NDJSON 中保留原错误信封内容。
+func TestSearchMagnetsPassesThroughErrorEnvelope(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		http.NotFound(writer, request)
+	}))
+	defer server.Close()
+
+	input := `{"schema":"javdb.pipeline/v1","kind":"error","ref":"ABC-123","data":{"command":"upstream","stage":"resolve","code":"missing","message":"not found"}}` + "\n"
+	streams := invocation.NewStreams(strings.NewReader(input), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--magnets", "0", "--ndjson"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "1 of 1") {
+		t.Fatalf("error = %v, want propagated failure summary", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+	wantEnvelope, err := pipeline.DecodeNDJSON(strings.TrimSpace(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotEnvelope, err := pipeline.DecodeNDJSON(strings.TrimSpace(streams.Out.(*bytes.Buffer).String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotEnvelope, wantEnvelope) {
+		t.Fatalf("propagated envelope = %#v, want %#v", gotEnvelope, wantEnvelope)
+	}
+
+	wrongKindInput := `{"schema":"javdb.pipeline/v1","kind":"actor","ref":"Actor One","id":"actor-1"}` + "\n"
+	wrongKindStreams := invocation.NewStreams(strings.NewReader(wrongKindInput), &bytes.Buffer{}, &bytes.Buffer{})
+	wrongKindCmd := New(&invocation.RootOptions{Host: server.URL}, wrongKindStreams)
+	wrongKindCmd.SetArgs([]string{"--magnets", "0", "--ndjson"})
+	if err := wrongKindCmd.Execute(); err == nil || !strings.Contains(err.Error(), "1 of 1") {
+		t.Fatalf("wrong-kind error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("wrong-kind requests = %d, want 0", requests.Load())
+	}
+	wrongKindEnvelope, err := pipeline.DecodeNDJSON(strings.TrimSpace(wrongKindStreams.Out.(*bytes.Buffer).String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrongKindEnvelope.Kind != pipeline.KindError || wrongKindEnvelope.Data["code"] != "kind" {
+		t.Fatalf("wrong-kind envelope = %#v", wrongKindEnvelope)
+	}
+}
+
 // TestSearchMagnetsFlagOutputsMagnetURIs search --magnets 关键词路径：文本模式
 // 输出磁力 URI，NDJSON 输出 kind=magnet 信封。
 func TestSearchMagnetsFlagOutputsMagnetURIs(t *testing.T) {
@@ -198,6 +308,86 @@ func TestSearchMagnetsFlagOutputsMagnetURIs(t *testing.T) {
 	}
 }
 
+func TestSearchMagnetsUsesMovieEnvelopeIDDirectly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var searchRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			searchRequests.Add(1)
+			http.Error(writer, "search must not be called", http.StatusInternalServerError)
+		case "/api/v1/movies/id-1/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"hash": "AAA"}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	input := `{"schema":"javdb.pipeline/v1","kind":"movie","ref":"SSIS-001","id":"id-1","data":{"movie":{"number":"SSIS-001","id":"id-1","magnets_count":1}}}` + "\n"
+	streams := invocation.NewStreams(strings.NewReader(input), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--magnets", "1", "--ndjson"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if searchRequests.Load() != 0 {
+		t.Fatalf("search requests = %d, want 0", searchRequests.Load())
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(streams.Out.(*bytes.Buffer).String())), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["kind"] != "magnet" || envelope["id"] != "id-1" {
+		t.Fatalf("envelope = %v, want direct movie id", envelope)
+	}
+}
+
+func TestSearchMagnetsBatchJSONEmitsSourceEnvelopes(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			keyword := request.URL.Query().Get("q")
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"movies": []map[string]any{{"number": strings.ToUpper(keyword), "id": "id-" + keyword}},
+			}})
+		case "/api/v1/movies/id-alpha/magnets", "/api/v1/movies/id-beta/magnets":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
+				"magnets": []map[string]any{{"hash": "AAA"}},
+			}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader("alpha\nbeta\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--magnets", "1", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var envelopes []map[string]any
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &envelopes); err != nil {
+		t.Fatalf("batch JSON = %q: %v", streams.Out.(*bytes.Buffer).String(), err)
+	}
+	if len(envelopes) != 2 {
+		t.Fatalf("envelope count = %d, want 2", len(envelopes))
+	}
+	for i, want := range []string{"alpha", "beta"} {
+		if envelopes[i]["kind"] != "magnet" {
+			t.Errorf("envelope %d kind = %v, want magnet", i, envelopes[i]["kind"])
+		}
+		meta, _ := envelopes[i]["meta"].(map[string]any)
+		if meta["input_ref"] != want {
+			t.Errorf("envelope %d input_ref = %v, want %s", i, meta["input_ref"], want)
+		}
+	}
+}
+
 // TestSearchMagnetsJSONPartialFailureReturnsError 验证 JSON 保留成功/失败明细，
 // 但部分磁力请求失败时命令仍以非零错误结束。
 func TestSearchMagnetsJSONPartialFailureReturnsError(t *testing.T) {
@@ -242,6 +432,48 @@ func TestSearchMagnetsJSONPartialFailureReturnsError(t *testing.T) {
 	failed, _ := movies[1].(map[string]any)
 	if failed["error"] == nil || failed["error"] == "" {
 		t.Fatalf("failed movie missing error detail: %v", failed)
+	}
+}
+
+func TestSearchMagnetsWorkerContinuesAfterAllInitialFailures(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v2/search":
+			movies := make([]map[string]any, 0, 5)
+			for i := 1; i <= 5; i++ {
+				movies = append(movies, map[string]any{
+					"number": fmt.Sprintf("SSIS-%03d", i),
+					"id":     fmt.Sprintf("id-%d", i),
+				})
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{"movies": movies}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader("SSIS\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd.SetContext(ctx)
+	cmd.SetArgs([]string{"--magnets", "0", "--json"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "5 of 5 movies failed") {
+		t.Fatalf("error = %v, want complete five-item failure summary", err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("magnet worker pool timed out after workers failed")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &payload); err != nil {
+		t.Fatalf("JSON output invalid: %v", err)
+	}
+	movies, _ := payload["movies"].([]any)
+	if len(movies) != 5 {
+		t.Fatalf("movies = %d, want 5 partial results", len(movies))
 	}
 }
 

@@ -17,38 +17,49 @@ import (
 // New builds the movie detail command (graph ids for agent navigation).
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var isID, withMagnets, asJSON, asNDJSON bool
+	runOne := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		mid := input.ID
+		if mid == "" {
+			mid = input.Ref
+		}
+		var err error
+		if !isID && input.ID == "" {
+			mid, err = c.ResolveMovieID(ctx, mid)
+			if err != nil {
+				return pipeline.Envelope{}, err
+			}
+		}
+		movie, err := c.MovieDetail(ctx, mid)
+		if err != nil {
+			return pipeline.Envelope{}, fmt.Errorf("detail failed: %w", err)
+		}
+		envelope := pipeline.New(pipeline.KindMovie, input.Ref, mid).WithData(map[string]any{"movie": movie})
+		if withMagnets {
+			mags, err := c.MovieMagnets(ctx, mid)
+			if err != nil {
+				return pipeline.Envelope{}, fmt.Errorf("magnets failed: %w", err)
+			}
+			envelope.Data["magnets"] = mags
+		}
+		return envelope, nil
+	}
 	runner := &pipeline.BatchRunner{
 		Name:       "detail",
 		LegacyJSON: true,
-		Kinds:      []pipeline.Kind{pipeline.KindMovie},
+		// 非 TTY 单项与 stdin 批量统一输出稳定影片 ref；TTY 仍使用 Legacy 人类渲染。
+		RouteTextThroughPipeline: true,
+		Kinds:                    []pipeline.Kind{pipeline.KindMovie},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
-			mid := input.ID
-			if mid == "" {
-				mid = input.Ref
-			}
-			var err error
-			if !isID && input.ID == "" {
-				mid, err = c.ResolveMovieID(ctx, mid)
-				if err != nil {
-					return pipeline.Envelope{}, err
-				}
-			}
-			movie, err := c.MovieDetail(ctx, mid)
-			if err != nil {
-				return pipeline.Envelope{}, fmt.Errorf("detail failed: %w", err)
-			}
-			envelope := pipeline.New(pipeline.KindMovie, input.Ref, mid).WithData(map[string]any{"movie": movie})
-			if withMagnets {
-				mags, err := c.MovieMagnets(ctx, mid)
-				if err != nil {
-					return pipeline.Envelope{}, fmt.Errorf("magnets failed: %w", err)
-				}
-				envelope.Data["magnets"] = mags
-			}
-			return envelope, nil
+			var output pipeline.Envelope
+			err := client.RetryAnonymousAuth(c, streams.Err, func() error {
+				var runErr error
+				output, runErr = runOne(c, ctx, input)
+				return runErr
+			})
+			return output, err
 		},
 		Legacy: func(args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
@@ -100,6 +111,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Show movie detail (graph ids for agent navigation)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}

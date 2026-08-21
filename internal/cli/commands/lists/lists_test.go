@@ -2,9 +2,13 @@ package lists
 
 import (
 	"bytes"
-	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
 
 func TestNewBuildsListsGroup(t *testing.T) {
@@ -26,6 +30,39 @@ func TestNewBuildsListsGroup(t *testing.T) {
 		if !got[name] {
 			t.Fatalf("lists missing subcommand %q", name)
 		}
+	}
+}
+
+func TestNewTextAndHumanOutputModes(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/lists" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{
+			"lists": []map[string]any{{"id": "list-1", "name": "My List", "movies_count": float64(2), "privacy": "public", "views_count": float64(5)}},
+		}})
+	}))
+	defer server.Close()
+
+	textStreams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	textCmd := New(&invocation.RootOptions{Host: server.URL}, textStreams)
+	if err := textCmd.Execute(); err != nil {
+		t.Fatalf("text execute: %v", err)
+	}
+	if got := textStreams.Out.(*bytes.Buffer).String(); got != "My List\n" {
+		t.Fatalf("non-TTY output = %q, want stable ref", got)
+	}
+
+	humanStreams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	humanStreams.OutIsTerminal = true
+	humanCmd := New(&invocation.RootOptions{Host: server.URL}, humanStreams)
+	if err := humanCmd.Execute(); err != nil {
+		t.Fatalf("human execute: %v", err)
+	}
+	if got := humanStreams.Out.(*bytes.Buffer).String(); got != "list-1\tMy List\t2\tpublic\t5\n" {
+		t.Fatalf("TTY output = %q, want list table", got)
 	}
 }
 

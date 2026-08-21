@@ -1,0 +1,48 @@
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "README.zh-CN.md"
+          - "CONTRIBUTING.md"
+          - "CONTRIBUTING.zh-CN.md"
+          - "AGENTS.md"
+          - "docs/**"
+          - "skills/**"
+          - ".agents/skills/**"
+          - "changelog/**"
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cmd/**"
+          - "internal/cli/**"
+
+"area: sdk":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "sdk/**"
+
+"area: api":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "internal/javdb/**"
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*_test.go"
+          - "e2e/**"
+
+"area: github-actions":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+"release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "changelog/**"
+          - ".github/workflows/release.yml"
+          - "scripts/build-release.sh"
+          - "scripts/package-release.sh"
+          - "templates/homebrew/**"

@@ -21,6 +21,8 @@ const KindTag Kind = "tag"
 //   - 显式 --json：单项走 LegacyJSON 既有 shape，多项输出信封数组。
 type Consumer struct {
 	Name string
+	// Context 是本次命令调用的生命周期；未设置时使用 Background。
+	Context context.Context
 	// AcceptedKinds 是输入项允许的 kind；nil 表示接受任意 kind（文本 ref）。
 	AcceptedKinds []Kind
 	// RunOne 执行单项并返回输出信封。
@@ -29,6 +31,8 @@ type Consumer struct {
 	RunMany func(context.Context, Envelope) ([]Envelope, error)
 	// RenderText 输出默认的人类文本。
 	RenderText func(io.Writer, Envelope) error
+	// RenderError 将文本/人类模式的单项错误写到 stderr；nil 使用 Name 前缀。
+	RenderError func(io.Writer, error) error
 	// LegacyJSON 输出单项显式 --json 的既有 shape；nil 时输出信封对象。
 	LegacyJSON func(io.Writer, Envelope) error
 	// Concurrency 控制批量执行并发度；<= 0 表示串行。并发时结果按输入顺序
@@ -68,6 +72,8 @@ func (c *Consumer) Execute(streams *invocation.Streams, args []string, ndjson, j
 // 输出顺序与单项错误可观测性。
 //
 // Concurrency > 0 时批量请求并发执行，结果按输入顺序写出。
+// processAll 只按索引写入独立结果槽，所有 worker 完成后才进入渲染阶段，
+// 因而 fan-out、失败信封和文本输出都不会因请求完成顺序改变协议顺序。
 func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mode OutputMode) error {
 	// legacy JSON shape 只适用于纯文本 ref 输入；NDJSON 信封先过 kind 校验。
 	if mode == OutputJSON && len(inputs) == 1 && inputs[0].Kind == "" && c.LegacyJSON != nil {
@@ -94,7 +100,7 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 		for _, r := range results {
 			if r.err != nil {
 				failures++
-				if _, err := fmt.Fprintf(streams.Err, "%s: %s\n", c.Name, r.err.Error()); err != nil {
+				if err := c.renderError(streams.Err, r.err); err != nil {
 					return err
 				}
 				continue
@@ -136,6 +142,14 @@ func (c *Consumer) RunInputs(streams *invocation.Streams, inputs []Envelope, mod
 	return nil
 }
 
+func (c *Consumer) renderError(w io.Writer, itemErr error) error {
+	if c.RenderError != nil {
+		return c.RenderError(w, itemErr)
+	}
+	_, err := fmt.Fprintf(w, "%s: %s\n", c.Name, itemErr.Error())
+	return err
+}
+
 // itemResult 是单项处理的结果。
 type itemResult struct {
 	// outputs 用于文本/人类模式：成功时包含输出信封，失败时为空。
@@ -150,14 +164,25 @@ type itemResult struct {
 func (c *Consumer) processAll(inputs []Envelope) []itemResult {
 	results := make([]itemResult, len(inputs))
 	if c.Concurrency > 0 && len(inputs) > 1 {
-		var wait sync.WaitGroup
-		wait.Add(len(inputs))
-		for index, input := range inputs {
-			go func(index int, input Envelope) {
-				defer wait.Done()
-				results[index] = c.processOne(input)
-			}(index, input)
+		workers := c.Concurrency
+		if workers > len(inputs) {
+			workers = len(inputs)
 		}
+		jobs := make(chan int)
+		var wait sync.WaitGroup
+		wait.Add(workers)
+		for worker := 0; worker < workers; worker++ {
+			go func() {
+				defer wait.Done()
+				for index := range jobs {
+					results[index] = c.processOne(inputs[index])
+				}
+			}()
+		}
+		for index := range inputs {
+			jobs <- index
+		}
+		close(jobs)
 		wait.Wait()
 		return results
 	}
@@ -173,7 +198,7 @@ func (c *Consumer) processOne(input Envelope) itemResult {
 	if input.Kind == KindError {
 		return itemResult{
 			envelopes: []Envelope{input},
-			err:       fmt.Errorf("%s", input.Data["message"]),
+			err:       errors.New(ErrorMessage(input)),
 		}
 	}
 	if !c.accepts(input) {
@@ -208,10 +233,14 @@ func writeRef(w io.Writer, envelope Envelope) error {
 
 // runItem 执行单项并返回输出信封列表；RunMany 优先于 RunOne（fan-out）。
 func (c *Consumer) runItem(input Envelope) ([]Envelope, error) {
-	if c.RunMany != nil {
-		return c.RunMany(context.Background(), input)
+	ctx := c.Context
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	output, err := c.RunOne(context.Background(), input)
+	if c.RunMany != nil {
+		return c.RunMany(ctx, input)
+	}
+	output, err := c.RunOne(ctx, input)
 	if err != nil {
 		return nil, err
 	}

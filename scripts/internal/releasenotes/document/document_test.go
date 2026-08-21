@@ -129,94 +129,7 @@ func TestRenderWritesBilingualGitHubReleaseBody(t *testing.T) {
 	}
 }
 
-func TestParseReleaseNoteDeclaration(t *testing.T) {
-	t.Parallel()
-
-	note, err := ParseReleaseNoteDeclaration(`
-## Summary
-
-Implemented a user-visible change.
-
-<!-- release-note
-category: Changed
-breaking: true
-summary: Reworked the download request contract.
-none_reason:
--->
-`)
-	if err != nil {
-		t.Fatalf("parse declaration: %v", err)
-	}
-	if note.Category != "Changed" || !note.Breaking || note.Summary != "Reworked the download request contract." {
-		t.Fatalf("release note = %#v", note)
-	}
-}
-
-func TestParseReleaseNoteDeclarationRequiresNoneReason(t *testing.T) {
-	t.Parallel()
-
-	_, err := ParseReleaseNoteDeclaration(`<!-- release-note
-category: None
-breaking: false
-summary: No release entry.
-none_reason:
--->`)
-	if err == nil || !strings.Contains(err.Error(), "none_reason") {
-		t.Fatalf("parse error = %v, want none_reason validation", err)
-	}
-}
-
-func TestParseReleaseNoteDeclarationRejectsTemplatePlaceholders(t *testing.T) {
-	t.Parallel()
-
-	_, err := ParseReleaseNoteDeclaration(`<!-- release-note
-category: __REQUIRED__
-breaking: __REQUIRED__
-summary: __REQUIRED__
-none_reason: __REQUIRED__
--->`)
-	if err == nil || !strings.Contains(err.Error(), "unsupported category") {
-		t.Fatalf("parse error = %v, want placeholder rejection", err)
-	}
-}
-
-func TestRecommendedVersionBump(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range []struct {
-		name  string
-		notes []model.ReleaseNote
-		want  string
-	}{
-		{name: "maintenance", notes: []model.ReleaseNote{{Category: "Maintenance", Summary: "Refresh CI."}}, want: "patch"},
-		{name: "feature", notes: []model.ReleaseNote{{Category: "Added", Summary: "Add APNG."}}, want: "minor"},
-		{name: "breaking", notes: []model.ReleaseNote{{Category: "Changed", Breaking: true, Summary: "Change output."}}, want: "major"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			if got := RecommendedVersionBump(test.notes); got != test.want {
-				t.Fatalf("recommended bump = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
-func TestRenderSourceLink(t *testing.T) {
-	t.Parallel()
-	for _, test := range []struct{ source, want string }{
-		{"https://github.com/FlanChanXwO/javdb-cli/pull/42", "[#42](https://github.com/FlanChanXwO/javdb-cli/pull/42)"},
-		{"https://github.com/FlanChanXwO/javdb-cli/commit/abcdef0123456789", "[`abcdef0`](https://github.com/FlanChanXwO/javdb-cli/commit/abcdef0123456789)"},
-	} {
-		if got, err := RenderSourceLink(test.source); err != nil || got != test.want {
-			t.Fatalf("render source %q = %q, %v; want %q", test.source, got, err, test.want)
-		}
-	}
-	if _, err := RenderSourceLink("https://example.com/42"); err == nil {
-		t.Fatal("unsupported source must fail")
-	}
-}
-
-func TestValidateCoverageRejectsMissingAuditSource(t *testing.T) {
+func TestValidateCoverageAllowsUnlistedAuditSources(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -237,10 +150,38 @@ func TestValidateCoverageRejectsMissingAuditSource(t *testing.T) {
 **完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/javdb-cli/compare/v1.1.0...v1.2.0)
 `)
 	report := model.AuditReport{Sources: []model.AuditSource{
-		{Kind: "pull_request", URL: "https://github.com/FlanChanXwO/javdb-cli/pull/42", Note: &model.ReleaseNote{Category: "Added", Summary: "Add one."}},
-		{Kind: "pull_request", URL: "https://github.com/FlanChanXwO/javdb-cli/pull/43", Note: &model.ReleaseNote{Category: "Fixed", Summary: "Fix two."}},
+		{Kind: "pull_request", URL: "https://github.com/FlanChanXwO/javdb-cli/pull/42"},
+		{Kind: "pull_request", URL: "https://github.com/FlanChanXwO/javdb-cli/pull/43"},
 	}}
-	if err := ValidateSourceCoverage(root, "1.2.0", "v1.1.0", report); err == nil || !strings.Contains(err.Error(), "does not cover") {
-		t.Fatalf("source coverage error = %v, want missing source error", err)
+	if err := ValidateSourceCoverage(root, "1.2.0", "v1.1.0", report); err != nil {
+		t.Fatalf("source coverage error = %v, want omitted audit source to be allowed", err)
+	}
+}
+
+func TestValidateCoverageRejectsUnlistedChangelogSource(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+## Added
+
+- Added one. ([#42](https://github.com/FlanChanXwO/javdb-cli/pull/42))
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/javdb-cli/compare/v1.1.0...v1.2.0)
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+## 新增
+
+- 新增一。([#42](https://github.com/FlanChanXwO/javdb-cli/pull/42))
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/javdb-cli/compare/v1.1.0...v1.2.0)
+`)
+	report := model.AuditReport{Sources: []model.AuditSource{
+		{Kind: "pull_request", URL: "https://github.com/FlanChanXwO/javdb-cli/pull/43"},
+	}}
+	if err := ValidateSourceCoverage(root, "1.2.0", "v1.1.0", report); err == nil || !strings.Contains(err.Error(), "not present") {
+		t.Fatalf("source coverage error = %v, want missing audit source error", err)
 	}
 }

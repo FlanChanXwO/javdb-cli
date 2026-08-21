@@ -23,6 +23,8 @@
 - **CLI 与公开 Go SDK**——CLI 与可导入的 `javdb` 包都覆盖搜索、详情、标签、浏览、实体片单、磁力、
   单页评论、选定缩略图/预览媒体下载、排行、TOP250、合集、已认证的想看/看过数据，以及以图搜番
   与严格番号联动（`javdb search IMAGE`、`javdb cache reverse-search`）。
+- **一体化磁力搜索**——`javdb search KEYWORD --magnets N` 一次完成影片搜索、筛选、排序和磁力获取；
+  文本模式输出磁力 URI，`--ndjson` 输出管道信封。
 - **可组合管道**——多数命令接受非 TTY stdin 批处理；TTY stdout 默认输出人类文本，
   非 TTY stdout 默认输出稳定记录流；显式 `--ndjson` 输出
   `javdb.pipeline/v1` NDJSON 信封，可把上一条命令的结果直接喂给下一条
@@ -72,7 +74,7 @@ go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.2.0
 
 ```bash
 sh scripts/build.sh
-./build/javdb version --json
+./build/javdb --version
 ```
 
 发布契约覆盖 macOS、Linux、Windows 的 amd64 与 arm64。可复现目标构建及归档内容见
@@ -98,7 +100,7 @@ javdb update
 把以下 prompt 复制给能访问本机终端的 Codex、Claude Code、Cursor 或其他 AI Agent：
 
 ```text
-请为这台机器安装 https://github.com/FlanChanXwO/javdb-cli 的最新 stable 版本。检测操作系统和架构，只下载官方 GitHub Release 资产，必须先用 checksums.txt 中对应的 SHA-256 校验通过才安装；创建或修改任何 PATH 目录前先询问；绝不读取或输出 ~/.javdb-cli/auth.json 或凭据；最后运行 javdb version --json 验证，并报告安装版本和所有变更文件。
+请为这台机器安装 https://github.com/FlanChanXwO/javdb-cli 的最新 stable 版本。检测操作系统和架构，只下载官方 GitHub Release 资产，必须先用 checksums.txt 中对应的 SHA-256 校验通过才安装；创建或修改任何 PATH 目录前先询问；绝不读取或输出 ~/.javdb-cli/auth.json 或凭据；最后运行 javdb --version 验证，并报告安装版本和所有变更文件。
 
 同时从相同 stable release tag 安装完整的 skills/javdb-cli/ 目录到我确认的 Agent skills 目录。不要猜测 skills 路径，不要使用 main 分支的 skill 内容，并保留全部 references 文件。
 ```
@@ -186,7 +188,7 @@ func main() {
 
 使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
 [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)；请将已安装的 skill 固定到对应的
-published release 版本（当前为 `0.5.2`），不要跟随无版本的 `latest` tag。
+published release 版本（当前为 `0.7.2`），不要跟随无版本的 `latest` tag。
 
 ## 认证与凭据安全
 

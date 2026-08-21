@@ -28,6 +28,9 @@ terms and the laws that apply to you.
   filmographies, magnets, rankings, TOP250, collections, authenticated
   watch/want data, and reverse image search with strict number linking
   (`javdb search IMAGE`, `javdb cache reverse-search`).
+- **Integrated magnet search** — `javdb search KEYWORD --magnets N` combines movie search,
+  filtering, ranking, and magnet retrieval; text output emits magnet URIs and `--ndjson`
+  emits pipeline envelopes.
 - **Composable pipelines** — most commands accept non-TTY stdin batches;
   TTY stdout defaults to human-readable text, non-TTY to stable record streams;
   explicit `--ndjson` emits `javdb.pipeline/v1` envelopes so command output can
@@ -113,7 +116,7 @@ Copy this prompt into Codex, Claude Code, Cursor, or another local coding agent
 with terminal access:
 
 ```text
-Install the latest stable javdb-cli from https://github.com/FlanChanXwO/javdb-cli for this machine. Detect the operating system and architecture, download only official GitHub Release assets, require the matching published SHA-256 from checksums.txt before installing, ask before creating or changing any PATH directory, never read or output ~/.javdb-cli/auth.json or credentials, verify with javdb version --json, and report the installed version plus every changed file.
+Install the latest stable javdb-cli from https://github.com/FlanChanXwO/javdb-cli for this machine. Detect the operating system and architecture, download only official GitHub Release assets, require the matching published SHA-256 from checksums.txt before installing, ask before creating or changing any PATH directory, never read or output ~/.javdb-cli/auth.json or credentials, verify with javdb --version, and report the installed version plus every changed file.
 
 Also install the complete skills/javdb-cli/ directory from the same stable release tag into the agent skills directory that I confirm. Do not guess that skills path, do not use the main branch for the skill, and preserve all reference files.
 ```
@@ -206,7 +209,7 @@ flags with `javdb <command> --help`.
 
 Agents using ClawHub can install the published [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)
 with `clawhub install javdb-cli`; pin the installed skill to the matching
-published release version, currently `0.5.2`, rather than following an
+published release version, currently `0.7.2`, rather than following an
 unversioned `latest` tag.
 
 ## Authentication and credential safety

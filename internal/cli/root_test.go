@@ -84,6 +84,17 @@ func TestRootHelpFullLiteral(t *testing.T) {
 	}
 }
 
+func TestLegacyVersionCommandIsRemoved(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := Run([]string{"version"}, strings.NewReader(""), &out, &errb)
+	if code == 0 {
+		t.Fatalf("legacy version command unexpectedly succeeded: stdout=%q stderr=%q", out.String(), errb.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("legacy version command wrote stdout: %q", out.String())
+	}
+}
+
 // 关键子命令 help 全量字面锁定。cobra 的 help 输出按命令名排序，注册顺序不直接可见，
 // 但最终命令树（Task 11 的 root.go）必须产出与这里完全相同的文本。
 func TestKeySubcommandHelpLiterals(t *testing.T) {
@@ -91,19 +102,6 @@ func TestKeySubcommandHelpLiterals(t *testing.T) {
 		cmd  string
 		want string
 	}{
-		{"version", `Print version
-
-Usage:
-  javdb version [flags]
-
-Flags:
-  -h, --help   help for version
-      --json   Machine-readable JSON
-
-Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
-`},
 		{"update", `Check for or install updates
 
 Usage:
@@ -340,7 +338,7 @@ func TestRootCommandSetMatchesHelp(t *testing.T) {
 	for _, name := range []string{
 		"actor", "auth", "browse", "code", "collections", "comments", "config", "detail",
 		"director", "download", "list", "lists", "magnets", "maker", "mark", "rankings",
-		"recent", "search", "series", "tags", "top250", "unmark", "update", "version", "want", "watched",
+		"recent", "search", "series", "tags", "top250", "unmark", "update", "want", "watched",
 	} {
 		if !strings.Contains(out.String(), "  "+name+" ") {
 			t.Fatalf("root help missing command %q", name)
@@ -349,7 +347,7 @@ func TestRootCommandSetMatchesHelp(t *testing.T) {
 }
 
 // 配置创建触发矩阵：只有真正执行的普通命令与 config path/get/set 会首次创建配置。
-// help、裸命令、version、completion、参数校验失败和缺失配置上的 unset 都不落盘。
+// help、裸命令、--version、completion、参数校验失败和缺失配置上的 unset 都不落盘。
 func TestConfigCreationTriggerMatrix(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -366,7 +364,7 @@ func TestConfigCreationTriggerMatrix(t *testing.T) {
 		{"help command target no create", []string{"help", "search"}, false},
 		{"bare command no create", []string{}, false},
 		{"parent command no create", []string{"config"}, false},
-		{"version no create", []string{"version"}, false},
+		{"--version no create", []string{"--version"}, false},
 		{"completion no create", []string{"completion", "bash"}, false},
 		{"complete probe no create", []string{"__complete", "search", ""}, false},
 		{"arg validation failure no create", []string{"search"}, false},
@@ -452,7 +450,6 @@ func TestHelpCompletionAndZeroArgCommandsDoNotReadStdin(t *testing.T) {
 	for _, args := range [][]string{
 		{"--help"},
 		{"completion", "bash"},
-		{"version"},
 		{"rankings", "--help"},
 	} {
 		var out, errb bytes.Buffer
@@ -525,25 +522,6 @@ func TestRootVersionUnknownMetadata(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "javdb version 0.7.0") {
 		t.Fatalf("unknown-metadata --version output = %q", got)
-	}
-}
-
-func TestHiddenVersionShimKeepsJSONContract(t *testing.T) {
-	withBuildInfo(t, "0.7.0", "abc1234", "2026-08-13T00:00:00Z", "2026-08-12")
-	var out, errb bytes.Buffer
-	code := Run([]string{"version", "--json"}, strings.NewReader(""), &out, &errb)
-	if code != 0 {
-		t.Fatalf("shim code=%d stderr=%q", code, errb.String())
-	}
-	got := strings.TrimSpace(out.String())
-	// 旧契约：version 带 v 前缀，供 v0.6.x 更新器/Homebrew 断言。
-	if !strings.Contains(got, `"version":"v0.7.0"`) {
-		t.Fatalf("shim JSON = %q", got)
-	}
-	// shim 不出现于 help/completion。
-	helpOut, _ := runHelp(t)
-	if strings.Contains(helpOut, "version     Print version") {
-		t.Fatalf("hidden shim leaked into help:\n%s", helpOut)
 	}
 }
 

@@ -116,6 +116,30 @@ func WithOptionalAuth(options *invocation.RootOptions, errOut io.Writer, fn func
 	return fn(c2)
 }
 
+// RetryAnonymousAuth 为已经构造好的批处理 client 保留 WithOptionalAuth 的匿名
+// 回退语义：仅在已有 token 被服务端拒绝时清空 token 并重试，不触发自动登录或写入
+// 认证存储。调用方应保证批处理 client 的使用顺序，避免并发请求同时切换 token。
+func RetryAnonymousAuth(c *javdb.Client, errOut io.Writer, fn func() error) error {
+	if c == nil {
+		return fmt.Errorf("nil client")
+	}
+	err := fn()
+	if err == nil || c.Token() == "" {
+		return err
+	}
+	var authRequired *javdb.AuthRequired
+	if !errors.As(err, &authRequired) {
+		return err
+	}
+	if errOut != nil {
+		if _, writeErr := fmt.Fprintln(errOut, "token 无效，改用匿名请求…"); writeErr != nil {
+			return writeErr
+		}
+	}
+	c.SetToken("")
+	return fn()
+}
+
 // NewWithDefaultToken 解析运行时与默认账号 token 并构造公开 SDK client；
 // 供管道批处理调用方每次批量只构造一次。解析失败显式返回错误。
 func NewWithDefaultToken(options *invocation.RootOptions) (*javdb.Client, error) {

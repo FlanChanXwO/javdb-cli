@@ -57,7 +57,7 @@ HTTP、签名或上游响应解码。目录职责如下：
   `MagnetRow`/`ProjectMagnet`、`NamedRow`/`ProjectNamed`）。
 - `cli/entity`：只保留六类实体命令共享的查询用例 `Execute`；命名实体投影位于
   `cli/result`。
-- `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update,version}`：
+- `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
   `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info
@@ -161,11 +161,11 @@ Consumer/BatchRunner/ListProducer 三件套把只读/状态命令统一接入。
 
 ### `scripts/releasenotes`
 
-`scripts/releasenotes/main.go` 只保留命令入口和子命令分派（validate/audit/prepare/
-render/pr-validate/sync-history）；核心实现位于
-`scripts/internal/releasenotes/{model,github,audit,document,prepare,history}`：model
+`scripts/releasenotes/main.go` 只保留命令入口和子命令分派（validate/audit/render/
+sync-history）；核心实现位于
+`scripts/internal/releasenotes/{model,github,audit,document,history}`：model
 保存跨包数据模型，github 封装 REST 边界，audit 生成审计报告，document 负责 changelog
-解析/渲染，prepare 负责计划生成，history 负责显式历史 Release 同步。根 command 不再
+解析/渲染，history 负责显式历史 Release 同步。版本化 changelog 是唯一发布说明来源，根 command 不再
 有 compat wrapper。`scripts/changescope` 与 `scripts/login_probe.go` 保持单一职责，
 不为目录对称强行拆分；`login_probe.go` 经公开 SDK 构造 client 后再用 `API()`。
 
@@ -194,4 +194,4 @@ render/pr-validate/sync-history）；核心实现位于
 - 改公开 SDK：同步更新两个 locale 的 SDK 文档与架构说明。
 - 改 API adapter 或协议行为：补充聚焦测试，并检查根 Client/`sdk` 是否需要暴露相应契约。
 - 改构建、资产、Homebrew 或 Release：同步更新开发指南、workflow 测试和 README 安装说明。
-- 改 CLI/common/App API/update/config/storage/release-note 的目录边界：同步本页、`development.md` 和 `scripts/test-architecture.sh`；只有用户可见契约改变时才更新 public docs、README 或 changelog。
+- 改 CLI/common/App API/update/config/storage/release-note 的目录边界：同步本页和 `development.md`；只有用户可见契约改变时才更新 public docs、README 或 changelog。
