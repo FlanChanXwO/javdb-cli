@@ -1,3 +1,5 @@
+
+
 <div align="center">
 
 # javdb-cli
@@ -103,9 +105,9 @@ javdb update
 
 `update` detects whether `javdb` is managed by Homebrew, `go install`, or a
 Release archive, then uses that matching channel. Archive updates fetch only the
-current OS/architecture asset, verify its SHA-256 against the same Release's
-`checksums.txt`, validate the downloaded binary's version, and then replace the
-executable. `--check --json` is the machine-readable, no-write form;
+current OS/architecture asset, verify its `release-manifest.json` Ed25519 signature and SHA-256
+values from the same Release, and then replace the executable without executing the
+downloaded candidate. `--check --json` is the machine-readable, no-write form;
 `--prerelease` includes prerelease tags. A Homebrew installation supports stable
 releases only. The existing `--proxy URL` setting also applies to Release checks;
 `update` resolves that proxy independently and ignores JavDB host settings.
