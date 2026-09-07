@@ -52,7 +52,7 @@ func (p *ListProducer) Execute(streams *invocation.Streams, ndjson, json bool) e
 			return err
 		}
 		return jsonxWrite(streams.Out, payload)
-	case OutputText, OutputHuman:
+	case OutputText:
 		if p.ErrNote != nil {
 			p.ErrNote(streams.Err, items)
 		}
