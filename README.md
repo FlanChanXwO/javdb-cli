@@ -104,7 +104,6 @@ additional bind mounts.
 
 ```bash
 docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version
-# The equivalent Docker Hub image is flanchanxwo/javdb-cli:v0.2.0.
 
 # 挂载命名卷持久化登录状态与缓存；容器内默认工作目录是 /work。
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
@@ -112,6 +111,9 @@ docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
   ghcr.io/flanchanxwo/javdb-cli:latest search SSIS-589 --limit 5
 ```
+
+Docker Hub images are published for stable releases created after that channel
+is enabled. For those releases, use `flanchanxwo/javdb-cli` with the same tag.
 
 Both registries publish `latest` for the newest stable release, exact version
 tags (`vX.Y.Z`), and per-architecture tags (`vX.Y.Z-linux-amd64`,

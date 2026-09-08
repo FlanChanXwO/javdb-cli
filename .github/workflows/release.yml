@@ -337,14 +337,15 @@ jobs:
           git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
 
   publish:
-    name: Publish GitHub Release
+    name: Publish release and container images
     needs: [validate, verify_release_source, release_notes_audit, build_container]
     runs-on: ubuntu-24.04
-    # 受保护 environment：只有这里允许读取签名私钥。缺失 secret 或未配置
-    # required reviewers 时 job 显式失败（fail-closed），不发布未签名资产。
+    # 受保护 environment：只有这里允许读取签名私钥与 Docker Hub token。缺失 secret
+    # 或未配置 required reviewers 时 job 显式失败（fail-closed），不公开不完整 Release。
     environment: release
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -380,6 +381,14 @@ jobs:
         with:
           name: verified-release-windows-arm64
           path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-amd64
+          path: containers
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-arm64
+          path: containers
 
       - name: Check the exact release asset set and sign the release manifest
         shell: bash
@@ -423,17 +432,22 @@ jobs:
             --version "${RELEASE_TAG#v}" \
             --dir "changelog/v${RELEASE_TAG#v}" \
             --output release/release-notes.md
-          gh release create "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --draft \
-            --verify-tag \
-            --title "$RELEASE_TAG" \
-            --notes-file release/release-notes.md \
-            dist/javdb-cli_*.tar.gz \
-            dist/javdb-cli_*.zip \
-            dist/checksums.txt \
-            dist/release-manifest.json \
-            dist/release-manifest.sig
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # failed-job rerun 只允许复用本次 workflow 已创建但尚未公开的 draft。
+            test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = true
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --verify-tag \
+              --title "$RELEASE_TAG" \
+              --notes-file release/release-notes.md \
+              dist/javdb-cli_*.tar.gz \
+              dist/javdb-cli_*.zip \
+              dist/checksums.txt \
+              dist/release-manifest.json \
+              dist/release-manifest.sig
+          fi
           expected=$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)
           actual=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)
           if [ "$actual" != "$expected" ]; then
@@ -442,7 +456,89 @@ jobs:
             printf '%s\n' "actual:$actual" >&2
             exit 1
           fi
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Load the verified container images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load --input containers/javdb-cli-linux-amd64.tar
+          docker load --input containers/javdb-cli-linux-arm64.tar
+
+      - name: Log in to the GHCR
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          registry: docker.io
+          username: flanchanxwo
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Tag and push per-architecture images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for goarch in amd64 arm64; do
+            image="javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker tag "$image" "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker tag "$image" "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+          done
+
+      - name: Publish the versioned multi-architecture manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" \
+            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+          docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
+          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" \
+            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+          docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"
+
+      - name: Promote latest only for the newest stable tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("refs/tags/"; "")' \
+            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+            | sort -V | tail -n 1)
+          if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
+            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" \
+              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
+            docker manifest create "flanchanxwo/javdb-cli:latest" \
+              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "flanchanxwo/javdb-cli:latest"
+          else
+            printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
+              "$RELEASE_TAG" "$latest_stable_tag"
+          fi
+
+      - name: Verify the Docker Hub manifest is public
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout docker.io
+          docker manifest inspect "docker.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" >/dev/null
+
+      - name: Publish the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
       # ClawHub 发布 workflow 只信任这个由已公开 Release 生成的 tag handoff；
       # 不从 workflow_run 的 head_branch 推断版本，也不重新读取 main。
@@ -571,96 +667,6 @@ jobs:
           if-no-files-found: error
           # 保留足够久以便恢复已发布镜像；镜像引用 git 存储（不是依赖重新构建的易失资产）。
           retention-days: 90
-
-  publish_container:
-    name: Publish the multi-architecture container images
-    needs: [build_container, publish]
-    runs-on: ubuntu-24.04
-    # Docker Hub token 与发布签名密钥同属 release environment；缺失凭据时显式失败，
-    # 不把只发布到单一 registry 的部分结果报告为完整容器发布成功。
-    environment: release
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-container-linux-amd64
-          path: containers
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-container-linux-arm64
-          path: containers
-
-      - name: Load the verified images
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker load --input containers/javdb-cli-linux-amd64.tar
-          docker load --input containers/javdb-cli-linux-arm64.tar
-
-      - name: Log in to the GHCR
-        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
-        with:
-          registry: docker.io
-          username: flanchanxwo
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-      - name: Tag and push per-architecture images
-        shell: bash
-        run: |
-          set -euo pipefail
-          for goarch in amd64 arm64; do
-            image="javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker tag "$image" "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker tag "$image" "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-          done
-
-      - name: Publish the versioned multi-architecture manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" \
-            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
-          docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
-          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" \
-            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
-          docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"
-
-      - name: Promote latest only for the newest stable tag
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
-            --jq '.[].ref | sub("refs/tags/"; "")' \
-            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
-            | sort -V | tail -n 1)
-          if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
-            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" \
-              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
-            docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
-            docker manifest create "flanchanxwo/javdb-cli:latest" \
-              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
-            docker manifest push "flanchanxwo/javdb-cli:latest"
-          else
-            printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
-              "$RELEASE_TAG" "$latest_stable_tag"
-          fi
 
   render_homebrew_formula:
     name: Render Homebrew formula

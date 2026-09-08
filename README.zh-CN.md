@@ -89,7 +89,6 @@ sh scripts/build.sh
 
 ```bash
 docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version
-# 对应的 Docker Hub 镜像是 flanchanxwo/javdb-cli:v0.2.0。
 
 # 挂载命名卷持久化登录状态与缓存；容器内默认工作目录是 /work。
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
@@ -97,6 +96,9 @@ docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
   ghcr.io/flanchanxwo/javdb-cli:latest search SSIS-589 --limit 5
 ```
+
+Docker Hub 镜像从启用该发布渠道后的 stable release 开始提供；这些版本可使用相同 tag，
+镜像名为 `flanchanxwo/javdb-cli`。
 
 两个 registry 都为最新 stable release 发布 `latest`，并发布精确版本 tag（`vX.Y.Z`）与
 分架构 tag（`vX.Y.Z-linux-amd64`、`vX.Y.Z-linux-arm64`）。
