@@ -338,7 +338,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [validate, verify_release_source, release_notes_audit]
+    needs: [validate, verify_release_source, release_notes_audit, build_container]
     runs-on: ubuntu-24.04
     # 受保护 environment：只有这里允许读取签名私钥。缺失 secret 或未配置
     # required reviewers 时 job 显式失败（fail-closed），不发布未签名资产。
@@ -466,6 +466,181 @@ jobs:
           path: dist/checksums.txt
           if-no-files-found: error
           retention-days: 1
+
+  build_container:
+    name: Build container ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: [validate, build]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+            artifact: linux-amd64
+          - runner: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+            artifact: linux-arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Require the immutable container source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Rebuild the versioned Linux binary
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
+          test -n "$release_date"
+          sh scripts/build-release.sh \
+            --version "$VERSION" \
+            --release-date "$release_date" \
+            --target 'linux/${{ matrix.goarch }}' \
+            --output dist/javdb
+
+      - name: Build the verified container image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg REVISION="$(git rev-parse "$RELEASE_TAG^{commit}")" \
+            --build-arg VERSION="$RELEASE_TAG" \
+            --platform "linux/${{ matrix.goarch }}" \
+            --tag "javdb-cli:${RELEASE_TAG}-${{ matrix.artifact }}" \
+            .
+
+      - name: Verify image provenance and runtime contract
+        shell: bash
+        env:
+          IMAGE: javdb-cli:${{ env.RELEASE_TAG }}-${{ matrix.artifact }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          uid=$(docker run --rm --entrypoint id "$IMAGE" -u)
+          test "$uid" != 0
+          release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
+          test -n "$release_date"
+          docker run --rm "$IMAGE" --version | grep -F "javdb version ${VERSION} (${release_date})"
+          docker run --rm "$IMAGE" config path | grep -F '/home/javdb/.javdb-cli/'
+          test "$(docker run --rm --entrypoint sh "$IMAGE" -c 'pwd')" = /work
+          docker run --rm --entrypoint sh "$IMAGE" -c \
+            'test -s /usr/share/doc/javdb-cli/LICENSE'
+          revision=$(git rev-parse "$RELEASE_TAG^{commit}")
+          docker image inspect "$IMAGE" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            | grep -Fx "$revision"
+          docker image inspect "$IMAGE" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' \
+            | grep -Fx "$RELEASE_TAG"
+          docker image inspect "$IMAGE" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' \
+            | grep -Fx 'https://github.com/FlanChanXwO/javdb-cli'
+          docker image inspect "$IMAGE" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}' \
+            | grep -Fx 'MIT'
+
+      - name: Export the verified image artifact
+        shell: bash
+        run: docker save --output "${RUNNER_TEMP}/javdb-cli-${{ matrix.artifact }}.tar" "javdb-cli:${RELEASE_TAG}-${{ matrix.artifact }}"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-container-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/javdb-cli-${{ matrix.artifact }}.tar
+          if-no-files-found: error
+          # 保留足够久以便恢复已发布镜像；镜像引用 git 存储（不是依赖重新构建的易失资产）。
+          retention-days: 90
+
+  publish_container:
+    name: Publish the multi-architecture container image
+    needs: [build_container, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-amd64
+          path: containers
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-arm64
+          path: containers
+
+      - name: Load the verified images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load --input containers/javdb-cli-linux-amd64.tar
+          docker load --input containers/javdb-cli-linux-arm64.tar
+
+      - name: Log in to the GHCR
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push per-architecture images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for goarch in amd64 arm64; do
+            image="javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker tag "$image" "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+          done
+
+      - name: Publish the versioned multi-architecture manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" \
+            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+          docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
+
+      - name: Promote latest only for the newest stable tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("refs/tags/"; "")' \
+            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+            | sort -V | tail -n 1)
+          if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
+            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" \
+              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
+          else
+            printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
+              "$RELEASE_TAG" "$latest_stable_tag"
+          fi
 
   render_homebrew_formula:
     name: Render Homebrew formula

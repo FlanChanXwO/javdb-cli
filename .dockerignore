@@ -1,0 +1,11 @@
+# Docker 构建上下文白名单：Dockerfile 只 COPY dist/javdb 与 LICENSE，
+# 其余路径一律不进入构建上下文，避免本机状态、密钥或垃圾文件泄入镜像。
+
+# 先排除一切。
+**
+
+# 只放行镜像构建必需的路径。
+!Dockerfile
+!LICENSE
+!dist/
+!dist/javdb
