@@ -100,9 +100,19 @@ grep -F 'publish_container:' "$release_workflow" >/dev/null
 grep -F 'needs: [build_container, publish]' "$release_workflow" >/dev/null
 grep -F 'packages: write' "$release_workflow" >/dev/null
 grep -F 'verified-container-${{ matrix.artifact }}' "$release_workflow" >/dev/null
+publish_container=$(sed -n '/^  publish_container:$/,/^  render_homebrew_formula:/p' "$release_workflow")
+printf '%s\n' "$publish_container" | grep -F 'environment: release' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'registry: docker.io' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'username: flanchanxwo' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'password: ${{ secrets.DOCKER_HUB_TOKEN }}' >/dev/null
 grep -F 'ghcr.io/flanchanxwo/javdb-cli' "$release_workflow" >/dev/null
 grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' "$release_workflow" >/dev/null
 grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest"' "$release_workflow" >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:latest"' >/dev/null
+printf '%s\n' "$publish_container" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:latest"' >/dev/null
 latest_promotion=$(sed -n '/^      - name: Promote latest only for the newest stable tag$/,/^  render_homebrew_formula:/p' "$release_workflow")
 printf '%s\n' "$latest_promotion" | grep -F "if [ \"\$RELEASE_TAG\" = \"\$latest_stable_tag\" ]; then" >/dev/null
 if printf '%s\n' "$latest_promotion" | grep -F "test \"\$RELEASE_TAG\" = \"\$latest_stable_tag\"" >/dev/null; then

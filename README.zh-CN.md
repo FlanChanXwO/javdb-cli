@@ -80,15 +80,16 @@ sh scripts/build.sh
 发布契约覆盖 macOS、Linux、Windows 的 amd64 与 arm64。可复现目标构建及归档内容见
 [开发指南](docs/maintainers/development.md#构建打包与平台)。
 
-### Docker（GHCR）
+### Docker（GHCR 与 Docker Hub）
 
-每个 stable release 还会在 GitHub Container Registry 发布多架构镜像
+每个 stable release 还会向 GitHub Container Registry 与 Docker Hub 发布相同的多架构镜像
 （`linux/amd64` 与 `linux/arm64`）。镜像以非 root 用户运行，本地状态保存在
 `/home/javdb/.javdb-cli`（按私有 `0700` 权限创建）；把命名卷挂载到该目录即可持久化登录状态与缓存。
 默认 `/work` 由 `javdb` 用户可写，因此相对下载输出路径无需额外挂载即可使用。
 
 ```bash
 docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version
+# 对应的 Docker Hub 镜像是 flanchanxwo/javdb-cli:v0.2.0。
 
 # 挂载命名卷持久化登录状态与缓存；容器内默认工作目录是 /work。
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
@@ -97,8 +98,8 @@ docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
   ghcr.io/flanchanxwo/javdb-cli:latest search SSIS-589 --limit 5
 ```
 
-`latest` 指向最新的 stable release；同时发布精确版本 tag（`vX.Y.Z`）与分架构 tag
-（`vX.Y.Z-linux-amd64`、`vX.Y.Z-linux-arm64`）。
+两个 registry 都为最新 stable release 发布 `latest`，并发布精确版本 tag（`vX.Y.Z`）与
+分架构 tag（`vX.Y.Z-linux-amd64`、`vX.Y.Z-linux-arm64`）。
 
 ### 更新
 

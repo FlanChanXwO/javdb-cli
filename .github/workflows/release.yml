@@ -573,9 +573,12 @@ jobs:
           retention-days: 90
 
   publish_container:
-    name: Publish the multi-architecture container image
+    name: Publish the multi-architecture container images
     needs: [build_container, publish]
     runs-on: ubuntu-24.04
+    # Docker Hub token 与发布签名密钥同属 release environment；缺失凭据时显式失败，
+    # 不把只发布到单一 registry 的部分结果报告为完整容器发布成功。
+    environment: release
     permissions:
       contents: read
       packages: write
@@ -603,6 +606,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          registry: docker.io
+          username: flanchanxwo
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
       - name: Tag and push per-architecture images
         shell: bash
         run: |
@@ -611,6 +621,8 @@ jobs:
             image="javdb-cli:${RELEASE_TAG}-linux-${goarch}"
             docker tag "$image" "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
             docker push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker tag "$image" "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+            docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
           done
 
       - name: Publish the versioned multi-architecture manifest
@@ -621,6 +633,10 @@ jobs:
             "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
             "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
           docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
+          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" \
+            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+          docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"
 
       - name: Promote latest only for the newest stable tag
         shell: bash
@@ -637,6 +653,10 @@ jobs:
               "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
               "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
             docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
+            docker manifest create "flanchanxwo/javdb-cli:latest" \
+              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "flanchanxwo/javdb-cli:latest"
           else
             printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
               "$RELEASE_TAG" "$latest_stable_tag"
