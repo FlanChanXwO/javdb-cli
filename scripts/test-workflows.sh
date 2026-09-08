@@ -93,17 +93,39 @@ grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
 grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
-# 容器镜像发布：build_container 从同一不可变 tag 重建 Linux 二进制、构建并验证镜像契约，
-# publish 等待它成功后才公开 Release；publish_container 只消费已验证镜像推 GHCR 并发布多架构 manifest。
+# 容器镜像发布：build_container 从同一不可变 tag 重建 Linux 二进制、构建并验证镜像契约；
+# publish 在同一次 release environment gate 中消费已验证镜像，推送 GHCR 与 Docker Hub，最后公开 Release。
 grep -F 'build_container:' "$release_workflow" >/dev/null
-grep -F 'publish_container:' "$release_workflow" >/dev/null
-grep -F 'needs: [build_container, publish]' "$release_workflow" >/dev/null
-grep -F 'packages: write' "$release_workflow" >/dev/null
-grep -F 'verified-container-${{ matrix.artifact }}' "$release_workflow" >/dev/null
+if grep -F 'publish_container:' "$release_workflow" >/dev/null; then
+	echo 'container publication must share the single protected publish job' >&2
+	exit 1
+fi
+publish_job=$(sed -n '/^  publish:$/,/^  build_container:/p' "$release_workflow")
+test "$(printf '%s\n' "$publish_job" | grep -Fc 'environment: release')" -eq 1
+printf '%s\n' "$publish_job" | grep -F 'packages: write' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-amd64' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-arm64' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'registry: docker.io' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'username: flanchanxwo' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'password: ${{ secrets.DOCKER_HUB_TOKEN }}' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '\''.isDraft'\'')" = true' >/dev/null
 grep -F 'ghcr.io/flanchanxwo/javdb-cli' "$release_workflow" >/dev/null
 grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' "$release_workflow" >/dev/null
 grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest"' "$release_workflow" >/dev/null
-latest_promotion=$(sed -n '/^      - name: Promote latest only for the newest stable tag$/,/^  render_homebrew_formula:/p' "$release_workflow")
+printf '%s\n' "$publish_job" | grep -F 'docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:latest"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:latest"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker logout docker.io' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest inspect "docker.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+container_publish_line=$(printf '%s\n' "$publish_job" | grep -nF 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' | cut -d: -f1)
+release_create_line=$(printf '%s\n' "$publish_job" | grep -nF 'gh release create "$RELEASE_TAG"' | cut -d: -f1)
+release_public_line=$(printf '%s\n' "$publish_job" | grep -nF 'gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false' | cut -d: -f1)
+test "$release_create_line" -lt "$container_publish_line"
+test "$container_publish_line" -lt "$release_public_line"
+latest_promotion=$(printf '%s\n' "$publish_job" | sed -n '/^      - name: Promote latest only for the newest stable tag$/,$p')
 printf '%s\n' "$latest_promotion" | grep -F "if [ \"\$RELEASE_TAG\" = \"\$latest_stable_tag\" ]; then" >/dev/null
 if printf '%s\n' "$latest_promotion" | grep -F "test \"\$RELEASE_TAG\" = \"\$latest_stable_tag\"" >/dev/null; then
 	echo 'latest promotion guard must skip older stable tags without failing the job' >&2

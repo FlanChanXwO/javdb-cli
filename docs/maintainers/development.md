@@ -152,7 +152,8 @@ Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 
 ### Docker 镜像
 
-每个 stable release 额外发布 GHCR 多架构镜像（`linux/amd64`、`linux/arm64`）。
+每个 stable release 向 GHCR 与 Docker Hub 发布相同的多架构镜像
+（`linux/amd64`、`linux/arm64`）。
 容器契约固定为：pinned `debian:bookworm-slim`（manifest digest）、非 root 用户
 `javdb`（UID 1000）、私有权限 `0700` 的状态目录 `/home/javdb/.javdb-cli`、
 由 `javdb` 用户可写的工作目录 `/work`、`ENTRYPOINT ["/usr/local/bin/javdb"]`，
@@ -174,10 +175,16 @@ docker build --build-arg REVISION="$(git rev-parse HEAD)" --build-arg VERSION=v0
 `ubuntu-22.04` / `ubuntu-22.04-arm` 上从不可变 tag 重建二进制、构建并验证镜像
 契约（非 root、版本字符串、状态目录、工作目录、许可证与 OCI labels），再
 `docker save` 上传 `verified-container-*` artifact（保留 90 天）。
-`publish_container` job 登录 GHCR、推送分架构镜像并发布多架构 manifest
-`ghcr.io/flanchanxwo/javdb-cli:vX.Y.Z`；仅当该 tag 是仓库最新 stable tag 时
-才把 `latest` 指到该 manifest，较旧 stable tag 会正常跳过该 promotion。
-`publish` 依赖 `build_container`，因此镜像验证失败时不会先公开 GitHub Release。
+`publish` job 在单次受保护 `release` environment gate 后，使用 `GITHUB_TOKEN` 登录 GHCR，
+并使用 `DOCKER_HUB_TOKEN` 登录 Docker Hub；随后向两个 registry 推送分架构镜像，分别发布
+多架构 manifest `ghcr.io/flanchanxwo/javdb-cli:vX.Y.Z` 与
+`flanchanxwo/javdb-cli:vX.Y.Z`。仅当该 tag 是仓库最新 stable tag 时，才把两个 registry 的
+`latest` 指到对应 manifest；较旧 stable tag 会正常跳过 promotion。同一 job 先创建并审计 draft
+GitHub Release，双 registry 发布成功后才将其公开，因此不需要第二次 environment approval。
+Docker Hub namespace 固定为 `flanchanxwo`，token 必须具有该 repository 的 push 权限。
+发布器登出 Docker Hub 后匿名读取版本 manifest，以确认 repository 对公众可见。任一 registry push
+或公开读取验证失败时，job 显式失败且不会公开 GitHub Release；修复外部状态后可重跑 failed job，
+重复 push 相同版本 tag 会用于补齐另一 registry，不执行跨 registry rollback。
 镜像变更（`Dockerfile` / `.dockerignore` / `container-smoke.yml` /
 `scripts/build-release.sh` / `go.mod` / `go.sum` / `cmd/**` / `internal/**` /
 `sdk/**` / `LICENSE`）由 `container-smoke` workflow 在 PR 与 main 上验证。
@@ -251,10 +258,11 @@ environment；旧兼容阶段已经结束，当前版本使用根 `--version`，
    Homebrew Formula，并在 macOS/Linux 的 amd64/arm64 环境验证。tap 部署是可选的：必须设置
    `HOMEBREW_TAP_DEPLOY_ENABLED=true` 并在受保护 `release` environment 配置
    `HOMEBREW_TAP_DEPLOY_KEY`；条件缺失时 Release 与 Formula 验证仍会完成。
-   容器发布紧随 `publish`：`publish` 先等待 `build_container` 从同一不可变 tag 重建 Linux
-   二进制并验证镜像契约，镜像验证失败时不会创建公开 GitHub Release；`publish_container`
-   只消费已验证的 `verified-container-*` tar 推 GHCR 并发布多架构 manifest；`latest` 仅指向
-   最新 stable tag，较旧 tag 的 promotion 是正常 skip。
+   `publish` 先等待 `build_container` 从同一不可变 tag 重建 Linux 二进制并验证镜像契约，
+   再在同一次 `release` environment approval 后创建并审计 draft GitHub Release、消费
+   `verified-container-*` tar，推 GHCR 与 Docker Hub 并发布多架构 manifest；双 registry
+   成功后才将 GitHub Release 公开。
+   `latest` 仅指向最新 stable tag，较旧 tag 的 promotion 是正常 skip。
 6. `.github/CODEOWNERS` 将默认 review 路由到唯一维护者；它只会为未来 PR 请求 reviewer，不能让 PR 作者批准自己的 PR，也不替代 `main` 的分支保护要求。
 7. Release 在公开 GitHub Release 后上传只含不可变 tag 的 `clawhub-release-tag` artifact。成功结束的
    `Release` workflow 会由 `publish-clawhub.yml` 通过 `workflow_run` 消费；它 checkout 该 tag、验证

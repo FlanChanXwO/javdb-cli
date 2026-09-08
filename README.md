@@ -92,11 +92,11 @@ The release contract covers macOS, Linux, and Windows on amd64 and arm64. See
 the [development guide](docs/maintainers/development.md#构建打包与平台)
 for reproducible target builds and archive contents.
 
-### Docker (GHCR)
+### Docker (GHCR and Docker Hub)
 
-Every stable release also publishes a multi-architecture image
-(`linux/amd64` and `linux/arm64`) on the GitHub Container Registry. The image
-runs as a non-root user and keeps local state under
+Every stable release also publishes the same multi-architecture image
+(`linux/amd64` and `linux/arm64`) to the GitHub Container Registry and Docker
+Hub. The image runs as a non-root user and keeps local state under
 `/home/javdb/.javdb-cli` (created with private `0700` permissions); mount a named
 volume there to persist login and cache between runs. The default `/work`
 directory is writable by `javdb`, so relative download output paths work without
@@ -112,9 +112,12 @@ docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
   ghcr.io/flanchanxwo/javdb-cli:latest search SSIS-589 --limit 5
 ```
 
-`latest` points at the newest stable release; exact version tags
-(`vX.Y.Z`) and per-architecture tags (`vX.Y.Z-linux-amd64`,
-`vX.Y.Z-linux-arm64`) are also published.
+Docker Hub images are published for stable releases created after that channel
+is enabled. For those releases, use `flanchanxwo/javdb-cli` with the same tag.
+
+Both registries publish `latest` for the newest stable release, exact version
+tags (`vX.Y.Z`), and per-architecture tags (`vX.Y.Z-linux-amd64`,
+`vX.Y.Z-linux-arm64`).
 
 ### Update
 
