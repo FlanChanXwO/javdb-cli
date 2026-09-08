@@ -10,6 +10,7 @@ for workflow in \
 	"$repo_root/.github/workflows/release.yml" \
 	"$repo_root/.github/workflows/e2e.yml" \
 	"$repo_root/.github/workflows/publish-clawhub.yml" \
+	"$repo_root/.github/workflows/container-smoke.yml" \
 	"$repo_root/.github/workflows/auto-assign.yml" \
 	"$repo_root/.github/workflows/pr-triage.yml"; do
 	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
@@ -39,14 +40,97 @@ done
 
 grep -F 'ref: ${{ env.RELEASE_TAG }}' "$release_workflow" >/dev/null
 grep -F 'release_notes_audit:' "$release_workflow" >/dev/null
+# Dockerfile 契约：pinned digest 基础镜像、非 root javdb 用户、私有状态目录、可写 /work、固定入口。
+dockerfile="$repo_root/Dockerfile"
+grep -F 'FROM debian@sha256:' "$dockerfile" >/dev/null
+grep -F '固定基础镜像' "$dockerfile" >/dev/null
+if grep -F '保证构建可复现' "$dockerfile" >/dev/null; then
+	echo 'Dockerfile must not claim full-image reproducibility without pinned runtime packages' >&2
+	exit 1
+fi
+grep -F 'useradd --home-dir /home/javdb --create-home --shell /usr/sbin/nologin --uid 1000 javdb' "$dockerfile" >/dev/null
+grep -F 'install -d -o javdb -g javdb -m 0700 /home/javdb/.javdb-cli' "$dockerfile" >/dev/null
+grep -F 'COPY dist/javdb /usr/local/bin/javdb' "$dockerfile" >/dev/null
+grep -F 'COPY LICENSE /usr/share/doc/javdb-cli/' "$dockerfile" >/dev/null
+grep -F 'ENV HOME=/home/javdb' "$dockerfile" >/dev/null
+grep -F 'WORKDIR /work' "$dockerfile" >/dev/null
+grep -F 'install -d -o javdb -g javdb -m 0755 /work' "$dockerfile" >/dev/null
+grep -F 'LABEL org.opencontainers.image.source="https://github.com/FlanChanXwO/javdb-cli"' "$dockerfile" >/dev/null
+grep -F 'USER javdb' "$dockerfile" >/dev/null
+sed -n 's/^ENTRYPOINT //p' "$dockerfile" | grep -F '["/usr/local/bin/javdb"]' >/dev/null
+# 容器 smoke workflow 在镜像构建文件、构建输入和运行时契约变更时执行。
+container_workflow="$repo_root/.github/workflows/container-smoke.yml"
+grep -F 'name: Container image smoke' "$container_workflow" >/dev/null
+grep -F "'Dockerfile'" "$container_workflow" >/dev/null
+grep -F "'.dockerignore'" "$container_workflow" >/dev/null
+grep -F 'javdb version 0.0.0-smoke (2026-01-01)' "$container_workflow" >/dev/null
+grep -F '/home/javdb/.javdb-cli/' "$container_workflow" >/dev/null
+grep -F 'test -s /usr/share/doc/javdb-cli/LICENSE' "$container_workflow" >/dev/null
+grep -F 'touch /work/container-smoke' "$container_workflow" >/dev/null
+grep -F "state_mode=\$(docker run --rm --entrypoint stat" "$container_workflow" >/dev/null
+grep -F "test \"\$state_mode\" = 700" "$container_workflow" >/dev/null
+grep -F -- '--build-arg REVISION=smoke-revision' "$container_workflow" >/dev/null
+grep -F -- '--build-arg VERSION=0.0.0-smoke' "$container_workflow" >/dev/null
+for label in revision version source licenses; do
+	grep -F "org.opencontainers.image.$label" "$container_workflow" >/dev/null
+done
+# 容器 smoke 必须覆盖生成镜像所依赖的构建脚本、模块文件和 Go 源码；pull_request 与 push 两个触发器都要同步。
+for path in \
+	'scripts/build-release.sh' \
+	'go.mod' \
+	'go.sum' \
+	'cmd/**' \
+	'internal/**' \
+	'sdk/**' \
+	'LICENSE'; do
+	test "$(grep -Fc -- "      - '$path'" "$container_workflow")" -eq 2
+done
 grep -F 'pull-requests: read' "$release_workflow" >/dev/null
 grep -F 'scripts/previous-release-tag.sh' "$release_workflow" >/dev/null
 grep -F 'sh scripts/test-releasenotes.sh' "$release_workflow" >/dev/null
-grep -F 'needs: [validate, verify_release_source, release_notes_audit]' "$release_workflow" >/dev/null
+grep -F 'needs: [validate, verify_release_source, release_notes_audit, build_container]' "$release_workflow" >/dev/null
 grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
 grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
+# 容器镜像发布：build_container 从同一不可变 tag 重建 Linux 二进制、构建并验证镜像契约；
+# publish 在同一次 release environment gate 中消费已验证镜像，推送 GHCR 与 Docker Hub，最后公开 Release。
+grep -F 'build_container:' "$release_workflow" >/dev/null
+if grep -F 'publish_container:' "$release_workflow" >/dev/null; then
+	echo 'container publication must share the single protected publish job' >&2
+	exit 1
+fi
+publish_job=$(sed -n '/^  publish:$/,/^  build_container:/p' "$release_workflow")
+test "$(printf '%s\n' "$publish_job" | grep -Fc 'environment: release')" -eq 1
+printf '%s\n' "$publish_job" | grep -F 'packages: write' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-amd64' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-arm64' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'registry: docker.io' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'username: flanchanxwo' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'password: ${{ secrets.DOCKER_HUB_TOKEN }}' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '\''.isDraft'\'')" = true' >/dev/null
+grep -F 'ghcr.io/flanchanxwo/javdb-cli' "$release_workflow" >/dev/null
+grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' "$release_workflow" >/dev/null
+grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest"' "$release_workflow" >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:latest"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:latest"' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker logout docker.io' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'docker manifest inspect "docker.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
+container_publish_line=$(printf '%s\n' "$publish_job" | grep -nF 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' | cut -d: -f1)
+release_create_line=$(printf '%s\n' "$publish_job" | grep -nF 'gh release create "$RELEASE_TAG"' | cut -d: -f1)
+release_public_line=$(printf '%s\n' "$publish_job" | grep -nF 'gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false' | cut -d: -f1)
+test "$release_create_line" -lt "$container_publish_line"
+test "$container_publish_line" -lt "$release_public_line"
+latest_promotion=$(printf '%s\n' "$publish_job" | sed -n '/^      - name: Promote latest only for the newest stable tag$/,$p')
+printf '%s\n' "$latest_promotion" | grep -F "if [ \"\$RELEASE_TAG\" = \"\$latest_stable_tag\" ]; then" >/dev/null
+if printf '%s\n' "$latest_promotion" | grep -F "test \"\$RELEASE_TAG\" = \"\$latest_stable_tag\"" >/dev/null; then
+	echo 'latest promotion guard must skip older stable tags without failing the job' >&2
+	exit 1
+fi
 # publish job 必须绑定受保护的 release environment，只在此处读取签名私钥，
 # 并从已验证 archives 生成 manifest、signature 与由 manifest 派生的 checksums。
 grep -F 'environment: release' "$release_workflow" >/dev/null
