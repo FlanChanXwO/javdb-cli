@@ -84,7 +84,8 @@ sh scripts/build.sh
 
 每个 stable release 还会在 GitHub Container Registry 发布多架构镜像
 （`linux/amd64` 与 `linux/arm64`）。镜像以非 root 用户运行，本地状态保存在
-`/home/javdb/.javdb-cli`；把命名卷挂载到该目录即可持久化登录状态与缓存。
+`/home/javdb/.javdb-cli`（按私有 `0700` 权限创建）；把命名卷挂载到该目录即可持久化登录状态与缓存。
+默认 `/work` 由 `javdb` 用户可写，因此相对下载输出路径无需额外挂载即可使用。
 
 ```bash
 docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version

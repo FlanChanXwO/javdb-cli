@@ -97,8 +97,10 @@ for reproducible target builds and archive contents.
 Every stable release also publishes a multi-architecture image
 (`linux/amd64` and `linux/arm64`) on the GitHub Container Registry. The image
 runs as a non-root user and keeps local state under
-`/home/javdb/.javdb-cli`; mount a named volume there to persist login and cache
-between runs.
+`/home/javdb/.javdb-cli` (created with private `0700` permissions); mount a named
+volume there to persist login and cache between runs. The default `/work`
+directory is writable by `javdb`, so relative download output paths work without
+additional bind mounts.
 
 ```bash
 docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version

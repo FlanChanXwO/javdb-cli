@@ -9,6 +9,13 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/container-smoke.yml'
+      - 'scripts/build-release.sh'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'sdk/**'
+      - 'LICENSE'
   push:
     branches:
       - main
@@ -16,6 +23,13 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/container-smoke.yml'
+      - 'scripts/build-release.sh'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'sdk/**'
+      - 'LICENSE'
   workflow_dispatch: {}
 
 concurrency:
@@ -65,7 +79,30 @@ jobs:
 
       - name: Build the container image
         shell: bash
-        run: docker build -t javdb-cli-smoke:${{ matrix.goarch }} .
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg REVISION=smoke-revision \
+            --build-arg VERSION=0.0.0-smoke \
+            -t "javdb-cli-smoke:${{ matrix.goarch }}" .
+
+      - name: Verify OCI labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="javdb-cli-smoke:${{ matrix.goarch }}"
+          docker image inspect "$image" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            | grep -Fx 'smoke-revision'
+          docker image inspect "$image" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' \
+            | grep -Fx '0.0.0-smoke'
+          docker image inspect "$image" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' \
+            | grep -Fx 'https://github.com/FlanChanXwO/javdb-cli'
+          docker image inspect "$image" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}' \
+            | grep -Fx 'MIT'
 
       - name: Verify non-root user
         shell: bash
@@ -84,19 +121,23 @@ jobs:
           version=$(docker run --rm javdb-cli-smoke:${{ matrix.goarch }} --version)
           printf '%s\n' "$version" | grep -F 'javdb version 0.0.0-smoke (2026-01-01)'
 
-      - name: Verify state path
+      - name: Verify state path and permissions
         shell: bash
         run: |
           set -euo pipefail
           config_path=$(docker run --rm javdb-cli-smoke:${{ matrix.goarch }} config path)
           printf '%s\n' "$config_path" | grep -F '/home/javdb/.javdb-cli/'
+          state_mode=$(docker run --rm --entrypoint stat javdb-cli-smoke:${{ matrix.goarch }} -c '%a' /home/javdb/.javdb-cli)
+          test "$state_mode" = 700
 
-      - name: Verify working directory
+      - name: Verify working directory and write access
         shell: bash
         run: |
           set -euo pipefail
           workdir=$(docker run --rm --entrypoint sh javdb-cli-smoke:${{ matrix.goarch }} -c 'pwd')
           test "$workdir" = /work
+          docker run --rm --entrypoint sh javdb-cli-smoke:${{ matrix.goarch }} -c \
+            'touch /work/container-smoke && test -f /work/container-smoke'
 
       - name: Verify embedded license
         shell: bash

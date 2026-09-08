@@ -338,7 +338,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [validate, verify_release_source, release_notes_audit]
+    needs: [validate, verify_release_source, release_notes_audit, build_container]
     runs-on: ubuntu-24.04
     # 受保护 environment：只有这里允许读取签名私钥。缺失 secret 或未配置
     # required reviewers 时 job 显式失败（fail-closed），不发布未签名资产。
@@ -632,11 +632,15 @@ jobs:
             --jq '.[].ref | sub("refs/tags/"; "")' \
             | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
             | sort -V | tail -n 1)
-          test "$RELEASE_TAG" = "$latest_stable_tag"
-          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" \
-            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
-          docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
+          if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
+            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" \
+              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
+              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
+          else
+            printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
+              "$RELEASE_TAG" "$latest_stable_tag"
+          fi
 
   render_homebrew_formula:
     name: Render Homebrew formula
