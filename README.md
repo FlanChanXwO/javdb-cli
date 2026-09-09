@@ -288,3 +288,8 @@ large or compatibility-sensitive changes first.
 ## License
 
 [MIT](LICENSE) © FlanChanXwO
+
+## Official JavDB App
+
+- **Website:** [javdb.com](https://javdb.com)
+- **App Download:** [GitHub Releases](https://github.com/bdvajstudio/javdb/releases)
