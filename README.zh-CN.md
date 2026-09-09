@@ -257,3 +257,8 @@ javdb config set auto_relogin true
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO
+
+## JavDB 官方 App
+
+- **官方网站：** [javdb.com](https://javdb.com)
+- **App 下载：** [GitHub Releases](https://github.com/bdvajstudio/javdb/releases)
