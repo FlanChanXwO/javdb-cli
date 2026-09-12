@@ -108,7 +108,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
-			result, err := c.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+			result, err := c.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
 				ThumbnailPath:    expanded.thumb,
 				PreviewImagePath: expanded.image,
 				PreviewVideoPath: expanded.video,
@@ -152,7 +152,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 					image = expandOne(image, args[0], movieID)
 					video = expandOne(video, args[0], movieID)
 				}
-				result, err := c.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+				result, err := c.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
 					ThumbnailPath:    thumb,
 					PreviewImagePath: image,
 					PreviewVideoPath: video,
@@ -174,10 +174,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		},
 	}
 	cmd := &cobra.Command{
-		Use:   "download NUMBER",
-		Short: "Download selected movie media to new files",
-		Long:  "Download a thumbnail, only the first preview image, and/or the complete preview video. Output paths must not already exist.",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "assets NUMBER",
+		Aliases: []string{"download"},
+		Short:   "Save selected movie thumbnail and preview assets to new files",
+		Long:    "Save a thumbnail, only the first preview image, and/or the complete preview video as local thumbnail and preview assets. This command does not download full movies or magnets. Output paths must not already exist.",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(thumbnailPath) == "" && strings.TrimSpace(previewImagePath) == "" && strings.TrimSpace(previewVideoPath) == "" {
 				return fmt.Errorf("set at least one of --thumbnail, --preview-image, or --preview-video")
