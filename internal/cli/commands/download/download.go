@@ -1,4 +1,4 @@
-// Package download 提供影片媒体下载命令。
+// Package download 提供影片本地资源保存命令。
 package download
 
 import (
@@ -16,7 +16,7 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// New builds the media download command.
+// New builds the local movie asset command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var thumbnailPath, previewImagePath, previewVideoPath string
 	var isID bool
@@ -40,8 +40,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		var err error
 		if movieID == "" {
 			if isID {
-				// --id：ref 本身就是内部 movie id，绝不当作番号搜索
-				// （ResolveMovieID 会在无精确匹配时回退首项，可能下载错影片）。
+				// --id：将输入 ref 视为内部 movie ID，绕过 printed-number resolution。
 				movieID = number
 			} else {
 				movieID, err = c.ResolveMovieID(ctx, number)
@@ -199,7 +198,7 @@ func expandOne(path, number, id string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(path, "{number}", number), "{id}", id)
 }
 
-// expandedPaths 是单个输入展开后的三个媒体路径。
+// expandedPaths 是单个输入展开后的三个本地资源路径。
 type expandedPaths struct {
 	thumb string
 	image string
