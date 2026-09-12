@@ -2,7 +2,6 @@
 package mark
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"strconv"
@@ -49,7 +48,8 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if watched {
 				status = "watched"
 			}
-			mid, rev, err := fetch(c, ctx, ref, isID && input.ID == "", status)
+			// 管道信封的内部 ID 是权威目标；无 ID 时再由 --id 决定 raw ref 是否直用。
+			mid, rev, err := fetch(c, ctx, ref, input.ID != "" || isID, status)
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
@@ -79,7 +79,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "Mark a movie as 看過 (--watched) or 想看 (--want)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if watched == want && (len(args) == 1 || stdinHasContent(streams)) {
+			if watched == want {
 				return fmt.Errorf("specify exactly one of --watched or --want")
 			}
 			return runner.Execute(streams, args, asNDJSON, asJSON)
@@ -107,14 +107,4 @@ func display(v any) string {
 	default:
 		return scalar.String(t)
 	}
-}
-
-// stdinHasContent 报告非 TTY stdin 是否有内容（不消费）。
-func stdinHasContent(streams *invocation.Streams) bool {
-	if streams.InIsTerminal {
-		return false
-	}
-	reader := bufio.NewReader(streams.In)
-	_, err := reader.Peek(1)
-	return err == nil
 }

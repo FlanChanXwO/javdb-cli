@@ -106,7 +106,7 @@ javdb unmark SSIS-589
 2. `list REF` 是某个公开/用户合集中的电影；不带子命令的 `lists` 是“我的合集”，需要认证。`lists show/search/related` 与 `list` 的含义不同。
 3. `search --type` 可返回 `movie` 以外的维度。将搜索结果交给 `actor`、`series`、`maker`、`director`、`code` 或 `list` 前，使用 JSON 中的实际 ID/名称，不要从显示文本臆测。
 4. `tags` 的首次调用可能联网建立缓存；`--refresh` 会明确覆写该缓存。标签参数可用 ID、英文名或中文名，优先使用刚读取到的确切值。
-5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。
+5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`mark`/`unmark` 的番号定位会去除首尾空白，按大小写不敏感的完整匹配处理；没有精确匹配或存在多个精确匹配时失败，不选择模糊结果首项。管道 movie envelope 带非空 `id` 时直接使用该 ID；只有确认 raw 引用是内部 ID 时才使用 `--id`。`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。
 6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会独立解析 Release 代理并忽略 `--host`、`JAVDB_HOST` 与已配置 host，再按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。

@@ -95,6 +95,9 @@ userID, username, err := client.ResolveUserID(ctx)
 | 合集 | `MyLists`、`ListInfo`、`RelatedLists` |
 | 标签目录 | `RefreshTagTaxonomy`、`LoadOrRefreshTaxonomy` |
 
+`ResolveMovieID(ctx, number)` 会去除首尾空白，只接受大小写不敏感的完整番号匹配。
+没有精确匹配或存在多个精确候选时都会返回错误；它不会回退到搜索结果的首项。
+
 `RankingsMovies` 与 `RankingsPlayback` 接受 `censored`、`uncensored`、`western`、
 `fc2` 等分区名称，也接受已转换的数字字符串；已知名称会在请求前归一化。三个排行方法均接受
 `day`、`week`、`month`，也接受 API 形式的 `daily`、`weekly`、`monthly`。

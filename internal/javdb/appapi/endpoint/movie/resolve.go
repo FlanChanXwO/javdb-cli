@@ -53,7 +53,7 @@ func ResolveNumberExact(movies []map[string]any, number string) (string, error) 
 		if id == "" {
 			return "", fmt.Errorf("exact match for %s has no id", number)
 		}
-		if selected != "" {
+		if selected != "" && selected != id {
 			return "", fmt.Errorf("番号 %s 有多个精确匹配", number)
 		}
 		selected = id
@@ -64,20 +64,20 @@ func ResolveNumberExact(movies []map[string]any, number string) (string, error) 
 	return selected, nil
 }
 
-// ResolveMovieID searches with zone=all and resolves number → id.
+// ResolveMovieID keeps the legacy signature while using strict number resolution.
 func (e *MovieEndpoint) ResolveMovieID(number string) (string, error) {
-	res, err := e.search.Search(number, model.SearchOptions{Zone: "all", Page: 1})
-	if err != nil {
-		return "", err
-	}
-	return ResolveNumber(res.Movies(), number)
+	return e.ResolveMovieIDExact(context.Background(), number)
 }
 
 // ResolveMovieIDExact searches with zone=all and applies strict exact matching.
 func (e *MovieEndpoint) ResolveMovieIDExact(ctx context.Context, number string) (string, error) {
-	res, err := e.search.SearchContext(ctx, number, model.SearchOptions{Zone: "all", Page: 1, Limit: 100})
+	normalized := strings.TrimSpace(number)
+	if normalized == "" {
+		return "", fmt.Errorf("empty number")
+	}
+	res, err := e.search.SearchContext(ctx, normalized, model.SearchOptions{Zone: "all", Page: 1, Limit: 100})
 	if err != nil {
 		return "", err
 	}
-	return ResolveNumberExact(res.Movies(), number)
+	return ResolveNumberExact(res.Movies(), normalized)
 }

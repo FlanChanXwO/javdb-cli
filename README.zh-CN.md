@@ -151,6 +151,9 @@ javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg 
 运行 `javdb --help`，或阅读[完整命令参考](docs/zh-CN/cli-reference.md)，查看所有命令、flag、
 配置键与认证要求。
 
+影片番号定位采用严格规则：会去除首尾空白，大小写不敏感但必须完整匹配；没有精确匹配或存在多个精确匹配时
+直接失败，不会选择模糊搜索结果的首项。只有在确认引用是内部影片 ID 时才使用 `--id`。
+
 ## 选择使用入口
 
 ### CLI
