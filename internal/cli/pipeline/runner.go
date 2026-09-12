@@ -138,6 +138,8 @@ type Producer struct {
 	Produce func(context.Context) ([]Envelope, error)
 	// RenderText 渲染人类文本。
 	RenderText func(io.Writer, []Envelope) error
+	// RenderJSON 序列化已生成的信封；设置时不再重复调用 LegacyJSON。
+	RenderJSON func(io.Writer, []Envelope) error
 	// LegacyJSON 输出显式 --json 的既有 shape。
 	LegacyJSON func(io.Writer) error
 }
@@ -154,6 +156,9 @@ func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error
 	}
 	switch mode {
 	case OutputJSON:
+		if p.RenderJSON != nil {
+			return p.RenderJSON(streams.Out, envelopes)
+		}
 		return p.LegacyJSON(streams.Out)
 	case OutputText:
 		for _, envelope := range envelopes {
