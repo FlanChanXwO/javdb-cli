@@ -206,6 +206,10 @@ func ParseSizeMiB(text string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid --min-size: %s", text)
 	}
+	// 先检查浮点值，再转换为 int，避免负小数截断成合法的 0。
+	if f < 0 {
+		return 0, fmt.Errorf("invalid --min-size: %s", text)
+	}
 	return int(f * mult), nil
 }
 

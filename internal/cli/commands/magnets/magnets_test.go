@@ -49,6 +49,27 @@ func TestParseSizeMiB(t *testing.T) {
 	}
 }
 
+func TestParseSizeMiBRejectsNegativeValues(t *testing.T) {
+	for _, input := range []string{"-1", "-1M", "-1MB", "-1G", "-1GB", "-0.5", "-0.5M", "-0.5MB", "-0.5G", "-0.5GB"} {
+		t.Run(input, func(t *testing.T) {
+			if n, err := ParseSizeMiB(input); err == nil {
+				t.Fatalf("ParseSizeMiB(%q) = %d, want an error", input, n)
+			}
+		})
+	}
+}
+
+func TestParseSizeMiBAllowsZero(t *testing.T) {
+	for _, input := range []string{"0", "0M", "0MB", "0G", "0GB"} {
+		t.Run(input, func(t *testing.T) {
+			n, err := ParseSizeMiB(input)
+			if err != nil || n != 0 {
+				t.Fatalf("ParseSizeMiB(%q) = %d, %v, want 0 with no error", input, n, err)
+			}
+		})
+	}
+}
+
 func TestWriteMagnetsEmpty(t *testing.T) {
 	var out, errb bytes.Buffer
 	writeMagnets(&out, &errb, nil)
