@@ -66,6 +66,54 @@ func TestNewTextAndHumanOutputModes(t *testing.T) {
 	}
 }
 
+func TestNewJSONOutputFetchesListsOnceAndPreservesShape(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/lists" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"data": map[string]any{
+				"lists": []map[string]any{{
+					"id": "list-1", "name": "My List", "movies_count": 2,
+				}},
+				"current_page": "3",
+			},
+		})
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("JSON execute: %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("MyLists requests = %d, want 1", requests)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &got); err != nil {
+		t.Fatalf("JSON output = %q: %v", streams.Out.(*bytes.Buffer).String(), err)
+	}
+	if got["current_page"] != "3" {
+		t.Fatalf("current_page = %#v, want %q", got["current_page"], "3")
+	}
+	items, ok := got["lists"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("lists = %#v, want one item", got["lists"])
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok || item["id"] != "list-1" || item["name"] != "My List" {
+		t.Fatalf("list item = %#v", items[0])
+	}
+}
+
 func TestWriteListRows(t *testing.T) {
 	var out, errb bytes.Buffer
 	if err := writeListRows(&out, &errb, []map[string]any{
