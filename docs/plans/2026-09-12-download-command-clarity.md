@@ -29,15 +29,17 @@ Do not use `media` because it is too broad and can still imply the full video. D
 
 ### Compatibility behavior
 
-`javdb download ...` must continue to invoke the same local-media behavior as an alias.
+`javdb download ...` must continue to invoke the exact same local-media behavior through Cobra alias resolution.
 
 Requirements:
 - root help and primary documentation advertise `assets`;
-- `download` remains accepted by Cobra as an alias;
-- no separate legacy implementation is kept;
-- no duplicated flags or execution path;
+- `download` remains accepted as an alias;
+- one Cobra command object owns both names;
+- no separate legacy implementation, duplicated flags, or wrapper execution path is kept;
 - no automatic full-movie/magnet download behavior is added;
 - no deprecation warning is required in this first migration because warnings would change stderr contracts for existing automation.
+
+Cobra alias resolution canonicalizes the command object. Therefore `javdb download --help` is allowed to display canonical usage such as `javdb assets NUMBER` plus the alias metadata. Compatibility means the old invocation is accepted and behaves identically; it does **not** require the help page to pretend `download` is still the canonical `Use` string. Tests must not force a second wrapper command merely to preserve the legacy spelling in usage text.
 
 ### Public SDK
 
@@ -76,35 +78,45 @@ If a future real-download feature is wanted, it should be designed independently
 
 Primary files:
 - `internal/cli/root_test.go`
-- `internal/cli/commands/download/download_test.go` or the eventual renamed package test file
+- `internal/cli/commands/download/download_test.go`
 
 Before production changes, add tests that express the desired public contract:
 - root help advertises `assets` as the canonical command;
-- root help no longer presents `download` as the primary command row;
+- root help no longer presents `download` as a primary command row;
 - `javdb assets --help` succeeds and clearly says it saves thumbnail/preview assets only;
-- `javdb download --help` still succeeds through the compatibility alias;
+- `javdb download --help` succeeds through alias resolution and identifies `download` as an alias/canonicalized invocation rather than requiring legacy `Use` text;
 - `assets` and `download` expose the same flags;
-- invoking either name reaches the same execution path.
+- invoking either name through the **root command tree** reaches the same execution path.
+
+Alias behavior must be tested through the root command, because Cobra aliases are resolved by the parent command. Do not rely only on executing the child command object directly in isolation.
 
 The initial test run should fail against the current `download` canonical name.
 
 ### Task 2 — make `assets` canonical with `download` as alias
 
-Primary files:
+Primary file:
 - `internal/cli/commands/download/download.go`
-- `internal/cli/root.go`
 
-Preferred minimal implementation:
-- keep one Cobra command object;
+Expected minimal implementation:
+- keep the existing command package and one Cobra command object;
 - change `Use` to `assets NUMBER`;
-- add `download` as a Cobra alias;
+- add `download` to `Aliases`;
 - update `Short` / `Long` text to explicitly say “thumbnail and preview assets” and explicitly state that the command does not download full movies or magnets;
-- retain all existing flags and behavior;
-- retain existing local-file safety checks and batch placeholders.
+- retain all existing flags, output behavior, local-file safety checks and batch placeholders.
 
-Avoid a second wrapper command that delegates to `assets`; aliases should share one implementation.
+`internal/cli/root.go` should normally require **no production change**: it already registers the command object returned by the package, and Cobra derives the visible command name from that object's `Use`. Only edit root registration if a failing test proves it is genuinely necessary.
 
-### Task 3 — decide whether to rename the internal package only if it improves clarity without churn
+### Task 3 — neutralize stale resolver-specific comments without taking resolver ownership
+
+`download.go` currently contains a comment explaining `--id` by referring to the old `ResolveMovieID` first-hit fallback. That wording becomes stale when `fix/movie-resolution-correctness` lands.
+
+Because this branch owns `download.go`, rewrite such comments to stable semantics that are true both before and after the resolver branch, for example:
+
+> `--id` treats the supplied ref as the internal movie ID and bypasses printed-number resolution.
+
+Do **not** implement or test strict resolver behavior in this branch. This task is comment hygiene only and prevents the three branches from leaving contradictory source documentation after merge.
+
+### Task 4 — keep the internal package path unless a real need appears
 
 Current package path is `internal/cli/commands/download`.
 
@@ -112,11 +124,11 @@ Default recommendation: **do not move the package in this PR**. The package is i
 
 Allowed cleanup:
 - update the package comment to describe local movie assets rather than generic download behavior;
-- rename internal local identifiers only when directly necessary for clarity.
+- rename local identifiers only when directly necessary for clarity.
 
 Do not rename SDK methods or pipeline kinds.
 
-### Task 4 — preserve all existing media-write behavior
+### Task 5 — preserve all existing media-write behavior
 
 Regression coverage must retain current behavior for:
 - `--thumbnail`;
@@ -135,7 +147,7 @@ The only intended public semantic change is which command name is canonical.
 
 Do not opportunistically fix movie resolver semantics here; that is owned by `fix/movie-resolution-correctness`.
 
-### Task 5 — update documentation and skill wording in owned sections
+### Task 6 — update documentation and skill wording in owned sections
 
 This branch owns every documentation section whose topic is local media assets / the old `download` command name.
 
@@ -146,7 +158,7 @@ Update:
 - `docs/zh-CN/cli-reference.md`
 - `skills/javdb-cli/SKILL.md`
 - any `skills/javdb-cli/references/*` file that instructs agents to call the current `download` command
-- `docs/maintainers/architecture.md` only where the command inventory names `download`
+- `docs/maintainers/architecture.md` only where command inventory names `download`
 - root help literal expectations/tests
 
 Required documentation wording:
@@ -160,13 +172,15 @@ Shared-file ownership rules:
 - do not edit list/pipeline/config/filter semantics owned by `fix/cli-contract-correctness`;
 - do not reflow unrelated Markdown paragraphs or regenerate entire documents.
 
-### Task 6 — update architecture/command inventory references without changing protocol
+Put shared-document updates in a dedicated final documentation commit after code/tests are stable. This keeps any later merge conflict local to documentation and makes topic-preserving resolution straightforward.
 
-Where maintainers' docs list command directories or command names, clarify that the implementation package may remain `commands/download` while the canonical CLI command is `assets`.
+### Task 7 — update architecture/command inventory references without changing protocol
+
+Where maintainers' docs list command directories or command names, clarify that the implementation package remains `commands/download` while the canonical CLI command is `assets`.
 
 Do not rename `pipeline.KindDownload` in this branch.
 
-### Task 7 — full regression verification
+### Task 8 — full regression verification
 
 Run focused and full checks:
 
@@ -183,8 +197,8 @@ If the project has e2e/help snapshot coverage, add or update only the cases nece
 
 Production ownership:
 - `internal/cli/commands/download/**`
-- `internal/cli/root.go` only for registration/import/help effects related to this command
 - `internal/cli/root_test.go` only for command-name/help expectations
+- `internal/cli/root.go` only if a failing test proves registration must change; expect it to stay untouched
 
 Documentation ownership:
 - local-media-download / local-media-assets sections;
@@ -195,23 +209,27 @@ Documentation ownership:
 
 - `internal/javdb/appapi/endpoint/movie/resolve.go`
 - resolver tests
+- `sdk/movie.go`
 - `internal/cli/commands/mark/**`
 - `internal/cli/commands/unmark/**`
-- `internal/cli/pipeline/runner.go`
+- `internal/cli/pipeline/**`
 - `internal/cli/commands/lists/**`
 - `internal/cli/commands/collections/**`
 - `internal/cli/commands/config/**`
 - `internal/cli/commands/search/**`
 - `internal/cli/commands/magnets/**`
-- public SDK signatures in `sdk/` unless a comment-only clarification is strictly required; prefer docs instead
+- public SDK signatures in `sdk/`
 
 If implementation seems to require these files, stop and re-evaluate rather than crossing branch ownership.
 
 ## Acceptance criteria
 
 - `javdb assets NUMBER ...` is the canonical documented command.
-- `javdb download NUMBER ...` remains functional as an alias.
+- `javdb download NUMBER ...` remains functional as a Cobra alias and reaches the exact same implementation.
+- root help lists `assets`, not `download`, as the primary command.
+- alias help may canonicalize to `assets`; no wrapper command exists solely to preserve legacy help spelling.
 - help text makes it unambiguous that only thumbnail/preview assets are written.
+- stale comments in `download.go` no longer depend on the legacy fuzzy resolver behavior.
 - no full movie, magnet, BitTorrent, 115, aria2, or qBittorrent behavior is introduced.
 - SDK public names remain unchanged.
 - pipeline machine kind remains unchanged.
@@ -221,12 +239,12 @@ If implementation seems to require these files, stop and re-evaluate rather than
 
 ## Parallel-merge contract
 
-This branch is independent from:
+This branch is implementation-independent from:
 - `fix/movie-resolution-correctness`
 - `fix/cli-contract-correctness`
 
-It must not depend on either branch being merged first. In particular, tests for `assets` should not assert the new strict resolver behavior; resolver correctness belongs to the other branch.
+It must not depend on either branch being merged before development starts. Tests for `assets` must not assert strict resolver behavior or changed pipeline/list semantics.
 
-Recommended merge order is movie-resolution correctness -> CLI contract correctness -> download command clarity, but all three branches are safe to implement simultaneously from the shared base.
+Production-file ownership is disjoint from the other branches. Shared documentation edits must stay within the named anchors and be isolated in the final documentation commit.
 
-For shared documentation files, merge by topic ownership. Never resolve a conflict by taking one branch's whole-file version, because that could discard another branch's independently valid documentation updates.
+Recommended merge order remains movie-resolution correctness -> CLI contract correctness -> download command clarity, with this branch last because it owns command-inventory wording that should describe the final combined CLI. Never resolve a shared-doc conflict by taking one branch's whole-file version.
