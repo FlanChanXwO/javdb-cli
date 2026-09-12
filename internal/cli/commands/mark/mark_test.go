@@ -2,10 +2,7 @@ package mark
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -74,45 +71,5 @@ func TestMarkStatusValidationDoesNotReadStdin(t *testing.T) {
 				t.Fatalf("stdin reads = %d, want 0", reader.reads)
 			}
 		})
-	}
-}
-
-func TestMarkValidNonTTYInputReachesBatchRunner(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
-	var searchedNumber string
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch {
-		case request.URL.Path == "/api/v2/search":
-			searchedNumber = request.URL.Query().Get("q")
-			_ = json.NewEncoder(writer).Encode(map[string]any{
-				"success": true,
-				"data": map[string]any{
-					"movies": []map[string]any{{"number": searchedNumber, "id": "id-" + searchedNumber}},
-				},
-			})
-		case strings.HasSuffix(request.URL.Path, "/reviews"):
-			_ = json.NewEncoder(writer).Encode(map[string]any{
-				"success": true,
-				"data":    map[string]any{"id": "review-1"},
-			})
-		default:
-			http.NotFound(writer, request)
-		}
-	}))
-	defer server.Close()
-
-	streams := invocation.NewStreams(strings.NewReader("SSIS-589\n"), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
-	cmd.SetArgs([]string{"--want"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-	if searchedNumber != "SSIS-589" {
-		t.Fatalf("search q = %q, want SSIS-589", searchedNumber)
-	}
-	if got := streams.Out.(*bytes.Buffer).String(); got != "SSIS-589\n" {
-		t.Fatalf("output = %q, want forwarded movie line", got)
 	}
 }

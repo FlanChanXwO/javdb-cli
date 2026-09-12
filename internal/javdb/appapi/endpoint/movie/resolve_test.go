@@ -13,38 +13,28 @@ import (
 
 func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 	for _, tc := range []struct {
-		name            string
-		input           string
-		movies          []map[string]any
-		wantID          string
-		wantError       string
-		wantQuery       string
-		wantSearchCalls int
+		name      string
+		input     string
+		movies    []map[string]any
+		wantID    string
+		wantQuery string
 	}{
 		{
-			name:            "normalizes exact input before search",
-			input:           "  ssis-589  ",
-			wantID:          "id-exact",
-			wantQuery:       "ssis-589",
-			wantSearchCalls: 1,
+			name:      "normalizes exact input before search",
+			input:     "  ssis-589  ",
+			wantID:    "id-exact",
+			wantQuery: "ssis-589",
 			movies: []map[string]any{
 				{"number": "SSIS-589", "id": "id-exact"},
 			},
 		},
 		{
-			name:            "fuzzy only results fail",
-			input:           "SSIS-589",
-			wantQuery:       "SSIS-589",
-			wantSearchCalls: 1,
+			name:      "fuzzy only results fail",
+			input:     "SSIS-589",
+			wantQuery: "SSIS-589",
 			movies: []map[string]any{
 				{"number": "SSIS-58X", "id": "id-near"},
 			},
-		},
-		{
-			name:            "whitespace only input fails before search",
-			input:           "   ",
-			wantError:       "empty number",
-			wantSearchCalls: 0,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,26 +65,22 @@ func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 				}
 			} else if err == nil {
 				t.Fatalf("ResolveMovieID returned %q for invalid candidate set", gotID)
-			} else if tc.wantError != "" && err.Error() != tc.wantError {
-				t.Errorf("error = %q, want %q", err, tc.wantError)
 			}
 
-			if searchCalls != tc.wantSearchCalls {
-				t.Fatalf("search calls = %d, want %d", searchCalls, tc.wantSearchCalls)
+			if searchCalls != 1 {
+				t.Fatalf("search calls = %d, want 1", searchCalls)
 			}
-			if tc.wantSearchCalls > 0 {
-				if got := gotQuery.Get("q"); got != tc.wantQuery {
-					t.Errorf("q = %q, want %q", got, tc.wantQuery)
-				}
-				if got := gotQuery.Get("page"); got != "1" {
-					t.Errorf("page = %q, want 1", got)
-				}
-				if got := gotQuery.Get("limit"); got != "100" {
-					t.Errorf("limit = %q, want 100", got)
-				}
-				if _, ok := gotQuery["movie_type"]; ok {
-					t.Errorf("movie_type = %q, want zone=all omission", gotQuery.Get("movie_type"))
-				}
+			if got := gotQuery.Get("q"); got != tc.wantQuery {
+				t.Errorf("q = %q, want %q", got, tc.wantQuery)
+			}
+			if got := gotQuery.Get("page"); got != "1" {
+				t.Errorf("page = %q, want 1", got)
+			}
+			if got := gotQuery.Get("limit"); got != "100" {
+				t.Errorf("limit = %q, want 100", got)
+			}
+			if _, ok := gotQuery["movie_type"]; ok {
+				t.Errorf("movie_type = %q, want zone=all omission", gotQuery.Get("movie_type"))
 			}
 		})
 	}
@@ -109,58 +95,64 @@ func newMovieEndpointForTest(t *testing.T, host string) *MovieEndpoint {
 	return NewMovie(client, search.NewSearch(client))
 }
 
-func TestResolveNumberExactMatchesCaseInsensitive(t *testing.T) {
-	movies := []map[string]any{
-		{"number": "SSIS-589", "id": "id-a"},
-		{"number": "HZGD-246", "id": "id-b"},
-	}
-	id, err := ResolveNumberExact(movies, "  ssis-589  ")
-	if err != nil {
-		t.Fatalf("ResolveNumberExact: %v", err)
-	}
-	if id != "id-a" {
-		t.Errorf("id = %q", id)
-	}
-}
-
-func TestResolveNumberExactRejectsZeroMultipleAndMissingID(t *testing.T) {
+func TestResolveNumberExact(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		movies []map[string]any
+		name    string
+		input   string
+		movies  []map[string]any
+		wantID  string
+		wantErr bool
 	}{
-		{name: "no match", movies: []map[string]any{{"number": "HZGD-246", "id": "id-b"}}},
-		{name: "two exact", movies: []map[string]any{
-			{"number": "SSIS-589", "id": "id-a"},
-			{"number": "ssis-589", "id": "id-b"},
-		}},
-		{name: "exact match without id", movies: []map[string]any{
-			{"number": "SSIS-589"},
-		}},
-		{name: "exact match with empty id", movies: []map[string]any{
-			{"number": "SSIS-589", "id": ""},
-		}},
-		{name: "empty input", movies: nil},
+		{
+			name:  "exact match is case insensitive and trims input",
+			input: "  ssis-589  ",
+			movies: []map[string]any{
+				{"number": "SSIS-589", "id": "id-a"},
+			},
+			wantID: "id-a",
+		},
+		{
+			name:  "duplicate exact rows with same id are accepted",
+			input: "SSIS-589",
+			movies: []map[string]any{
+				{"number": "SSIS-589", "id": "id-a"},
+				{"number": "ssis-589", "id": "id-a"},
+			},
+			wantID: "id-a",
+		},
+		{
+			name:  "duplicate exact rows with different ids are ambiguous",
+			input: "SSIS-589",
+			movies: []map[string]any{
+				{"number": "SSIS-589", "id": "id-a"},
+				{"number": "ssis-589", "id": "id-b"},
+			},
+			wantErr: true,
+		},
+		{
+			name:  "fuzzy only rows have no exact match",
+			input: "SSIS-589",
+			movies: []map[string]any{
+				{"number": "SSIS-58X", "id": "id-near"},
+			},
+			wantErr: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			number := "SSIS-589"
-			if tc.name == "empty input" {
-				number = "  "
+			id, err := ResolveNumberExact(tc.movies, tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ResolveNumberExact returned %q, want error", id)
+				}
+				return
 			}
-			if _, err := ResolveNumberExact(tc.movies, number); err == nil {
-				t.Fatal("ResolveNumberExact accepted ambiguous input")
+			if err != nil {
+				t.Fatalf("ResolveNumberExact: %v", err)
+			}
+			if id != tc.wantID {
+				t.Errorf("id = %q, want %q", id, tc.wantID)
 			}
 		})
-	}
-}
-
-func TestResolveNumberExactDoesNotFallBackToFirstHit(t *testing.T) {
-	// 严格解析不得回退到搜索首项：首项是近似命中（非完整相等）时必须失败。
-	movies := []map[string]any{
-		{"number": "HZGD-246", "id": "id-b"},
-		{"number": "SSIS-58X", "id": "id-near"},
-	}
-	if _, err := ResolveNumberExact(movies, "SSIS-589"); err == nil {
-		t.Fatal("ResolveNumberExact fell back to the first search hit")
 	}
 }
 

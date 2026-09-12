@@ -53,7 +53,7 @@ func ResolveNumberExact(movies []map[string]any, number string) (string, error) 
 		if id == "" {
 			return "", fmt.Errorf("exact match for %s has no id", number)
 		}
-		if selected != "" {
+		if selected != "" && selected != id {
 			return "", fmt.Errorf("番号 %s 有多个精确匹配", number)
 		}
 		selected = id
