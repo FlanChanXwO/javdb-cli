@@ -131,7 +131,7 @@ func pipelineConsumerRef(input Envelope) string {
 }
 
 // Producer 是无位置参数命令的输出器：不消费 stdin，默认走 Text 渲染；
-// 显式 --ndjson 逐条输出信封，--json 走 LegacyJSON。
+// 显式 --ndjson 逐条输出信封，--json 优先走 RenderJSON，否则走 LegacyJSON。
 type Producer struct {
 	Name string
 	// Produce 执行并返回输出信封序列（空切片表示无结果）。
