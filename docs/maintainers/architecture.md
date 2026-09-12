@@ -147,7 +147,9 @@ meta）、严格 NDJSON 与逐行文本解码、输入分类（图片 magic → 
 显式 --ndjson/--json 互斥，单/批 JSON cardinality）、批处理执行（顺序保持、
 原位错误信封、最终非零；Concurrency > 0 时按输入并发并保序写出）、
 Consumer/BatchRunner/ListProducer 三件套把只读/状态命令统一接入。RunMany
-支持单项 fan-out（如 movie 搜索按影片展开）。命令不
+支持单项 fan-out（如 movie 搜索按影片展开）。Producer 可选的 RenderJSON
+消费本次 Produce 已生成的 envelopes，保留命令既有的 legacy JSON shape 并避免
+重复请求；未设置时继续使用 LegacyJSON fallback。命令不
 复制解析逻辑；`auth login` 与密码提示排除通用 stdin。
 
 ### `internal/update`

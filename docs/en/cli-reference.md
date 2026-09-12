@@ -35,7 +35,11 @@ explicitly enabled, an expired JWT can trigger one re-login using the password
 already stored for the default account.
 
 With no key, `config get` prints the common keys on a TTY and reads a batch of
-keys from stdin otherwise. `config get`/`config unset` also accept piped
+keys from stdin otherwise. On a TTY, an explicit `--json` takes precedence
+over the human shortcut and emits a JSON array of `config_key` envelopes;
+`--ndjson` emits one envelope per displayed key. Each envelope uses the key as
+`ref` and stores its value in `data.value`, with proxy credentials redacted by
+the same rules as keyed output. `config get`/`config unset` also accept piped
 `config_key` envelopes or plain key lines. `config set` always takes two
 explicit arguments and never reads stdin. Reverse-search sources are
 hand-edited TOML under `[[reverse_search.sources]]`; see
@@ -88,8 +92,10 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
   [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json|--ndjson]
 ```
 
-`search` accepts `censored`, `uncensored`, `western`, `fc2`, or `all` for
-`--zone`; `--type` can select `movie`, `code`, `series`, `actor`, `maker`,
+`search --zone` and `lists search --zone` accept `censored`, `uncensored`,
+`western`, `fc2`, or `all`; invalid values are rejected before a network
+request. `search --filter-by` documents `can_play`, `magnets`, `subtitle`, and
+`single`; `--type` can select `movie`, `code`, `series`, `actor`, `maker`,
 `director`, or `list`. `detail --json` includes graph IDs that can be passed to
 entity commands. `tags --refresh` downloads and rewrites the local public tag
 cache, so it is not read-only local behavior.
@@ -102,9 +108,11 @@ shared by the commands above and below.
 uses tab-separated rows and is not a stable machine schema.
 
 `search --magnets N` fetches magnets for each result movie: `--cnsub`,
-`--hd`, and `--min-size` filter before ranking; `N` controls how many
-magnets to keep per movie (`0` = all, `N` = top N by best rule). Text
-output emits magnet URIs; `--ndjson` emits `kind=magnet` envelopes.
+`--hd`, and `--min-size` filter before ranking; `--min-size` accepts a
+non-negative number with an optional `M`, `MB`, `G`, or `GB` suffix. Zero is
+valid; negative values, including negative fractions, are rejected. `N`
+controls how many magnets to keep per movie (`0` = all, `N` = top N by best
+rule). Text output emits magnet URIs; `--ndjson` emits `kind=magnet` envelopes.
 `--magnets` is only supported for movie search and is mutually exclusive
 with non-movie `--type`.
 
@@ -206,7 +214,11 @@ exclusive; JSON or NDJSON is emitted only when its flag is explicit.
 `--json` keeps the legacy single-item shape and emits a JSON array of envelopes
 for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
 `top250`, `watched`, `want`, `recent`) never read stdin and follow the same
-TTY/non-TTY text split; use `--ndjson` to emit one envelope per record.
+TTY/non-TTY text split; use `--ndjson` to emit one envelope per record. Fan-out
+commands emit one envelope per result: list records use the stable list ID in
+`id`, the display name with ID fallback in `ref`, and keep the raw object under
+`data.list`; collection records use the corresponding singular entity kind
+and keep the raw object under `data.entity`.
 
 ## Entity and list navigation
 
@@ -218,16 +230,24 @@ javdb director REF [ENTITY OPTIONS]
 javdb code REF [ENTITY OPTIONS]
 javdb list REF [ENTITY OPTIONS]
 
-javdb lists [--page N] [--limit N] [--sort-by ORDER] [--json]
-javdb lists show REF [--json]
-javdb lists search KEYWORD [--zone ZONE] [--page N] [--limit N] [--json]
-javdb lists related NUMBER [--id] [--page N] [--limit N] [--json]
+javdb lists [--page N] [--limit N] [--sort-by ORDER] [--json|--ndjson]
+javdb lists show REF [--json|--ndjson]
+javdb lists search KEYWORD [--zone ZONE] [--page N] [--limit N] [--json|--ndjson]
+javdb lists related NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
 ```
 
 Entity options include zone, repeated tag/main filters, sorting, page/limit,
 `--has-magnets`, and JSON/pipeline output (`--json` or `--ndjson`). `lists`
 without a subcommand reads the authenticated user's lists; `list REF` is the
 entity-filmography command for a public or user list.
+
+`lists --json` preserves the legacy `{"lists":[...],"current_page":"..."}`
+shape and reuses the same fetched page. `lists --ndjson`, `lists search
+--ndjson`, and `lists related --ndjson` emit one `kind=list` envelope per list,
+with the raw list object in `data.list`. For `lists related`, a movie envelope's
+non-empty `id` is used as the authoritative movie ID; it is not reparsed as a
+printed number. Legacy human output and aggregate JSON for raw positional input
+remain unchanged.
 
 ## Magnets, rankings, and personal state
 
@@ -242,7 +262,7 @@ javdb top250 [--zone ZONE] [--year YYYY] [--from RANK] [--page N] [--limit N] \
 javdb watched [--has-magnets]
 javdb want [--has-magnets]
 javdb recent [--has-magnets]
-javdb collections actors|series|codes|makers|directors
+javdb collections actors|series|codes|makers|directors [--json|--ndjson]
 javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
@@ -252,6 +272,12 @@ javdb unmark NUMBER [--id]
 the SDK, which maps them to the App API's numeric ranking-zone values. All three
 ranking commands accept `day`, `week`, or `month`; period normalization is
 handled internally.
+
+`collections --ndjson` fans out the five selectors to the singular kinds
+`actor`, `series`, `code`, `maker`, and `director`. Each envelope uses the
+projected `name_zht`/`name` as `ref` with ID fallback, the projected ID as
+`id`, and stores the raw entity in `data.entity`. Selector-based `--json`
+retains the legacy aggregate `{"items":[...]}` shape.
 
 `rankings movies`, `rankings playback`, and `top250` emit `{"movies":[...]}` with `--json`;
 `rankings actors` emits `{"actors":[...]}`. These result-only objects are emitted
