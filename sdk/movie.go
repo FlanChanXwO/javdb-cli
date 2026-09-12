@@ -5,16 +5,16 @@ import (
 	"fmt"
 )
 
-// MovieMediaDownloadOptions 指定要保存到本地的影片媒体。空路径表示不下载该媒体。
+// MovieAssetDownloadOptions 指定要保存到本地的影片资源。空路径表示不下载该资源。
 // PreviewImagePath 始终只对应详情返回的第一张预览图。
-type MovieMediaDownloadOptions struct {
+type MovieAssetDownloadOptions struct {
 	ThumbnailPath    string
 	PreviewImagePath string
 	PreviewVideoPath string
 }
 
-// MovieMediaDownloadResult 记录实际写入的媒体路径和字节数。
-type MovieMediaDownloadResult struct {
+// MovieAssetDownloadResult 记录实际写入的资源路径和字节数。
+type MovieAssetDownloadResult struct {
 	ThumbnailPath     string
 	ThumbnailBytes    int64
 	PreviewImagePath  string
@@ -42,23 +42,23 @@ func (c *Client) MovieComments(ctx context.Context, movieID string, page, limit 
 	return c.api.MovieComments(movieID, page, limit)
 }
 
-// DownloadMovieMedia 下载调用方选择的影片媒体。图片会先验证并还原为标准图片字节；
+// DownloadMovieAssets 下载调用方选择的影片资源。图片会先验证并还原为标准图片字节；
 // 预览视频会完整下载已结束的 HLS 预览流。输出文件不得预先存在。
-func (c *Client) DownloadMovieMedia(ctx context.Context, movieID string, opt MovieMediaDownloadOptions) (MovieMediaDownloadResult, error) {
+func (c *Client) DownloadMovieAssets(ctx context.Context, movieID string, opt MovieAssetDownloadOptions) (MovieAssetDownloadResult, error) {
 	_ = ctx
 	if opt.ThumbnailPath == "" && opt.PreviewImagePath == "" && opt.PreviewVideoPath == "" {
-		return MovieMediaDownloadResult{}, fmt.Errorf("select at least one movie media output")
+		return MovieAssetDownloadResult{}, fmt.Errorf("select at least one movie asset output")
 	}
-	if err := distinctMovieMediaPaths(opt); err != nil {
-		return MovieMediaDownloadResult{}, err
+	if err := distinctMovieAssetPaths(opt); err != nil {
+		return MovieAssetDownloadResult{}, err
 	}
 
 	movie, err := c.api.MovieDetail(movieID)
 	if err != nil {
-		return MovieMediaDownloadResult{}, fmt.Errorf("fetch movie detail: %w", err)
+		return MovieAssetDownloadResult{}, fmt.Errorf("fetch movie detail: %w", err)
 	}
-	sources := movieMediaURLs(movie)
-	result := MovieMediaDownloadResult{}
+	sources := movieAssetURLs(movie)
+	result := MovieAssetDownloadResult{}
 	if opt.ThumbnailPath != "" {
 		if sources.thumbnail == "" {
 			return result, fmt.Errorf("movie has no thumbnail")
@@ -92,14 +92,14 @@ func (c *Client) DownloadMovieMedia(ctx context.Context, movieID string, opt Mov
 	return result, nil
 }
 
-type movieMediaURLsResult struct {
+type movieAssetURLsResult struct {
 	thumbnail    string
 	previewImage string
 	previewVideo string
 }
 
-func movieMediaURLs(movie map[string]any) movieMediaURLsResult {
-	result := movieMediaURLsResult{
+func movieAssetURLs(movie map[string]any) movieAssetURLsResult {
+	result := movieAssetURLsResult{
 		thumbnail:    movieString(movie["thumb_url"]),
 		previewVideo: movieString(movie["preview_video_url"]),
 	}
@@ -141,14 +141,14 @@ func movieString(value any) string {
 	return fmt.Sprint(value)
 }
 
-func distinctMovieMediaPaths(opt MovieMediaDownloadOptions) error {
+func distinctMovieAssetPaths(opt MovieAssetDownloadOptions) error {
 	seen := map[string]bool{}
 	for _, path := range []string{opt.ThumbnailPath, opt.PreviewImagePath, opt.PreviewVideoPath} {
 		if path == "" {
 			continue
 		}
 		if seen[path] {
-			return fmt.Errorf("movie media output paths must be distinct")
+			return fmt.Errorf("movie asset output paths must be distinct")
 		}
 		seen[path] = true
 	}
