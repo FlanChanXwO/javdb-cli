@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestMovieMediaURLsUsesOnlyFirstPreviewImage(t *testing.T) {
-	sources := movieMediaURLs(map[string]any{
+func TestMovieAssetURLsUsesOnlyFirstPreviewImage(t *testing.T) {
+	sources := movieAssetURLs(map[string]any{
 		"thumb_url":         "https://media.example.test/thumb.jpg",
 		"preview_video_url": "https://media.example.test/preview.m3u8",
 		"preview_images": []any{
@@ -28,12 +28,12 @@ func TestMovieMediaURLsUsesOnlyFirstPreviewImage(t *testing.T) {
 	}
 }
 
-func TestDistinctMovieMediaPaths(t *testing.T) {
-	err := distinctMovieMediaPaths(MovieMediaDownloadOptions{
+func TestDistinctMovieAssetPaths(t *testing.T) {
+	err := distinctMovieAssetPaths(MovieAssetDownloadOptions{
 		ThumbnailPath:    "same.jpg",
 		PreviewImagePath: "same.jpg",
 	})
 	if err == nil {
-		t.Fatal("duplicate media paths unexpectedly accepted")
+		t.Fatal("duplicate asset paths unexpectedly accepted")
 	}
 }
