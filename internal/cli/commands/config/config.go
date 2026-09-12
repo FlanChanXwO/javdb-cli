@@ -199,6 +199,17 @@ func newGet(streams *invocation.Streams) *cobra.Command {
 				return fmt.Errorf("unknown key %q", args[0])
 			}
 			if len(args) == 0 {
+				if streams.InIsTerminal && (asJSON || asNDJSON) {
+					mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
+					if err != nil {
+						return err
+					}
+					inputs := make([]pipeline.Envelope, 0, len(displayConfigKeys))
+					for _, key := range displayConfigKeys {
+						inputs = append(inputs, pipeline.New(pipeline.KindConfigKey, key, ""))
+					}
+					return runner.ExecuteWithInputs(streams, inputs, mode)
+				}
 				// 无 key：TTY 打印全部；非 TTY 从 stdin 读取 key 批处理。
 				cfg, _, err := load()
 				if err != nil {

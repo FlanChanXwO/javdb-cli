@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 )
 
 // isolateHome 把 HOME 指向临时目录，避免配置命令测试污染真实本机状态。
@@ -217,6 +219,92 @@ func TestConfigGetListsReverseSearchScalars(t *testing.T) {
 		if !strings.Contains(out.String(), line) {
 			t.Errorf("config get output lacks %q:\n%s", line, out.String())
 		}
+	}
+}
+
+func assertConfigDisplayEnvelopes(t *testing.T, envelopes []pipeline.Envelope) {
+	t.Helper()
+	if len(envelopes) != len(displayConfigKeys) {
+		t.Fatalf("envelopes = %d, want %d", len(envelopes), len(displayConfigKeys))
+	}
+	for index, key := range displayConfigKeys {
+		envelope := envelopes[index]
+		if err := envelope.Validate(); err != nil {
+			t.Errorf("envelope %d (%s) invalid: %v", index, key, err)
+		}
+		if envelope.Kind != pipeline.KindConfigKey {
+			t.Errorf("envelope %d kind = %q, want %q", index, envelope.Kind, pipeline.KindConfigKey)
+		}
+		if envelope.Ref != key {
+			t.Errorf("envelope %d ref = %q, want %q", index, envelope.Ref, key)
+		}
+		value, ok := envelope.Data["value"].(string)
+		if !ok {
+			t.Errorf("envelope %d value = %#v, want string", index, envelope.Data["value"])
+			continue
+		}
+		if key == "https_proxy" && value != "***" {
+			t.Errorf("https_proxy value = %q, want redacted value", value)
+		}
+	}
+}
+
+func TestConfigGetTTYJSONListsDisplayKeysAsEnvelopes(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "https_proxy", "http://user:secret@proxy.example:8080"); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	streams := invocation.NewStreams(strings.NewReader(""), &out, &errb)
+	streams.InIsTerminal = true
+	command := New(streams)
+	command.SetArgs([]string{"get", "--json"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("get --json: %v", err)
+	}
+	if strings.Contains(out.String(), "secret") {
+		t.Fatalf("JSON output leaks proxy credentials: %s", out.String())
+	}
+	var envelopes []pipeline.Envelope
+	if err := json.Unmarshal(out.Bytes(), &envelopes); err != nil {
+		t.Fatalf("decode JSON output: %v\n%s", err, out.String())
+	}
+	assertConfigDisplayEnvelopes(t, envelopes)
+}
+
+func TestConfigGetTTYNDJSONListsDisplayKeysAsEnvelopes(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "set", "https_proxy", "http://user:secret@proxy.example:8080"); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	streams := invocation.NewStreams(strings.NewReader(""), &out, &errb)
+	streams.InIsTerminal = true
+	command := New(streams)
+	command.SetArgs([]string{"get", "--ndjson"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("get --ndjson: %v", err)
+	}
+	if strings.Contains(out.String(), "secret") {
+		t.Fatalf("NDJSON output leaks proxy credentials: %s", out.String())
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	envelopes := make([]pipeline.Envelope, 0, len(lines))
+	for index, line := range lines {
+		envelope, err := pipeline.DecodeNDJSON(line)
+		if err != nil {
+			t.Fatalf("decode NDJSON line %d: %v\n%s", index+1, err, out.String())
+		}
+		envelopes = append(envelopes, envelope)
+	}
+	assertConfigDisplayEnvelopes(t, envelopes)
+}
+
+func TestConfigGetTTYRejectsJSONAndNDJSONTogether(t *testing.T) {
+	isolateHome(t)
+	_, _, err := executeConfig(t, "get", "--json", "--ndjson")
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("get with mutually exclusive output flags error = %v", err)
 	}
 }
 
