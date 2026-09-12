@@ -7,22 +7,25 @@ Base: `main@1b21ca94a3d11008ce6028c670ea36fc2fbac3c9`
 
 Make public movie-number resolution fail closed instead of silently selecting the first search hit, while preserving the existing strict candidate-search behavior already used by reverse search. Also repair the state-changing movie consumers that currently mishandle pipeline IDs or pre-read stdin.
 
-This branch owns **movie identity correctness**. It must not absorb unrelated pipeline protocol, list fan-out, config output, magnet filter, or download-command naming work.
+This branch owns **movie identity correctness**. It must not absorb unrelated pipeline protocol, list fan-out, config output, magnet filter, or local-asset API naming work.
 
 ## User-visible problems covered
 
-1. Public `sdk.Client.ResolveMovieID` currently reaches the legacy endpoint resolver, which prefers an exact case-insensitive number match but falls back to the first search result when no exact number is present. A mistyped number can therefore resolve to the wrong movie.
+1. Public `sdk.Client.ResolveMovieID` currently delegates to the legacy endpoint resolver, which prefers an exact case-insensitive number match but falls back to the first search result when no exact number is present. A mistyped number can therefore resolve to the wrong movie.
 2. `mark` checks whether non-TTY stdin has content with a temporary `bufio.Reader.Peek(1)`. That reader may buffer bytes from the underlying pipe and then be discarded, so the real batch reader can observe EOF or truncated input.
 3. `mark` and `unmark` use `pipeline.ConsumerRef(input)` but can still call `ResolveMovieID` when the envelope already carries an internal movie ID. In that path the internal ID is incorrectly treated as a printed number.
 
 ## Non-goals
 
-- Do not rename or redesign `download` in this branch.
+- Do not rename or redesign `download` / `assets` in this branch.
+- Do not rename local-asset SDK symbols; `refactor/download-command-clarity` owns that breaking API cleanup.
+- Do not modify `sdk/movie.go`, `sdk/movie_test.go`, or `sdk/contract_external_test.go`; those files are owned by the download-clarity branch.
 - Do not modify `lists related`; that belongs to `fix/cli-contract-correctness`.
 - Do not change pipeline envelope kinds, output cardinality, JSON/NDJSON rendering, or shared empty-input diagnostics.
 - Do not add BitTorrent, 115, aria2, qBittorrent, or any downloader backend.
 - Do not change release notes or `changelog/vX.Y.Z/`; release-prep remains a separate process.
 - Do not remove or rename `ResolveMovieIDExact`, `ResolveNumber`, or other compatibility symbols as part of this correctness fix.
+- Do not expand this branch into a broader SDK context-propagation refactor. Public `ResolveMovieID` currently discards its context before delegating; this branch fixes result correctness through the endpoint it already calls without taking ownership of `sdk/movie.go`.
 
 ## Correctness contract
 
@@ -34,16 +37,16 @@ If there is no exact match, return a not-found style error. Never return the fir
 
 If the candidate page contains multiple exact-match rows, fail rather than choose silently. Preserve the existing `ResolveNumberExact` ambiguity rule instead of inventing a second definition of exactness.
 
-The public resolver must use the same candidate-search envelope already used by `ResolveMovieIDExact`:
+The endpoint resolver used by public `sdk.Client.ResolveMovieID` must reuse the strict candidate-search behavior already implemented by `ResolveMovieIDExact`:
 
 - `zone=all`;
 - page 1;
 - limit 100;
-- context-aware search via the existing `SearchContext` path.
+- exact matching through `ResolveNumberExact`.
 
-Do **not** regress to the legacy resolver's smaller/default first page or discard the caller's context merely to reuse its function name.
+`ResolveNumber` may remain as an internal compatibility helper with its historical first-hit fallback, but production `MovieEndpoint.ResolveMovieID` must no longer depend on it. `ResolveNumberExact` remains the source of truth for exact candidate selection.
 
-`ResolveNumber` may remain as an internal compatibility helper with its historical first-hit fallback, but production `ResolveMovieID` resolution must no longer depend on it. `ResolveNumberExact` remains the source of truth for exact candidate selection.
+Because this branch deliberately does not touch `sdk/movie.go`, it does not change the current public wrapper's context forwarding behavior. The correctness fix must therefore be achieved inside the endpoint resolver rather than by adding a competing SDK implementation.
 
 ### Pipeline movie envelopes
 
@@ -57,13 +60,15 @@ The command always requires exactly one of `--watched` or `--want`. Validate tha
 
 ## Implementation tasks
 
-### Task 1 — lock down strict public resolver behavior with failing tests
+### Task 1 — lock down strict endpoint and public-facade behavior with failing tests
 
 Add regression tests before implementation changes.
 
 Primary files:
 - `internal/javdb/appapi/endpoint/movie/resolve_test.go`
-- a focused SDK test such as `sdk/movie_test.go` if the public facade path is not already covered cleanly
+- new focused `sdk/resolve_test.go` if a public SDK regression test is needed
+
+Do **not** put resolver tests in `sdk/movie_test.go`; the download-clarity branch owns that existing file for the SDK asset rename.
 
 Required cases:
 - exact case-insensitive match succeeds;
@@ -71,28 +76,27 @@ Required cases:
 - fuzzy-only results return an error instead of the first result ID;
 - no results return an error;
 - multiple exact-match rows fail deterministically;
-- candidate search still uses zone `all` and a limit of 100;
-- public `sdk.Client.ResolveMovieID` reaches the context-aware strict path rather than the legacy first-hit resolver.
+- endpoint candidate search uses zone `all` and limit 100;
+- public `sdk.Client.ResolveMovieID` becomes strict through its existing `c.api.ResolveMovieID(number)` delegation path.
 
-Keep the existing `ResolveNumber` compatibility test unless implementation intentionally changes that helper for a separately justified reason. The behavior under repair is public `ResolveMovieID`, not an unrelated helper symbol.
+Keep the existing `ResolveNumber` compatibility test. The behavior under repair is `MovieEndpoint.ResolveMovieID` and therefore public `sdk.Client.ResolveMovieID`, not the legacy helper itself.
 
-The first focused test run must demonstrate the public fuzzy-fallback failure before production code is changed.
+The first focused test run must demonstrate the fuzzy-fallback failure before production code is changed.
 
-### Task 2 — route `ResolveMovieID` through the existing strict resolver
+### Task 2 — make the existing endpoint resolver delegate to strict resolution
 
-Primary files:
-- `sdk/movie.go`
+Primary file:
 - `internal/javdb/appapi/endpoint/movie/resolve.go`
 
 Preferred implementation:
-- make public `sdk.Client.ResolveMovieID(ctx, number)` delegate directly to the existing strict/context-aware `ResolveMovieIDExact(ctx, number)` capability instead of discarding `ctx`;
-- make the promoted/internal `MovieEndpoint.ResolveMovieID(number)` a compatibility wrapper around the same exact resolver using `context.Background()` if keeping that method is required by existing internal adapter contracts;
-- preserve all existing public function names and signatures;
-- preserve `zone=all`, page 1 and limit 100 behavior;
-- keep `ResolveNumberExact` as the single matching algorithm;
+- keep the existing `MovieEndpoint.ResolveMovieID(number string)` signature so the public SDK wrapper requires no edit;
+- implement it as a thin compatibility entry point to the already-existing strict resolver, e.g. `ResolveMovieIDExact(context.Background(), number)`;
+- thereby reuse `SearchContext`, `zone=all`, page 1, limit 100, and `ResolveNumberExact` rather than maintaining two algorithms;
+- preserve `ResolveMovieIDExact(ctx, number)` for callers that already pass a context;
+- preserve `ResolveNumber` as a legacy helper, but stop using it from production `ResolveMovieID` resolution;
 - do not introduce a compatibility flag for first-hit fallback.
 
-Do not rewrite the search stack or create a repository-wide resolver abstraction. The point is to reuse the strict implementation that already exists.
+Do not rewrite the search stack or create a repository-wide resolver abstraction. The point is to collapse production number resolution onto the strict implementation while leaving the SDK file available exclusively to the parallel asset-rename branch.
 
 ### Task 3 — fix `mark` stdin consumption
 
@@ -129,12 +133,12 @@ Tests should detect accidental calls to search/resolve when an envelope ID is al
 
 ### Task 5 — documentation sync within this branch's owned anchors
 
-Because resolver semantics are public SDK behavior and affect movie-number commands, update only the resolver-related wording in:
+Because resolver semantics affect movie-number targeting, update only resolver-related wording in:
 - `docs/en/sdk.md`
 - `docs/zh-CN/sdk.md`
-- `docs/en/cli-reference.md` and `docs/zh-CN/cli-reference.md`: only the common movie-number resolution / mutation behavior paragraph, not local-media-download or pipeline sections
+- `docs/en/cli-reference.md` and `docs/zh-CN/cli-reference.md`: only the common movie-number resolution / mutation behavior paragraph, not local-asset or pipeline sections
 - `README.md` / `README.zh-CN.md`: only a concise correctness note at an existing resolver/movie-number anchor; do not edit command inventory owned by the download branch
-- `skills/javdb-cli/SKILL.md`: only the rule describing exact movie-number targeting for mutations; do not edit media-download command names
+- `skills/javdb-cli/SKILL.md`: only the rule describing exact movie-number targeting for mutations; do not edit local-asset command or SDK names
 
 Do not reflow unrelated paragraphs. Put shared-document updates in a dedicated final documentation commit after code/tests are stable so later three-way merge conflict resolution remains mechanical.
 
@@ -145,7 +149,7 @@ The current `download.go` contains a comment that explicitly mentions the old fi
 Production ownership:
 - `internal/javdb/appapi/endpoint/movie/resolve.go`
 - resolver tests in the same package
-- `sdk/movie.go` and focused SDK resolver tests
+- new `sdk/resolve_test.go` only if public-facade coverage is needed
 - `internal/cli/commands/mark/**`
 - `internal/cli/commands/unmark/**`
 
@@ -153,6 +157,9 @@ Documentation ownership is limited to strict-number-resolution wording as descri
 
 ## Files this branch must not modify
 
+- `sdk/movie.go`
+- `sdk/movie_test.go`
+- `sdk/contract_external_test.go`
 - `internal/cli/pipeline/**`
 - `internal/cli/commands/lists/**`
 - `internal/cli/commands/collections/**`
@@ -161,7 +168,7 @@ Documentation ownership is limited to strict-number-resolution wording as descri
 - `internal/cli/commands/magnets/**`
 - `internal/cli/commands/download/**`
 - root command registration for `download` / `assets`
-- local-media-download documentation sections
+- local-asset SDK documentation sections and exported names
 
 If implementation appears to require one of these files, stop and re-evaluate the boundary rather than silently crossing it.
 
@@ -181,13 +188,14 @@ No live JavDB mutation should be required for unit tests. Use existing fake/test
 
 ## Acceptance criteria
 
-- Public `sdk.Client.ResolveMovieID` can no longer turn a fuzzy-only search hit into a movie ID.
-- Strict resolution uses the existing context-aware zone-all, limit-100 candidate search.
+- Public `sdk.Client.ResolveMovieID` can no longer turn a fuzzy-only search hit into a movie ID through its existing endpoint delegation.
+- Production number resolution uses the existing strict zone-all, limit-100 candidate search.
 - Exact number matching remains case-insensitive; multiple exact rows fail closed.
 - `mark` batch stdin is not consumed before runner execution.
 - `mark` and `unmark` use an envelope's movie ID directly.
 - Existing positional `--id` behavior is preserved.
-- Existing `ResolveNumber` compatibility behavior is not accidentally broadened into public resolution.
+- Existing `ResolveNumber` compatibility behavior is not accidentally broadened into production resolution.
+- `sdk/movie.go` and SDK asset symbols are untouched by this branch.
 - Default test/build commands pass.
 - No files owned by the other two parallel branches are modified.
 
@@ -196,6 +204,8 @@ No live JavDB mutation should be required for unit tests. Use existing fake/test
 This branch may be developed simultaneously with:
 - `fix/cli-contract-correctness`
 - `refactor/download-command-clarity`
+
+`refactor/download-command-clarity` exclusively owns `sdk/movie.go`, `sdk/movie_test.go`, and `sdk/contract_external_test.go` for the SDK asset rename. This branch must obtain strict public resolution solely by changing the endpoint already called by the unchanged SDK wrapper.
 
 Do not cherry-pick code between these branches while development is in progress. Production-file ownership must remain disjoint. Shared documentation edits must stay within the named anchors and be committed separately from code.
 
