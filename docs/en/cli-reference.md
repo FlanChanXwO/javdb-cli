@@ -261,6 +261,14 @@ magnet set; it does not download anything. `mark` and `unmark` change remote
 watch/want state. `mark` requires exactly one of `--watched` or `--want`; obtain
 confirmation before running either command for another person or account.
 
+Commands that accept a movie `NUMBER` trim surrounding whitespace and require a
+case-insensitive full-number match. Zero exact matches and multiple exact
+matches are errors; commands never select the first fuzzy search result. For a
+state-changing command, use `--id` only when the raw movie reference is a
+confirmed internal ID. When consuming a `kind=movie` pipeline envelope, a
+non-empty `id` is authoritative; `--id` applies only to raw references or an
+envelope without its own ID.
+
 ## Version and update
 
 ```bash
