@@ -308,7 +308,7 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 	}{
 		{[]string{"search"}, "keyword or an image"},
 		{[]string{"detail"}, "keyword or an image"},
-		{[]string{"mark"}, "keyword or an image"},
+		{[]string{"mark"}, "specify exactly one of --watched or --want"},
 		{[]string{"update", "--json"}, "--json is only supported with --check"},
 		{[]string{"frobnicate"}, `unknown command "frobnicate" for "javdb"`},
 	}
