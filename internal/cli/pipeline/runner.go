@@ -3,6 +3,7 @@ package pipeline
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -68,7 +69,10 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson
 		return err
 	}
 	if len(inputs) == 0 {
-		return fmt.Errorf("keyword or an image")
+		if b.Name == "" {
+			return errors.New("input required")
+		}
+		return fmt.Errorf("%s: input required", b.Name)
 	}
 	return b.ExecuteWithInputs(streams, inputs, mode)
 }

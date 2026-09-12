@@ -27,6 +27,16 @@ func TestBatchRunnerEmptyInputUsesCommandName(t *testing.T) {
 	}
 }
 
+func TestBatchRunnerEmptyInputWithoutNameUsesGenericMessage(t *testing.T) {
+	streams, _ := testStreams("", true)
+	runner := &BatchRunner{Kinds: []Kind{KindMovie}}
+
+	err := runner.Execute(streams, nil, false, false)
+	if err == nil || err.Error() != "input required" {
+		t.Fatalf("error = %v, want input required", err)
+	}
+}
+
 func TestProducerJSONRendererUsesAlreadyProducedEnvelopes(t *testing.T) {
 	streams, out := testStreams("", false)
 	events := []string{}

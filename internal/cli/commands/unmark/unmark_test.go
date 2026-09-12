@@ -24,7 +24,7 @@ func TestNewRequiresNumber(t *testing.T) {
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "keyword or an image") {
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unmark: input required") {
 		t.Fatalf("expected arg error, got %v", err)
 	}
 }

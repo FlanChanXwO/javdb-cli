@@ -307,8 +307,8 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 		want string
 	}{
 		{[]string{"search"}, "keyword or an image"},
-		{[]string{"detail"}, "keyword or an image"},
-		{[]string{"mark"}, "keyword or an image"},
+		{[]string{"detail"}, "detail: input required"},
+		{[]string{"mark"}, "mark: input required"},
 		{[]string{"update", "--json"}, "--json is only supported with --check"},
 		{[]string{"frobnicate"}, `unknown command "frobnicate" for "javdb"`},
 	}
