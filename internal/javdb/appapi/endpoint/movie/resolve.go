@@ -64,13 +64,9 @@ func ResolveNumberExact(movies []map[string]any, number string) (string, error) 
 	return selected, nil
 }
 
-// ResolveMovieID searches with zone=all and resolves number → id.
+// ResolveMovieID keeps the legacy signature while using strict number resolution.
 func (e *MovieEndpoint) ResolveMovieID(number string) (string, error) {
-	res, err := e.search.Search(number, model.SearchOptions{Zone: "all", Page: 1})
-	if err != nil {
-		return "", err
-	}
-	return ResolveNumber(res.Movies(), number)
+	return e.ResolveMovieIDExact(context.Background(), number)
 }
 
 // ResolveMovieIDExact searches with zone=all and applies strict exact matching.
