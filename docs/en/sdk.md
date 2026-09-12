@@ -95,7 +95,7 @@ log, panic, error wrapper, or test fixture.
 | --- | --- |
 | Discovery | `Search`, `MovieDetail`, `ResolveMovieID`, `Browse`, `ResolveTags` |
 | Reviews | `MovieComments` |
-| Local media downloads | `DownloadMovieMedia`, `MovieMediaDownloadOptions`, `MovieMediaDownloadResult` |
+| Local movie assets | `DownloadMovieAssets`, `MovieAssetDownloadOptions`, `MovieAssetDownloadResult` |
 | Entity graph | `ResolveEntity`, `EntityDetail`, `EntityMovies`, `AllEntityMovies` |
 | Magnets | `MovieMagnets`, `FilterMagnets`, `PickBestMagnet`, `RankMagnets`, `MagnetURI` |
 | Rankings | `RankingsMovies`, `RankingsActors`, `RankingsPlayback`, `Top250` |
@@ -126,10 +126,10 @@ actors := result.Named("actors")
 walks subsequent pages. Non-positive values use page `1` and limit `20`, which
 matches the CLI's one-page default.
 
-Use `DownloadMovieMedia` only with explicitly chosen new local paths:
+Use `DownloadMovieAssets` only with explicitly chosen new local paths:
 
 ```go
-downloaded, err := client.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+downloaded, err := client.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
     PreviewImagePath: "/chosen/output/preview-0.jpg", // only preview_images[0]
     PreviewVideoPath: "/chosen/output/preview.ts",
 })
@@ -139,17 +139,25 @@ if err != nil {
 fmt.Println(downloaded.PreviewImageBytes, downloaded.PreviewVideoBytes)
 ```
 
-Each non-empty path selects one media item. `PreviewImagePath` always uses only
+Each non-empty path selects one local asset. `PreviewImagePath` always uses only
 the first preview image; the method never enumerates later images. Images are
 validated before writing. The HLS video path supports completed single-media
 playlists (including AES-128); master, byte-range, fragmented-MP4, and
 unfinished/live playlists return an error. All selected outputs must be
 distinct, their parent directories must exist, and no output may already exist.
+This API writes only thumbnail/preview assets; it does not download a full movie
+or a magnet target.
+
+This is a breaking API rename. `DownloadMovieMedia`,
+`MovieMediaDownloadOptions`, and `MovieMediaDownloadResult` were removed
+without aliases or forwarding wrappers; replace them with
+`DownloadMovieAssets`, `MovieAssetDownloadOptions`, and
+`MovieAssetDownloadResult`.
 
 Methods that update watch/want state or refresh the local public tag cache are
 mutations. Call them only when the application has explicit authority to do so.
-Media downloads are local file writes and likewise require an explicitly chosen
-destination from the application user.
+Local asset writes are local file writes and likewise require an explicitly
+chosen destination from the application user.
 
 ## Errors and compatibility
 
