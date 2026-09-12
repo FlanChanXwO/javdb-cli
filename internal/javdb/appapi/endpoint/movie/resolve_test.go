@@ -17,6 +17,7 @@ func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 		input           string
 		movies          []map[string]any
 		wantID          string
+		wantError       string
 		wantQuery       string
 		wantSearchCalls int
 	}{
@@ -42,6 +43,7 @@ func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 		{
 			name:            "whitespace only input fails before search",
 			input:           "   ",
+			wantError:       "empty number",
 			wantSearchCalls: 0,
 		},
 	} {
@@ -73,6 +75,8 @@ func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 				}
 			} else if err == nil {
 				t.Fatalf("ResolveMovieID returned %q for invalid candidate set", gotID)
+			} else if tc.wantError != "" && err.Error() != tc.wantError {
+				t.Errorf("error = %q, want %q", err, tc.wantError)
 			}
 
 			if searchCalls != tc.wantSearchCalls {
