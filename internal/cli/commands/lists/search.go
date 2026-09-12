@@ -33,12 +33,21 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},
-		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
 			items, err := runOne(c, ctx, pipeline.ConsumerRef(input))
 			if err != nil {
-				return pipeline.Envelope{}, err
+				return nil, err
 			}
-			return pipeline.New(pipeline.KindList, input.Ref, "").WithData(map[string]any{"lists": items}), nil
+			envelopes := make([]pipeline.Envelope, 0, len(items))
+			for _, item := range items {
+				id := display(item["id"])
+				ref := display(item["name"])
+				if ref == "" {
+					ref = id
+				}
+				envelopes = append(envelopes, pipeline.New(pipeline.KindList, ref, id).WithData(map[string]any{"list": item}))
+			}
+			return envelopes, nil
 		},
 		Legacy: func(args []string) error {
 			c, err := client.New(options, "")
