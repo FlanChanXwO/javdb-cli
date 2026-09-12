@@ -1,8 +1,101 @@
 package movie
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
+
+	transport "github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/client"
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/endpoint/search"
 )
+
+func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		input  string
+		movies []map[string]any
+		wantID string
+	}{
+		{
+			name:  "case insensitive match trims input",
+			input: "  ssis-589  ",
+			movies: []map[string]any{
+				{"number": "SSIS-589", "id": "id-exact"},
+			},
+			wantID: "id-exact",
+		},
+		{
+			name:  "fuzzy only results fail",
+			input: "SSIS-589",
+			movies: []map[string]any{
+				{"number": "SSIS-58X", "id": "id-near"},
+			},
+		},
+		{
+			name:   "no results fail",
+			input:  "SSIS-589",
+			movies: nil,
+		},
+		{
+			name:  "multiple exact results fail",
+			input: "SSIS-589",
+			movies: []map[string]any{
+				{"number": "SSIS-589", "id": "id-first"},
+				{"number": "ssis-589", "id": "id-second"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotQuery url.Values
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/api/v2/search" {
+					http.NotFound(writer, request)
+					return
+				}
+				gotQuery = request.URL.Query()
+				_ = json.NewEncoder(writer).Encode(map[string]any{
+					"success": true,
+					"data":    map[string]any{"movies": tc.movies},
+				})
+			}))
+			defer server.Close()
+
+			endpoint := newMovieEndpointForTest(t, server.URL)
+			gotID, err := endpoint.ResolveMovieID(tc.input)
+			if tc.wantID != "" {
+				if err != nil {
+					t.Fatalf("ResolveMovieID: %v", err)
+				}
+				if gotID != tc.wantID {
+					t.Fatalf("id = %q, want %q", gotID, tc.wantID)
+				}
+			} else if err == nil {
+				t.Fatalf("ResolveMovieID returned %q for invalid candidate set", gotID)
+			}
+
+			if gotQuery.Get("page") != "1" {
+				t.Errorf("page = %q, want 1", gotQuery.Get("page"))
+			}
+			if gotQuery.Get("limit") != "100" {
+				t.Errorf("limit = %q, want 100", gotQuery.Get("limit"))
+			}
+			if _, ok := gotQuery["movie_type"]; ok {
+				t.Errorf("movie_type = %q, want zone=all omission", gotQuery.Get("movie_type"))
+			}
+		})
+	}
+}
+
+func newMovieEndpointForTest(t *testing.T, host string) *MovieEndpoint {
+	t.Helper()
+	client, err := transport.New(transport.Options{Host: host})
+	if err != nil {
+		t.Fatalf("new transport client: %v", err)
+	}
+	return NewMovie(client, search.NewSearch(client))
+}
 
 func TestResolveNumberExactMatchesCaseInsensitive(t *testing.T) {
 	movies := []map[string]any{
