@@ -63,8 +63,8 @@ The CLI selector nouns remain plural because they select a collection:
 
 For pipeline execution, each collected entity becomes one envelope:
 - `kind` is the singular stable protocol kind above;
-- `id` is the entity ID;
-- `ref` is the entity name, falling back to ID;
+- `id` and display name come from the existing `result.ProjectNamed` projection, which already normalizes `name_zht` before `name`;
+- `ref` is the projected name, falling back to the projected ID;
 - raw metadata is stored under `data.entity`.
 
 Do not emit a single actor/code/etc. envelope containing the whole `items` array. Such an envelope is syntactically valid after kind normalization but still cannot be piped correctly into `actor`, `code`, `maker`, or `director` consumers.
@@ -221,12 +221,13 @@ Primary files:
 Use a small explicit local mapping from plural selector -> singular pipeline kind, then use `BatchRunner.RunMany` for pipeline output.
 
 For each fetched item:
-- derive ID from `item["id"]`;
-- derive ref from `item["name"]` with ID fallback;
+- call the existing `result.ProjectNamed(item)` instead of duplicating entity-name normalization;
+- use `row.ID` as the envelope ID;
+- use `row.Name` as ref, falling back to `row.ID`;
 - emit one envelope with `data.entity=item`;
-- error rather than emit a success envelope if an item has neither a usable name nor ID.
+- error rather than emit a success envelope if both projected name and ID are empty.
 
-Regression tests should cover all five supported selectors and validate every emitted envelope with the existing pipeline validator. Include at least one multi-item case proving output cardinality equals entity count.
+Regression tests should cover all five supported selectors and validate every emitted envelope with the existing pipeline validator. Include at least one `name_zht` case and one multi-item case proving output cardinality equals entity count.
 
 Preserve legacy human output and single raw positional `--json` aggregate `{"items": [...]}` shape.
 
