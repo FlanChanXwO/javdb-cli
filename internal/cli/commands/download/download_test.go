@@ -11,9 +11,10 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 )
 
-func TestNewHelpDocumentsSinglePreviewImage(t *testing.T) {
+func TestNewHelpDescribesLocalMovieAssets(t *testing.T) {
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
@@ -23,9 +24,37 @@ func TestNewHelpDocumentsSinglePreviewImage(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("help error = %v", err)
 	}
-	for _, want := range []string{"--thumbnail", "--preview-image", "--preview-video", "only the first preview image"} {
+	for _, want := range []string{
+		"--thumbnail",
+		"--preview-image",
+		"--preview-video",
+		"only the first preview image",
+		"thumbnail and preview assets",
+		"does not download full movies",
+		"magnets",
+	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("download help missing %q: %s", want, out.String())
+		}
+	}
+}
+
+func TestNewUsesAssetsAsCanonicalCommand(t *testing.T) {
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
+
+	if got, want := cmd.Name(), "assets"; got != want {
+		t.Fatalf("canonical command name = %q, want %q", got, want)
+	}
+	if got, want := cmd.Use, "assets NUMBER"; got != want {
+		t.Fatalf("canonical command use = %q, want %q", got, want)
+	}
+	if !cmd.HasAlias("download") {
+		t.Fatal("canonical assets command is missing download alias")
+	}
+	for _, name := range []string{"id", "thumbnail", "preview-image", "preview-video", "json", "ndjson"} {
+		if cmd.LocalNonPersistentFlags().Lookup(name) == nil {
+			t.Fatalf("canonical assets command missing flag %q", name)
 		}
 	}
 }
@@ -169,4 +198,194 @@ func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {
 	if !bytes.Equal(body, []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03}) {
 		t.Fatalf("output content = %x", body)
 	}
+}
+
+func TestDownloadPipelineWritesSelectedAssetsAndNDJSON(t *testing.T) {
+	isolateDownloadTestHome(t)
+	var detailIDs []string
+	server, fixtures := newDownloadAssetServer(t, &detailIDs, nil)
+	defer server.Close()
+
+	dir := t.TempDir()
+	thumbnailPath := filepath.Join(dir, "{number}-{id}.jpg")
+	previewImagePath := filepath.Join(dir, "{number}-{id}.png")
+	previewVideoPath := filepath.Join(dir, "{number}-{id}.ts")
+	streams := invocation.NewStreams(strings.NewReader("{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"SSIS-589\",\"id\":\"movie-id\"}\n"), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{
+		"--thumbnail", thumbnailPath,
+		"--preview-image", previewImagePath,
+		"--preview-video", previewVideoPath,
+		"--ndjson",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(detailIDs) != 1 || detailIDs[0] != "movie-id" {
+		t.Fatalf("detail requested for ids %v, want [movie-id]", detailIDs)
+	}
+
+	var output pipeline.Envelope
+	if err := json.Unmarshal([]byte(strings.TrimSpace(streams.Out.(*bytes.Buffer).String())), &output); err != nil {
+		t.Fatalf("decode NDJSON output: %v; output=%q", err, streams.Out.(*bytes.Buffer).String())
+	}
+	if output.Schema != pipeline.Schema || output.Kind != pipeline.KindDownload || output.Ref != "SSIS-589" || output.ID != "movie-id" {
+		t.Fatalf("output envelope = %+v", output)
+	}
+	expandedThumbnail := filepath.Join(dir, "SSIS-589-movie-id.jpg")
+	expandedPreviewImage := filepath.Join(dir, "SSIS-589-movie-id.png")
+	expandedPreviewVideo := filepath.Join(dir, "SSIS-589-movie-id.ts")
+	for _, asset := range []struct {
+		name string
+		path string
+		want []byte
+	}{
+		{name: "thumbnail", path: expandedThumbnail, want: fixtures.thumbnail},
+		{name: "preview image", path: expandedPreviewImage, want: fixtures.previewImage},
+		{name: "preview video", path: expandedPreviewVideo, want: fixtures.previewVideo},
+	} {
+		got, err := os.ReadFile(asset.path)
+		if err != nil {
+			t.Errorf("read %s: %v", asset.name, err)
+		} else if !bytes.Equal(got, asset.want) {
+			t.Errorf("%s content = %x, want %x", asset.name, got, asset.want)
+		}
+	}
+	for key, want := range map[string]string{
+		"thumbnail":     expandedThumbnail,
+		"preview_image": expandedPreviewImage,
+		"preview_video": expandedPreviewVideo,
+	} {
+		if got, ok := output.Data[key].(string); !ok || got != want {
+			t.Errorf("output data[%q] = %#v, want %q", key, output.Data[key], want)
+		}
+	}
+}
+
+func TestDownloadPositionalIDWritesJSONEnvelope(t *testing.T) {
+	isolateDownloadTestHome(t)
+	var detailIDs []string
+	var searchCalls int
+	server, fixtures := newDownloadAssetServer(t, &detailIDs, &searchCalls)
+	defer server.Close()
+
+	target := filepath.Join(t.TempDir(), "positional.jpg")
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	streams.InIsTerminal = true
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"movie-id", "--id", "--thumbnail", target, "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if searchCalls != 0 {
+		t.Fatalf("positional --id called ResolveMovieID %d time(s)", searchCalls)
+	}
+	if len(detailIDs) != 1 || detailIDs[0] != "movie-id" {
+		t.Fatalf("detail requested for ids %v, want [movie-id]", detailIDs)
+	}
+	var output pipeline.Envelope
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &output); err != nil {
+		t.Fatalf("decode JSON output: %v; output=%q", err, streams.Out.(*bytes.Buffer).String())
+	}
+	if output.Schema != pipeline.Schema || output.Kind != pipeline.KindDownload || output.Ref != "movie-id" || output.ID != "movie-id" {
+		t.Fatalf("output envelope = %+v", output)
+	}
+	if got, err := os.ReadFile(target); err != nil {
+		t.Fatalf("read output: %v", err)
+	} else if !bytes.Equal(got, fixtures.thumbnail) {
+		t.Fatalf("thumbnail content = %x, want %x", got, fixtures.thumbnail)
+	}
+}
+
+func TestDownloadBatchRejectsMissingParentDirectory(t *testing.T) {
+	isolateDownloadTestHome(t)
+	var detailIDs []string
+	server, _ := newDownloadAssetServer(t, &detailIDs, nil)
+	defer server.Close()
+
+	root := t.TempDir()
+	target := filepath.Join(root, "missing", "{id}.jpg")
+	stdin := "{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"SSIS-589\",\"id\":\"movie-1\"}\n" +
+		"{\"schema\":\"javdb.pipeline/v1\",\"kind\":\"movie\",\"ref\":\"HZGD-246\",\"id\":\"movie-2\"}\n"
+	streams := invocation.NewStreams(strings.NewReader(stdin), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"--thumbnail", target, "--ndjson"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "parent directory does not exist") {
+		t.Fatalf("expected missing-parent error, got %v", err)
+	}
+	if len(detailIDs) != 0 {
+		t.Fatalf("preflight unexpectedly downloaded details for ids %v", detailIDs)
+	}
+}
+
+type downloadAssetFixtures struct {
+	thumbnail    []byte
+	previewImage []byte
+	previewVideo []byte
+}
+
+func newDownloadAssetServer(t *testing.T, detailIDs *[]string, searchCalls *int) (*httptest.Server, downloadAssetFixtures) {
+	t.Helper()
+	fixtures := downloadAssetFixtures{
+		thumbnail:    []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x01},
+		previewImage: []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00},
+		previewVideo: []byte("first preview segment\nsecond preview segment\n"),
+	}
+	firstSegment := []byte("first preview segment\n")
+	secondSegment := []byte("second preview segment\n")
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON := func(value any) {
+			writer.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(writer).Encode(value)
+		}
+		switch {
+		case request.URL.Path == "/api/v2/search":
+			if searchCalls != nil {
+				(*searchCalls)++
+			}
+			http.NotFound(writer, request)
+		case strings.HasPrefix(request.URL.Path, "/api/v4/movies/"):
+			id := strings.TrimPrefix(request.URL.Path, "/api/v4/movies/")
+			if detailIDs != nil {
+				*detailIDs = append(*detailIDs, id)
+			}
+			writeJSON(map[string]any{"success": true, "data": map[string]any{
+				"movie": map[string]any{
+					"id":                id,
+					"thumb_url":         server.URL + "/media/thumbnail.jpg",
+					"preview_images":    []map[string]any{{"large_url": server.URL + "/media/preview-first.png"}, {"large_url": server.URL + "/media/preview-second.png"}},
+					"preview_video_url": server.URL + "/media/preview/index.m3u8",
+				},
+			}})
+		case request.URL.Path == "/media/thumbnail.jpg":
+			_, _ = writer.Write(fixtures.thumbnail)
+		case request.URL.Path == "/media/preview-first.png":
+			_, _ = writer.Write(fixtures.previewImage)
+		case request.URL.Path == "/media/preview-second.png":
+			_, _ = writer.Write([]byte("unexpected second preview"))
+		case request.URL.Path == "/media/preview/index.m3u8":
+			_, _ = writer.Write([]byte("#EXTM3U\n#EXTINF:1.0,\npart-1.ts\n#EXTINF:1.0,\npart-2.ts\n#EXT-X-ENDLIST\n"))
+		case request.URL.Path == "/media/preview/part-1.ts":
+			_, _ = writer.Write(firstSegment)
+		case request.URL.Path == "/media/preview/part-2.ts":
+			_, _ = writer.Write(secondSegment)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	return server, fixtures
+}
+
+func isolateDownloadTestHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(home))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(home, filepath.VolumeName(home)))
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("ALL_PROXY", "")
 }

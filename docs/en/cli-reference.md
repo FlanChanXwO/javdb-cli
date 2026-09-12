@@ -114,18 +114,20 @@ page size of `20`; pass any positive `--page` and `--limit` when a different
 single page is needed. `--json` preserves the complete review objects returned
 for that page.
 
-## Local media downloads
+## Local movie assets
 
 ```bash
-javdb download NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
+javdb assets NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
 ```
 
-Set at least one output flag. `--thumbnail` writes the detail thumbnail;
-`--preview-image` writes only `preview_images[0]` (the first preview image) and
-does not enumerate or fall through to later previews. `--preview-video` writes
-the complete HLS preview stream to the given path, including AES-128 decryption
-when the playlist requires it. Use a `.ts` path for the current transport-stream
-previews.
+`download` is a compatibility alias for the canonical `assets` command. This
+command writes only selected local thumbnail and preview assets; it does not
+download a full movie or a magnet target. Set at least one output flag.
+`--thumbnail` writes the detail thumbnail; `--preview-image` writes only
+`preview_images[0]` (the first preview image) and does not enumerate or fall
+through to later previews. `--preview-video` writes the complete HLS preview
+stream to the given path, including AES-128 decryption when the playlist
+requires it. Use a `.ts` path for the current transport-stream previews.
 
 Output paths support the `{number}` and `{id}` placeholders; a piped batch of
 movie refs must use them (all expanded targets are preflighted for uniqueness,
@@ -305,8 +307,8 @@ failure is not represented as a fabricated empty result.
    command; verify flags with `--help`.
 3. Use `magnets --best --json` only after confirming that a magnet URI is in
    scope for the user.
-4. Treat `download` as a local file write: obtain an explicit output path and
-   do not replace an existing file.
+4. Treat `assets` (or its `download` compatibility alias) as a local asset file
+   write: obtain an explicit output path and do not replace an existing file.
 5. Treat login, tag refresh, configuration edits, account selection, and
    mark/unmark operations as state changes and ask before performing them.
 

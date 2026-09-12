@@ -91,16 +91,17 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
 每页 `20` 条；需要其他**单页**时传入任意正数 `--page` 与 `--limit`。`--json` 会保留该页
 上游返回的完整评论对象。
 
-## 本地媒体下载
+## 本地影片资源
 
 ```bash
-javdb download NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
+javdb assets NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
 ```
 
-至少设置一个输出 flag。`--thumbnail` 写入详情缩略图；`--preview-image` 只写入
-`preview_images[0]`（首张预览图），不会枚举或自动改取后续预览图。`--preview-video` 将完整
-HLS 预览流写入指定路径，playlist 使用 AES-128 时会解密。当前预览流是 transport stream，建议
-目标路径使用 `.ts` 后缀。
+`download` 是规范 `assets` 命令的兼容别名。本命令只写入选定的本地缩略图和预览资源，
+不会下载完整影片或磁力目标。至少设置一个输出 flag。`--thumbnail` 写入详情缩略图；
+`--preview-image` 只写入 `preview_images[0]`（首张预览图），不会枚举或自动改取后续预览图。
+`--preview-video` 将完整 HLS 预览流写入指定路径，playlist 使用 AES-128 时会解密。当前预览流
+是 transport stream，建议目标路径使用 `.ts` 后缀。
 
 命令只创建新文件：目标已存在会明确失败，也不会创建缺失的父目录。它接受已结束的单媒体 HLS
 playlist；master playlist、byte-range 媒体、fragmented MP4 媒体，以及未结束/直播 playlist 都会
@@ -245,7 +246,7 @@ host，因为它不会访问 App API。
 1. 用 `search --json` 或 `detail --json` 获取影片或图关系 ID。
 2. 下一条命令仅传入返回 ID 或用户明确选定的文本，并用 `--help` 核验 flag。
 3. 使用 `magnets --best --json` 前，确认磁力 URI 的用途在用户授权范围内。
-4. `download` 会写入本地文件：先取得明确输出路径，且不要替换已有文件。
+4. `assets`（或其 `download` 兼容别名）会写入本地资源文件：先取得明确输出路径，且不要替换已有文件。
 5. 登录、刷新标签、改配置、选账号、`mark`/`unmark` 都是状态变更，执行前确认。
 
 coding agent 的确认、凭据与错误处理规则见

@@ -1,4 +1,4 @@
-// Package download 提供影片媒体下载命令。
+// Package download 提供影片本地资源保存命令。
 package download
 
 import (
@@ -16,7 +16,7 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// New builds the media download command.
+// New builds the local movie asset command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var thumbnailPath, previewImagePath, previewVideoPath string
 	var isID bool
@@ -40,8 +40,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		var err error
 		if movieID == "" {
 			if isID {
-				// --id：ref 本身就是内部 movie id，绝不当作番号搜索
-				// （ResolveMovieID 会在无精确匹配时回退首项，可能下载错影片）。
+				// --id：将输入 ref 视为内部 movie ID，绕过 printed-number resolution。
 				movieID = number
 			} else {
 				movieID, err = c.ResolveMovieID(ctx, number)
@@ -108,7 +107,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
-			result, err := c.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+			result, err := c.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
 				ThumbnailPath:    expanded.thumb,
 				PreviewImagePath: expanded.image,
 				PreviewVideoPath: expanded.video,
@@ -152,7 +151,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 					image = expandOne(image, args[0], movieID)
 					video = expandOne(video, args[0], movieID)
 				}
-				result, err := c.DownloadMovieMedia(ctx, movieID, javdb.MovieMediaDownloadOptions{
+				result, err := c.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
 					ThumbnailPath:    thumb,
 					PreviewImagePath: image,
 					PreviewVideoPath: video,
@@ -174,10 +173,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		},
 	}
 	cmd := &cobra.Command{
-		Use:   "download NUMBER",
-		Short: "Download selected movie media to new files",
-		Long:  "Download a thumbnail, only the first preview image, and/or the complete preview video. Output paths must not already exist.",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "assets NUMBER",
+		Aliases: []string{"download"},
+		Short:   "Save selected movie thumbnail and preview assets to new files",
+		Long:    "Save a thumbnail, only the first preview image, and/or the complete preview video as local thumbnail and preview assets. This command does not download full movies or magnets. Output paths must not already exist.",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(thumbnailPath) == "" && strings.TrimSpace(previewImagePath) == "" && strings.TrimSpace(previewVideoPath) == "" {
 				return fmt.Errorf("set at least one of --thumbnail, --preview-image, or --preview-video")
@@ -198,7 +198,7 @@ func expandOne(path, number, id string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(path, "{number}", number), "{id}", id)
 }
 
-// expandedPaths 是单个输入展开后的三个媒体路径。
+// expandedPaths 是单个输入展开后的三个本地资源路径。
 type expandedPaths struct {
 	thumb string
 	image string

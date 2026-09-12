@@ -40,7 +40,7 @@ description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影�
 | 远端状态写入 | `mark`、`unmark` | 执行前说明影片与将要设置/删除的状态 |
 | 本地账号/配置写入 | `auth login/use/remove`、`config set/unset` | 每次都需要明确授权 |
 | 本地缓存写入 | `tags --refresh` | 仅在用户要求刷新标签或允许重建缓存时执行 |
-| 本地媒体写入 | `download` | 仅在用户明确要求保存媒体并提供或确认新输出路径时执行；不会替换已有文件 |
+| 本地资源写入 | `assets`（兼容别名 `download`） | 仅在用户明确要求保存 thumbnail/preview 资源并提供或确认新输出路径时执行；不会替换已有文件，也不下载完整影片或磁力目标 |
 
 `top250`、`watched`、`want`、`recent`、`collections` 与默认 `lists`
 需要默认登录账号。`magnets` 与 `detail --magnets` 无需登录即可使用：有默认账号时携带其
@@ -54,7 +54,7 @@ token，token 失效则自动回退匿名请求。
 4. `--all` 只在用户明确要求完整遍历时使用；它仅出现在实体/合集电影列表等支持的命令上。不要把它加到不支持的命令，也不要猜测 CLI 内部的分页行为。
 5. `--best` 会把 `magnets` 的结果缩为单个优先项（中字 > HD > 体积）。用户要完整列表时不要添加它。
 6. `comments` 每次只读一个页面，默认第 `1` 页、每页 `20` 条；不要为它附加 `--all` 或自动读取下一页。用户指定页码或条数时，原样传入正数。
-7. `download --preview-image PATH` 只保存首张预览图；`--preview-video PATH` 保存完整预览流。两者都是本地写入，需先确认目标路径，而且目标不能已存在。
+7. `assets --preview-image PATH` 只保存首张预览图；`--preview-video PATH` 保存完整预览流。两者都是本地资源写入，需先确认目标路径，而且目标不能已存在。`download` 仅作为兼容别名，不表示支持完整影片或磁力下载。
 
 ## 命令速查
 
@@ -75,8 +75,8 @@ javdb detail MOVIE_ID --id --json        # 仅当 MOVIE_ID 已确认是内部 ID
 javdb comments SSIS-589 --page 1 --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 javdb magnets SSIS-589 --best --json
-javdb download SSIS-589 --preview-image ./preview-0.jpg
-javdb download SSIS-589 --preview-video ./preview.ts
+javdb assets SSIS-589 --preview-image ./preview-0.jpg
+javdb assets SSIS-589 --preview-video ./preview.ts
 
 javdb tags --zone censored
 javdb browse --tag 巨乳 --main m --limit 20 --json
@@ -110,7 +110,7 @@ javdb unmark SSIS-589
 6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会独立解析 Release 代理并忽略 `--host`、`JAVDB_HOST` 与已配置 host，再按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
-9. `download NUMBER` 也默认解析番号。`--thumbnail` 保存缩略图；`--preview-image` 只取 `preview_images[0]`，不会选择后续图片；`--preview-video` 需要已结束的单媒体 HLS 预览流。下载失败时如实报告，不能把已包装的图片字节或不完整视频当作成功结果。
+9. `assets NUMBER` 默认解析番号；`download NUMBER` 只是兼容别名。`--thumbnail` 保存缩略图；`--preview-image` 只取 `preview_images[0]`，不会选择后续图片；`--preview-video` 需要已结束的单媒体 HLS 预览流。该命令只写入本地 thumbnail/preview 资源，不支持完整影片或磁力目标。失败时如实报告，不能把已包装的图片字节或不完整视频当作成功结果。
 10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。
 
 ## 以图搜番与管道
