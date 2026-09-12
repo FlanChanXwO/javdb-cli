@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 )
 
-func TestNewHelpDocumentsSinglePreviewImage(t *testing.T) {
+func TestNewHelpDescribesLocalMovieAssets(t *testing.T) {
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
@@ -23,9 +23,37 @@ func TestNewHelpDocumentsSinglePreviewImage(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("help error = %v", err)
 	}
-	for _, want := range []string{"--thumbnail", "--preview-image", "--preview-video", "only the first preview image"} {
+	for _, want := range []string{
+		"--thumbnail",
+		"--preview-image",
+		"--preview-video",
+		"only the first preview image",
+		"thumbnail and preview assets",
+		"does not download full movies",
+		"magnets",
+	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("download help missing %q: %s", want, out.String())
+		}
+	}
+}
+
+func TestNewUsesAssetsAsCanonicalCommand(t *testing.T) {
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
+
+	if got, want := cmd.Name(), "assets"; got != want {
+		t.Fatalf("canonical command name = %q, want %q", got, want)
+	}
+	if got, want := cmd.Use, "assets NUMBER"; got != want {
+		t.Fatalf("canonical command use = %q, want %q", got, want)
+	}
+	if !cmd.HasAlias("download") {
+		t.Fatal("canonical assets command is missing download alias")
+	}
+	for _, name := range []string{"id", "thumbnail", "preview-image", "preview-video", "json", "ndjson"} {
+		if cmd.LocalNonPersistentFlags().Lookup(name) == nil {
+			t.Fatalf("canonical assets command missing flag %q", name)
 		}
 	}
 }
