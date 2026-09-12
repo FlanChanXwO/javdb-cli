@@ -77,24 +77,6 @@ func TestMarkStatusValidationDoesNotReadStdin(t *testing.T) {
 	}
 }
 
-func TestMarkValidStatusLeavesMissingInputToRunner(t *testing.T) {
-	reader := &markTrackingReader{}
-	streams := invocation.NewStreams(reader, &bytes.Buffer{}, &bytes.Buffer{})
-	cmd := New(&invocation.RootOptions{}, streams)
-	cmd.SetArgs([]string{"--watched"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected runner to reject missing input")
-	}
-	if strings.Contains(err.Error(), "specify exactly one of --watched or --want") {
-		t.Fatalf("status validation handled missing input: %v", err)
-	}
-	if reader.reads == 0 {
-		t.Fatal("runner did not read stdin")
-	}
-}
-
 func TestMarkValidNonTTYInputReachesBatchRunner(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())

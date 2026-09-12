@@ -71,9 +71,13 @@ func (e *MovieEndpoint) ResolveMovieID(number string) (string, error) {
 
 // ResolveMovieIDExact searches with zone=all and applies strict exact matching.
 func (e *MovieEndpoint) ResolveMovieIDExact(ctx context.Context, number string) (string, error) {
-	res, err := e.search.SearchContext(ctx, number, model.SearchOptions{Zone: "all", Page: 1, Limit: 100})
+	normalized := strings.TrimSpace(number)
+	if normalized == "" {
+		return "", fmt.Errorf("empty number")
+	}
+	res, err := e.search.SearchContext(ctx, normalized, model.SearchOptions{Zone: "all", Page: 1, Limit: 100})
 	if err != nil {
 		return "", err
 	}
-	return ResolveNumberExact(res.Movies(), number)
+	return ResolveNumberExact(res.Movies(), normalized)
 }

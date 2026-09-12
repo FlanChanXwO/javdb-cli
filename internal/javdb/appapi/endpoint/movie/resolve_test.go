@@ -13,47 +13,47 @@ import (
 
 func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		input  string
-		movies []map[string]any
-		wantID string
+		name            string
+		input           string
+		movies          []map[string]any
+		wantID          string
+		wantQuery       string
+		wantSearchCalls int
 	}{
 		{
-			name:  "case insensitive match trims input",
-			input: "  ssis-589  ",
+			name:            "normalizes exact input before search",
+			input:           "  ssis-589  ",
+			wantID:          "id-exact",
+			wantQuery:       "ssis-589",
+			wantSearchCalls: 1,
 			movies: []map[string]any{
 				{"number": "SSIS-589", "id": "id-exact"},
 			},
-			wantID: "id-exact",
 		},
 		{
-			name:  "fuzzy only results fail",
-			input: "SSIS-589",
+			name:            "fuzzy only results fail",
+			input:           "SSIS-589",
+			wantQuery:       "SSIS-589",
+			wantSearchCalls: 1,
 			movies: []map[string]any{
 				{"number": "SSIS-58X", "id": "id-near"},
 			},
 		},
 		{
-			name:   "no results fail",
-			input:  "SSIS-589",
-			movies: nil,
-		},
-		{
-			name:  "multiple exact results fail",
-			input: "SSIS-589",
-			movies: []map[string]any{
-				{"number": "SSIS-589", "id": "id-first"},
-				{"number": "ssis-589", "id": "id-second"},
-			},
+			name:            "whitespace only input fails before search",
+			input:           "   ",
+			wantSearchCalls: 0,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			var searchCalls int
 			var gotQuery url.Values
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				if request.URL.Path != "/api/v2/search" {
 					http.NotFound(writer, request)
 					return
 				}
+				searchCalls++
 				gotQuery = request.URL.Query()
 				_ = json.NewEncoder(writer).Encode(map[string]any{
 					"success": true,
@@ -75,14 +75,22 @@ func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 				t.Fatalf("ResolveMovieID returned %q for invalid candidate set", gotID)
 			}
 
-			if gotQuery.Get("page") != "1" {
-				t.Errorf("page = %q, want 1", gotQuery.Get("page"))
+			if searchCalls != tc.wantSearchCalls {
+				t.Fatalf("search calls = %d, want %d", searchCalls, tc.wantSearchCalls)
 			}
-			if gotQuery.Get("limit") != "100" {
-				t.Errorf("limit = %q, want 100", gotQuery.Get("limit"))
-			}
-			if _, ok := gotQuery["movie_type"]; ok {
-				t.Errorf("movie_type = %q, want zone=all omission", gotQuery.Get("movie_type"))
+			if tc.wantSearchCalls > 0 {
+				if got := gotQuery.Get("q"); got != tc.wantQuery {
+					t.Errorf("q = %q, want %q", got, tc.wantQuery)
+				}
+				if got := gotQuery.Get("page"); got != "1" {
+					t.Errorf("page = %q, want 1", got)
+				}
+				if got := gotQuery.Get("limit"); got != "100" {
+					t.Errorf("limit = %q, want 100", got)
+				}
+				if _, ok := gotQuery["movie_type"]; ok {
+					t.Errorf("movie_type = %q, want zone=all omission", gotQuery.Get("movie_type"))
+				}
 			}
 		})
 	}
@@ -102,7 +110,7 @@ func TestResolveNumberExactMatchesCaseInsensitive(t *testing.T) {
 		{"number": "SSIS-589", "id": "id-a"},
 		{"number": "HZGD-246", "id": "id-b"},
 	}
-	id, err := ResolveNumberExact(movies, "ssis-589")
+	id, err := ResolveNumberExact(movies, "  ssis-589  ")
 	if err != nil {
 		t.Fatalf("ResolveNumberExact: %v", err)
 	}
@@ -111,7 +119,7 @@ func TestResolveNumberExactMatchesCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestResolveNumberExactRejectsZeroAndMultiple(t *testing.T) {
+func TestResolveNumberExactRejectsZeroMultipleAndMissingID(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		movies []map[string]any
@@ -120,6 +128,12 @@ func TestResolveNumberExactRejectsZeroAndMultiple(t *testing.T) {
 		{name: "two exact", movies: []map[string]any{
 			{"number": "SSIS-589", "id": "id-a"},
 			{"number": "ssis-589", "id": "id-b"},
+		}},
+		{name: "exact match without id", movies: []map[string]any{
+			{"number": "SSIS-589"},
+		}},
+		{name: "exact match with empty id", movies: []map[string]any{
+			{"number": "SSIS-589", "id": ""},
 		}},
 		{name: "empty input", movies: nil},
 	} {
