@@ -34,7 +34,7 @@ func TestNewRequiresNumber(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
 	cmd.SetArgs([]string{})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "keyword or an image") {
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "detail: input required") {
 		t.Fatalf("expected keyword/image error, got %v", err)
 	}
 }

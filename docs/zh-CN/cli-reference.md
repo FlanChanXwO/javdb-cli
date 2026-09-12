@@ -30,10 +30,12 @@ javdb config unset KEY
 `reverse_search.retry_wait`、`reverse_search.request_timeout`）。默认关闭
 `auto_relogin`；显式开启后，过期 JWT 才可能使用默认账号已保存的密码重登一次。
 
-`config get` 无 key 时在 TTY 打印常用键，非 TTY 从 stdin 读取 key 批处理；
-`config get`/`config unset` 也接受管道传入的 `config_key` 信封或纯文本 key 行。
-`config set` 始终使用两个显式参数，绝不读 stdin。反搜 source 由用户在 TOML
-`[[reverse_search.sources]]` 手工编辑，见「以图搜番」。
+`config get` 无 key 时在 TTY 打印常用键，非 TTY 从 stdin 读取 key 批处理。
+TTY 下显式的 `--json` 优先于人类可读快捷路径，输出由 `config_key` 信封组成的
+JSON 数组；`--ndjson` 为每个展示键输出一个信封。每个信封以 key 作为 `ref`，值放在
+`data.value`，并沿用按 key 输出时的代理凭据脱敏规则。`config get`/`config unset` 也
+接受管道传入的 `config_key` 信封或纯文本 key 行。`config set` 始终使用两个显式参数，
+绝不读 stdin。反搜 source 由用户在 TOML `[[reverse_search.sources]]` 手工编辑，见「以图搜番」。
 
 全新机器上第一个真实命令会创建 `~/.javdb-cli/config.toml`，只包含上述常用键；help、
 裸/父命令、`--version`、completion、参数校验失败以及缺失配置上的 `config unset` 都不会创建
@@ -75,17 +77,20 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
   [--month MONTH] [--sort SORT] [--order asc|desc] [--page N] [--limit N] [--json|--ndjson]
 ```
 
-`search --zone` 可用 `censored`、`uncensored`、`western`、`fc2`、`all`；`--type`
-可选 `movie`、`code`、`series`、`actor`、`maker`、`director`、`list`。`detail --json`
-会给出可传给实体命令的图关系 ID。`tags --refresh` 会下载并改写本机公开标签缓存，故不是纯本机只读操作。
+`search --zone` 与 `lists search --zone` 可用 `censored`、`uncensored`、`western`、`fc2`、
+`all`；非法值会在发起网络请求前被拒绝。`search --filter-by` 的文档值为 `can_play`、
+`magnets`、`subtitle`、`single`；`--type` 可选 `movie`、`code`、`series`、`actor`、
+`maker`、`director`、`list`。`detail --json` 会给出可传给实体命令的图关系 ID。
+`tags --refresh` 会下载并改写本机公开标签缓存，故不是纯本机只读操作。
 
 `browse --tag` 接受 tag ID、英文名或中文名；`--main` 可重复传递服务端分类掩码。
 程序应使用 `--json`；制表符文本面向人阅读，不是稳定机器 schema。
 
 `search --magnets N` 为每部搜索结果影片获取磁力：`--cnsub`、`--hd`、`--min-size`
-在排序前筛选；`N` 控制每部影片保留的磁力数量（`0` = 全部，`N` = 按 best 规则取前 N）。
-文本模式输出磁力 URI；`--ndjson` 输出 `kind=magnet` 信封。`--magnets` 仅支持 movie
-搜索，与非 movie `--type` 互斥。
+在排序前筛选；`--min-size` 接受非负数，可带 `M`、`MB`、`G` 或 `GB` 后缀。零合法；
+负数（包括负小数）会被拒绝。`N` 控制每部影片保留的磁力数量（`0` = 全部，`N` = 按
+best 规则取前 N）。文本模式输出磁力 URI；`--ndjson` 输出 `kind=magnet` 信封。
+`--magnets` 仅支持 movie 搜索，与非 movie `--type` 互斥。
 
 `comments` 对所选页只调用一次影片评论接口，不会预取或自动跟随下一页。默认读取第 `1` 页、
 每页 `20` 条；需要其他**单页**时传入任意正数 `--page` 与 `--limit`。`--json` 会保留该页
@@ -165,7 +170,10 @@ TTY stdout 默认使用人类可读文本；非 TTY stdout 默认输出逐行稳
 `--json` 互斥；只有显式指定对应 flag 才输出 JSON 或 NDJSON。显式 `--json` 单项保持既有
 shape，多项输出信封数组。生产者命令
 （如 `browse`、`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）
-不读 stdin，且遵循相同的 TTY/非 TTY 文本分流；使用 `--ndjson` 才逐条输出信封。
+不读 stdin，且遵循相同的 TTY/非 TTY 文本分流；使用 `--ndjson` 才逐条输出信封。Fan-out
+命令每个结果输出一个信封：列表记录在 `id` 放稳定 list ID，`ref` 使用显示名称并在缺失时
+回退到 ID，原始对象放在 `data.list`；合集实体使用对应的单数 kind，原始对象放在
+`data.entity`。
 
 ## 实体与合集导航
 
@@ -177,14 +185,20 @@ javdb director REF [ENTITY OPTIONS]
 javdb code REF [ENTITY OPTIONS]
 javdb list REF [ENTITY OPTIONS]
 
-javdb lists [--page N] [--limit N] [--sort-by ORDER] [--json]
-javdb lists show REF [--json]
-javdb lists search KEYWORD [--zone ZONE] [--page N] [--limit N] [--json]
-javdb lists related NUMBER [--id] [--page N] [--limit N] [--json]
+javdb lists [--page N] [--limit N] [--sort-by ORDER] [--json|--ndjson]
+javdb lists show REF [--json|--ndjson]
+javdb lists search KEYWORD [--zone ZONE] [--page N] [--limit N] [--json|--ndjson]
+javdb lists related NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
 ```
 
 实体命令支持分区、可重复 tag/main、排序、分页、`--has-magnets` 和 JSON 输出。
 无子命令的 `lists` 读取当前登录用户的合集；`list REF` 是公开或用户合集的实体片单命令。
+
+`lists --json` 保留既有的 `{"lists":[...],"current_page":"..."}` 聚合 shape，并复用本次
+已获取的页面。`lists --ndjson`、`lists search --ndjson` 与 `lists related --ndjson` 每个列表
+输出一个 `kind=list` 信封，原始列表对象放在 `data.list`。`lists related` 收到带非空 `id`
+的 movie 信封时直接使用该 authoritative movie ID，不会把它重新解析成打印出的番号。原始位置
+输入的 legacy 人类输出与聚合 JSON 保持不变。
 
 ## 磁力、排行与个人状态
 
@@ -199,7 +213,7 @@ javdb top250 [--zone ZONE] [--year YYYY] [--from RANK] [--page N] [--limit N] \
 javdb watched [--has-magnets]
 javdb want [--has-magnets]
 javdb recent [--has-magnets]
-javdb collections actors|series|codes|makers|directors
+javdb collections actors|series|codes|makers|directors [--json|--ndjson]
 javdb mark NUMBER --watched|--want [--score N] [--content TEXT] [--id]
 javdb unmark NUMBER [--id]
 ```
@@ -208,6 +222,11 @@ javdb unmark NUMBER [--id]
 `censored`、`uncensored`、`western` 或 `fc2`。CLI 将这些名称交给 SDK，由 SDK
 映射为 App API 的数字排行分区值。三个排行命令的周期均使用 `day`、`week` 或 `month`，
 内部会完成周期归一化。
+
+`collections --ndjson` 会把五个 selector 展开为单数 kind：`actor`、`series`、`code`、
+`maker`、`director`。每个信封使用 `name_zht`/`name` 投影作为 `ref`，缺失时回退到 ID，
+使用投影 ID 作为 `id`，原始实体放在 `data.entity`。带 selector 的 `--json` 仍保留
+`{"items":[...]}` 聚合 shape。
 
 `rankings movies`、`rankings playback` 与 `top250` 使用 `--json` 时输出 `{"movies":[...]}`；
 `rankings actors` 输出 `{"actors":[...]}`。这些只含结果的对象会在 `--has-magnets`

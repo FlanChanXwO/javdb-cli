@@ -28,7 +28,9 @@
 - **可组合管道**——多数命令接受非 TTY stdin 批处理；TTY stdout 默认输出人类文本，
   非 TTY stdout 默认输出稳定记录流；显式 `--ndjson` 输出
   `javdb.pipeline/v1` NDJSON 信封，可把上一条命令的结果直接喂给下一条
-  （`javdb search --ndjson | javdb detail`）。
+  （`javdb search --ndjson | javdb detail`）；适用时 `--json` 保留既有聚合 shape，
+  列表与合集的 fan-out 结果使用稳定的 `id`/`ref`，原始值分别位于
+  `data.list`/`data.entity`。
 - **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
   显示，不会伪装成空结果。
 - **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供
@@ -166,6 +168,9 @@ javdb lists search 巨乳 --zone all --json
 
 影片榜与播放榜的分区参数可用 `censored`、`uncensored`、`western` 或 `fc2`；
 排行周期使用 `day`、`week` 或 `month`。
+
+`search --zone` 与 `lists search --zone` 使用同一组五个分区值，非法值会在网络请求前被拒绝。
+一体化磁力搜索的 `--min-size` 必须为非负数；零合法，带单位后缀时也一样。
 
 全局 `--proxy URL` 与 `--host auto|mirror|main|URL` 仅影响本次命令。默认 `auto` 主机验证缓存
 成功后会立即复用；只有缓存失效时才从 startup 配置发现候选、重选最快 App API 主机并改写

@@ -19,20 +19,42 @@ import (
 // New builds the collection listing command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var asJSON, asNDJSON bool
+	collectionKinds := map[string]pipeline.Kind{
+		"actors":    pipeline.KindActor,
+		"series":    pipeline.KindSeries,
+		"codes":     pipeline.KindCode,
+		"makers":    pipeline.KindMaker,
+		"directors": pipeline.KindDirector,
+	}
 	runner := &pipeline.BatchRunner{
 		Name:       "collections",
 		LegacyJSON: true,
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
-		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
 			kind := pipeline.ConsumerRef(input)
+			pipelineKind, ok := collectionKinds[kind]
+			if !ok {
+				return nil, fmt.Errorf("collection kind must be one of actors|series|codes|makers|directors")
+			}
 			items, err := c.Collected(ctx, kind)
 			if err != nil {
-				return pipeline.Envelope{}, err
+				return nil, err
 			}
-			pipelineKind := pipeline.Kind(kind)
-			return pipeline.New(pipelineKind, kind, "").WithData(map[string]any{"items": items}), nil
+			envelopes := make([]pipeline.Envelope, 0, len(items))
+			for _, item := range items {
+				row := result.ProjectNamed(item)
+				ref := row.Name
+				if ref == "" {
+					ref = row.ID
+				}
+				if ref == "" {
+					return nil, fmt.Errorf("collections %s: entity has no name or id", kind)
+				}
+				envelopes = append(envelopes, pipeline.New(pipelineKind, ref, row.ID).WithData(map[string]any{"entity": item}))
+			}
+			return envelopes, nil
 		},
 		Legacy: func(args []string) error {
 			kind := args[0]
