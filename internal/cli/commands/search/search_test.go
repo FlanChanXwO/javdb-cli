@@ -40,6 +40,27 @@ func TestNewRequiresKeyword(t *testing.T) {
 	}
 }
 
+func TestSearchRejectsInvalidZoneBeforeRequest(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"success":true,"data":{"movies":[]}}`))
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"keyword", "--zone", "typo"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "zone must be one of censored|uncensored|western|fc2|all") {
+		t.Fatalf("invalid zone error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("invalid zone sent %d request(s), want none", requests)
+	}
+}
+
 func TestSearchTypeKey(t *testing.T) {
 	if searchTypeKey("actor") != "actors" || searchTypeKey("list") != "lists" || searchTypeKey("") != "movies" {
 		t.Fatal("search type key mapping changed")
