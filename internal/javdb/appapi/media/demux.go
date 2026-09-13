@@ -1,0 +1,179 @@
+package media
+
+import (
+	"fmt"
+)
+
+// PMT stream_type 常量(仅本工具关心的子集)。
+const (
+	streamTypeH264 = 0x1B // ITU-T H.264 / ISO 14496-10 AVC
+	streamTypeAAC  = 0x0F // AAC ADTS
+	streamTypeID3  = 0x15 // HLS timed ID3 metadata
+)
+
+// demuxedFrame 是一个完整 PES(帧级 access unit)与其时间戳(90kHz)。
+type demuxedFrame struct {
+	ES     []byte
+	PTS    uint64
+	DTS    uint64
+	HasDTS bool
+}
+
+// demuxedStream 是单个 elementary stream 的帧序列。
+type demuxedStream struct {
+	streamType byte
+	frames     []demuxedFrame
+}
+
+// parseTSStreams 把已通过 Layer A 校验的 TS segment 拆成 elementary streams。
+// PES 重组按 PUSI 分界(HLS 每帧一个 PES 的约定),时间戳从 PES header 提取。
+func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
+	pmtPIDs := map[uint16]bool{}
+	streamTypes := map[uint16]byte{}
+	for off := 0; off < len(data); off += tsPacketSize {
+		packet := data[off : off+tsPacketSize]
+		if packet[0] != 0x47 {
+			return nil, fmt.Errorf("TS packet at offset %d has invalid sync byte", off)
+		}
+		pid, pusi, payload, ok := tsPacketPayload(packet)
+		if !ok || !pusi {
+			continue
+		}
+		switch {
+		case pid == 0:
+			pids, err := parsePSIMap(payload, 0x00)
+			if err != nil {
+				return nil, fmt.Errorf("PAT not parseable: %w", err)
+			}
+			for pmtPID := range pids {
+				pmtPIDs[pmtPID] = true
+			}
+		case pmtPIDs[pid]:
+			types, err := parsePMTTypes(payload)
+			if err != nil {
+				return nil, fmt.Errorf("PMT not parseable: %w", err)
+			}
+			for streamPID, streamType := range types {
+				streamTypes[streamPID] = streamType
+			}
+		}
+	}
+
+	streams := map[uint16]*demuxedStream{}
+	for pid := range streamTypes {
+		streams[pid] = &demuxedStream{streamType: streamTypes[pid]}
+	}
+	pending := map[uint16][]byte{}
+	flush := func(pid uint16) error {
+		raw, ok := pending[pid]
+		if !ok || len(raw) == 0 {
+			delete(pending, pid)
+			return nil
+		}
+		delete(pending, pid)
+		stream, ok := streams[pid]
+		if !ok {
+			return nil // 未在 PMT 声明(如填充流):忽略
+		}
+		frame, err := parsePESFrame(raw)
+		if err != nil {
+			return err
+		}
+		stream.frames = append(stream.frames, frame)
+		return nil
+	}
+	for off := 0; off < len(data); off += tsPacketSize {
+		packet := data[off : off+tsPacketSize]
+		pid, pusi, payload, ok := tsPacketPayload(packet)
+		if !ok {
+			continue
+		}
+		if _, known := streams[pid]; !known {
+			continue
+		}
+		if pusi {
+			if err := flush(pid); err != nil {
+				return nil, err
+			}
+			pending[pid] = append([]byte(nil), payload...)
+			continue
+		}
+		pending[pid] = append(pending[pid], payload...)
+	}
+	for pid := range streams {
+		if err := flush(pid); err != nil {
+			return nil, err
+		}
+	}
+	return streams, nil
+}
+
+// parsePMTTypes 从单包 PMT section 提取 PID→stream_type。
+func parsePMTTypes(payload []byte) (map[uint16]byte, error) {
+	if len(payload) < 4 {
+		return nil, fmt.Errorf("payload too short")
+	}
+	pointer := int(payload[0])
+	if 1+pointer+3 > len(payload) {
+		return nil, fmt.Errorf("section header truncated")
+	}
+	section := payload[1+pointer:]
+	if section[0] != 0x02 {
+		return nil, fmt.Errorf("unexpected table_id 0x%02X", section[0])
+	}
+	length := (int(section[1]&0x0F) << 8) | int(section[2])
+	end := 3 + length - 4 // 去掉 CRC32
+	if end < 9 || end > len(section) {
+		return nil, fmt.Errorf("section length %d out of bounds", length)
+	}
+	types := map[uint16]byte{}
+	// body 前 9 字节:program_number(2)+version(1)+序号(2)+PCR_PID(2)+info_length(2)。
+	for pos := 3 + 9; pos+5 <= end; {
+		entryPID := (uint16(section[pos+1]&0x1F) << 8) | uint16(section[pos+2])
+		types[entryPID] = section[pos]
+		esLen := (int(section[pos+3]&0x0F) << 8) | int(section[pos+4])
+		pos += 5 + esLen
+	}
+	return types, nil
+}
+
+// parsePESFrame 解析 PES header,返回帧与其时间戳。
+func parsePESFrame(pes []byte) (demuxedFrame, error) {
+	if len(pes) < 9 || !isPESPayload(pes) {
+		return demuxedFrame{}, fmt.Errorf("malformed PES header")
+	}
+	flags := pes[7]
+	headerLen := int(pes[8])
+	if len(pes) < 9+headerLen {
+		return demuxedFrame{}, fmt.Errorf("PES header truncated")
+	}
+	frame := demuxedFrame{ES: pes[9+headerLen:]}
+	pos := 9
+	if flags&0x80 != 0 {
+		if pos+5 > len(pes) {
+			return demuxedFrame{}, fmt.Errorf("PES PTS truncated")
+		}
+		frame.PTS = parsePESMarker(pes[pos:])
+		frame.HasDTS = true
+		pos += 5
+	}
+	if flags&0xC0 == 0xC0 {
+		if pos+5 > len(pes) {
+			return demuxedFrame{}, fmt.Errorf("PES DTS truncated")
+		}
+		frame.DTS = parsePESMarker(pes[pos:])
+	}
+	if !frame.HasDTS {
+		frame.DTS = frame.PTS
+		frame.HasDTS = frame.PTS != 0
+	}
+	return frame, nil
+}
+
+func parsePESMarker(b []byte) uint64 {
+	return uint64(b[0]>>1&0x07)<<30 |
+		uint64(b[1])<<22 |
+		uint64(b[2]>>1)<<15 |
+		uint64(b[3])<<7 |
+		uint64(b[4]>>1)
+}

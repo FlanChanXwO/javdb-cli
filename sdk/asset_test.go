@@ -215,7 +215,7 @@ func TestClientDownloadMovieAssetImageWritesValidatedFile(t *testing.T) {
 }
 
 func TestClientDownloadMovieAssetVideoTSDownloadsHLS(t *testing.T) {
-	segment := []byte{0x47, 0x40, 0x00, 0x10, 0x00}
+	segment := validTSSegmentFixture()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/video.m3u8":
@@ -308,4 +308,57 @@ func TestImageAssetFormatReadsLocalFile(t *testing.T) {
 	if _, ok := ImageAssetFormat(filepath.Join(dir, "missing.bin")); ok {
 		t.Fatal("missing file must not be detected as image")
 	}
+}
+
+// validTSSegmentFixture 构造最小合法 MPEG-TS:通过 Layer A 结构校验与
+// Layer B 媒体校验(H.264 SPS/PPS+IDR/非 IDR 两帧带 PTS、AAC ADTS 一帧)。
+func validTSSegmentFixture() []byte {
+	tsPacket := func(pid uint16, payload []byte) []byte {
+		p := make([]byte, 188)
+		p[0] = 0x47
+		p[1] = 0x40 | byte(pid>>8)
+		p[2] = byte(pid)
+		p[3] = 0x10
+		copy(p[4:], payload)
+		for i := 4 + len(payload); i < 188; i++ {
+			p[i] = 0xFF
+		}
+		return p
+	}
+	section := func(tableID byte, body []byte) []byte {
+		length := len(body) + 4
+		out := []byte{0x00, tableID, byte(length>>8)&0x0F | 0x30, byte(length)}
+		out = append(out, body...)
+		return append(out, 0, 0, 0, 0)
+	}
+	pes := func(streamID byte, flags, headerLen byte, body []byte) []byte {
+		p := []byte{0x00, 0x00, 0x01, streamID, 0x00, 0x00, 0x80, flags, headerLen}
+		p = append(p, body...)
+		pesLen := len(p) - 6
+		p[4] = byte(pesLen >> 8)
+		p[5] = byte(pesLen)
+		return p
+	}
+	pat := section(0x00, []byte{0x00, 0x01, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xF0, 0x00})
+	pmt := section(0x02, []byte{
+		0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x01, 0xF0, 0x00,
+		0x1B, 0xE1, 0x01, 0xF0, 0x00, 0x0F, 0xE1, 0x02, 0xF0, 0x00,
+	})
+	start := []byte{0x00, 0x00, 0x00, 0x01}
+	sps := append(append([]byte{}, start...), 0x67, 0xAA, 0xBB)
+	pps := append(append([]byte{}, start...), 0x68, 0xCC, 0xDD)
+	idr := append(append([]byte{}, start...), 0x65, 0x01, 0x02)
+	nonIDR := append(append([]byte{}, start...), 0x41, 0x03, 0x04)
+	adts := append([]byte{0xFF, 0xF1, 0x51, 0x00, 0x01, 0x40, 0x00}, 0x21, 0x10, 0x30)
+	frame0 := append(append(append([]byte{}, sps...), pps...), idr...)
+	video0 := pes(0xE0, 0xC0, 10, append([]byte{0x31, 0x00, 0x05, 0xBF, 0x21, 0x11, 0x00, 0x05, 0xBF, 0x21}, frame0...))
+	video1 := pes(0xE0, 0xC0, 10, append([]byte{0x31, 0x00, 0x05, 0xDB, 0x41, 0x11, 0x00, 0x05, 0xDB, 0x41}, nonIDR...))
+	audio := pes(0xC0, 0x80, 5, append([]byte{0x21, 0x00, 0x05, 0xBF, 0x21}, adts...))
+	var data []byte
+	data = append(data, tsPacket(0x0000, pat)...)
+	data = append(data, tsPacket(0x1000, pmt)...)
+	data = append(data, tsPacket(0x0101, video0)...)
+	data = append(data, tsPacket(0x0101, video1)...)
+	data = append(data, tsPacket(0x0102, audio)...)
+	return data
 }

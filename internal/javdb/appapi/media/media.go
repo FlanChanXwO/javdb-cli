@@ -34,7 +34,7 @@ func (e *MediaEndpoint) DownloadHLS(playlistURL, target string) (int64, error) {
 	return DownloadHLS(e.fetch, playlistURL, target)
 }
 
-// DownloadImage 下载并还原图片 CDN 返回的图片数据，再以新文件方式写入 target。
+// DownloadImage 下载并还原图片 CDN 返回的图片数据,再原子发布到 target。
 func DownloadImage(fetch Fetch, sourceURL, target string) (int64, error) {
 	raw, err := fetch(sourceURL)
 	if err != nil {
@@ -44,13 +44,14 @@ func DownloadImage(fetch Fetch, sourceURL, target string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return writeNewMediaFile(target, func(w io.Writer) (int64, error) {
+	// payload 在写入前已通过魔数校验,发布后无需再次验证。
+	return publishMediaFile(target, func(w io.Writer) (int64, error) {
 		n, err := w.Write(imageData)
 		if err == nil && n != len(imageData) {
 			err = io.ErrShortWrite
 		}
 		return int64(n), err
-	})
+	}, nil)
 }
 
 // DownloadHLS 下载一个已结束的 HLS 媒体播放列表，并将解密后的媒体分片串接到 target。
@@ -135,6 +136,10 @@ type hlsMediaPlaylist struct {
 	segments []hlsSegment
 }
 
+// maxSegmentAttempts 是单个 segment 的最大尝试次数。
+// 依据 input.md 计划 #32 的明文要求(损坏 segment 重试同一 segment,至多 3 次)。
+const maxSegmentAttempts = 3
+
 func downloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
 	playlistBody, err := fetch(playlistURL)
 	if err != nil {
@@ -145,34 +150,13 @@ func downloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
 		return 0, err
 	}
 
-	return writeNewMediaFile(target, func(w io.Writer) (int64, error) {
+	return publishMediaFile(target, func(w io.Writer) (int64, error) {
 		var total int64
 		keys := map[string][]byte{}
 		for _, segment := range playlist.segments {
-			payload, err := fetch(segment.uri)
+			payload, err := fetchValidatedSegment(fetch, segment, keys)
 			if err != nil {
-				return total, fmt.Errorf("download HLS segment: %w", err)
-			}
-			if segment.key != nil {
-				key, ok := keys[segment.key.uri]
-				if !ok {
-					key, err = fetch(segment.key.uri)
-					if err != nil {
-						return total, fmt.Errorf("download HLS key: %w", err)
-					}
-					if len(key) != aes.BlockSize {
-						return total, fmt.Errorf("HLS AES-128 key has %d bytes, want %d", len(key), aes.BlockSize)
-					}
-					keys[segment.key.uri] = key
-				}
-				iv := segment.key.iv
-				if len(iv) == 0 {
-					iv = hlsSequenceIV(segment.sequence)
-				}
-				payload, err = decryptHLSSegment(payload, key, iv)
-				if err != nil {
-					return total, err
-				}
+				return total, err
 			}
 			n, err := w.Write(payload)
 			if err != nil {
@@ -184,7 +168,55 @@ func downloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
 			total += int64(n)
 		}
 		return total, nil
-	})
+	}, validateMediaFile)
+}
+
+// fetchValidatedSegment 获取、解密并校验单个 segment(Layer A per-segment gate)。
+// 校验失败或传输失败时重试同一 segment,至多 maxSegmentAttempts 次。
+func fetchValidatedSegment(fetch Fetch, segment hlsSegment, keys map[string][]byte) ([]byte, error) {
+	var lastErr error
+	for attempt := 1; attempt <= maxSegmentAttempts; attempt++ {
+		raw, err := fetch(segment.uri)
+		if err != nil {
+			lastErr = fmt.Errorf("download HLS segment: %w", err)
+			continue
+		}
+		if len(raw) == 0 {
+			lastErr = fmt.Errorf("download HLS segment: empty response")
+			continue
+		}
+		payload := raw
+		if segment.key != nil {
+			key, ok := keys[segment.key.uri]
+			if !ok {
+				key, err = fetch(segment.key.uri)
+				if err != nil {
+					lastErr = fmt.Errorf("download HLS key: %w", err)
+					continue
+				}
+				if len(key) != aes.BlockSize {
+					lastErr = fmt.Errorf("HLS AES-128 key has %d bytes, want %d", len(key), aes.BlockSize)
+					continue
+				}
+				keys[segment.key.uri] = key
+			}
+			iv := segment.key.iv
+			if len(iv) == 0 {
+				iv = hlsSequenceIV(segment.sequence)
+			}
+			payload, err = decryptHLSSegment(payload, key, iv)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+		}
+		if err := validateTSSegment(payload); err != nil {
+			lastErr = err
+			continue
+		}
+		return payload, nil
+	}
+	return nil, fmt.Errorf("segment %d remained invalid after %d attempts: %w", segment.sequence, maxSegmentAttempts, lastErr)
 }
 
 func parseHLSMediaPlaylist(playlistURL string, raw []byte) (hlsMediaPlaylist, error) {
@@ -408,7 +440,10 @@ func removePKCS7Padding(data []byte) ([]byte, error) {
 	return data[:len(data)-padding], nil
 }
 
-func writeNewMediaFile(path string, write func(io.Writer) (int64, error)) (written int64, err error) {
+// publishMediaFile 把媒体原子发布到 path:先写入 path+".part" 临时文件,
+// 全部写入并通过 validate 后 rename 到最终路径。
+// 最终路径已存在时绝不覆盖(计划 #41/#42);失败时清理临时文件,不留半成品。
+func publishMediaFile(path string, write func(io.Writer) (int64, error), validate func(path string) error) (written int64, err error) {
 	if strings.TrimSpace(path) == "" {
 		return 0, fmt.Errorf("output path is required")
 	}
@@ -420,10 +455,16 @@ func writeNewMediaFile(path string, write func(io.Writer) (int64, error)) (writt
 	if !info.IsDir() {
 		return 0, fmt.Errorf("output directory is not a directory")
 	}
+	if _, err := os.Lstat(path); err == nil {
+		return 0, fmt.Errorf("output file already exists: %s", path)
+	} else if !os.IsNotExist(err) {
+		return 0, fmt.Errorf("check output file %q: %w", path, err)
+	}
 
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	tmp := path + ".part"
+	file, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return 0, fmt.Errorf("create media file: %w", err)
+		return 0, fmt.Errorf("create media temp file: %w", err)
 	}
 	closed := false
 	completed := false
@@ -432,7 +473,7 @@ func writeNewMediaFile(path string, write func(io.Writer) (int64, error)) (writt
 			_ = file.Close()
 		}
 		if !completed {
-			_ = os.Remove(path)
+			_ = os.Remove(tmp)
 		}
 	}()
 
@@ -441,9 +482,27 @@ func writeNewMediaFile(path string, write func(io.Writer) (int64, error)) (writt
 		return 0, err
 	}
 	if err = file.Close(); err != nil {
-		return 0, fmt.Errorf("close media file: %w", err)
+		return 0, fmt.Errorf("close media temp file: %w", err)
 	}
 	closed = true
+	if validate != nil {
+		if err = validate(tmp); err != nil {
+			return 0, err
+		}
+	}
+	if err = os.Rename(tmp, path); err != nil {
+		return 0, fmt.Errorf("publish media file: %w", err)
+	}
 	completed = true
 	return written, nil
+}
+
+// validateMediaFile 对已落盘的 TS 做最终媒体校验:
+// 结构层(Layer A)之上再做媒体模型校验(Layer B:codec/轨道/时间戳)。
+func validateMediaFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return validateMediaStream(data)
 }

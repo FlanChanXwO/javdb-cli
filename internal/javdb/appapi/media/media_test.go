@@ -78,8 +78,8 @@ func TestFetchMediaNeverSendsAuthHeaders(t *testing.T) {
 func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	key := []byte("0123456789abcdef")
-	first := []byte("first HLS segment")
-	second := []byte("second HLS segment")
+	first := validTSSegmentAt(0)
+	second := validTSSegmentAt(180000)
 	resources := map[string][]byte{
 		playlistURL: []byte("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-MEDIA-SEQUENCE:7\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n#EXTINF:1.0,\nfirst.ts\n#EXTINF:1.0,\nsecond.ts\n#EXT-X-ENDLIST\n"),
 		"https://media.example.test/previews/key.bin":   key,
@@ -154,15 +154,15 @@ func TestDownloadHLSRejectsInvalidPKCS7PaddingWithoutOutput(t *testing.T) {
 	}
 }
 
-func TestWriteNewMediaFileNeverOverwritesExistingOutput(t *testing.T) {
+func TestPublishMediaFileNeverOverwritesExistingOutput(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "existing.jpg")
 	if err := os.WriteFile(target, []byte("original"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	_, err := writeNewMediaFile(target, func(w io.Writer) (int64, error) {
+	_, err := publishMediaFile(target, func(w io.Writer) (int64, error) {
 		n, writeErr := w.Write([]byte("replacement"))
 		return int64(n), writeErr
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("existing output unexpectedly overwritten")
 	}
