@@ -116,7 +116,7 @@ func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 }
 
 // TestDownloadPipelineIDDoesNotResolveAsNumber --id 在管道/非 TTY 路径也不得
-// 调用番号搜索（resolver 无精确匹配时会回退首项，存在下载错影片风险）。
+// 调用番号搜索（resolver 无精确或唯一格式等价匹配时会报错，避免下载错影片）。
 // 完整走通下载链路：detail 返回本地 mock 媒体，断言请求 ID 正确、成功结果
 // 与输出文件内容。
 func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {

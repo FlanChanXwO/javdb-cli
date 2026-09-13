@@ -103,6 +103,12 @@ log, panic, error wrapper, or test fixture.
 | Lists | `MyLists`, `ListInfo`, `RelatedLists` |
 | Tag taxonomy | `RefreshTagTaxonomy`, `LoadOrRefreshTaxonomy` |
 
+`ResolveMovieID(ctx, number)` trims surrounding whitespace and first tries a
+case-insensitive full-number match. If no exact match exists, one unambiguous
+formatting-equivalent number (such as a separator difference) is accepted.
+Multiple distinct movie IDs or fuzzy-only candidates return an error; the
+resolver never falls back to the first search result.
+
 `RankingsMovies` and `RankingsPlayback` accept the zone names `censored`,
 `uncensored`, `western`, and `fc2`, as well as an already numeric string. Known
 names are normalized before the request. All three ranking methods accept
