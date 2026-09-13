@@ -69,44 +69,52 @@ func validateMediaURL(rawURL string) error {
 	return nil
 }
 
-// decodeImagePayload 只接受已知图片格式，避免把 CDN 的包装字节误写成“下载成功”的图片。
+// decodeImagePayload 只接受已知图片格式,避免把 CDN 的包装字节误写成“下载成功”的图片。
 func decodeImagePayload(raw []byte) ([]byte, error) {
-	if knownImagePayload(raw) {
+	if _, ok := imagePayloadFormat(raw); ok {
 		return raw, nil
 	}
 	if len(raw) < 2 {
 		return nil, fmt.Errorf("media response is not a recognized image")
 	}
 
-	// 图片 CDN 的实际响应以首字节为 XOR key；去掉该字节并异或后才是原始图片。
+	// 图片 CDN 的实际响应以首字节为 XOR key;去掉该字节并异或后才是原始图片。
 	key := raw[0]
 	decoded := make([]byte, len(raw)-1)
 	for i := range decoded {
 		decoded[i] = raw[i+1] ^ key
 	}
-	if !knownImagePayload(decoded) {
+	if _, ok := imagePayloadFormat(decoded); !ok {
 		return nil, fmt.Errorf("media response is not a recognized image")
 	}
 	return decoded, nil
 }
 
-func knownImagePayload(data []byte) bool {
+// ImagePayloadFormat 通过魔数识别图片 payload,返回稳定格式名
+// (jpg/png/gif/webp/avif/heic),供下载层确定落盘扩展名。
+func ImagePayloadFormat(data []byte) (string, bool) {
+	return imagePayloadFormat(data)
+}
+
+func imagePayloadFormat(data []byte) (string, bool) {
 	switch {
 	case len(data) >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff:
-		return true // JPEG
+		return "jpg", true // JPEG
 	case len(data) >= 8 && string(data[:8]) == "\x89PNG\r\n\x1a\n":
-		return true // PNG
+		return "png", true
 	case len(data) >= 6 && (string(data[:6]) == "GIF87a" || string(data[:6]) == "GIF89a"):
-		return true
+		return "gif", true
 	case len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP":
-		return true
+		return "webp", true
 	case len(data) >= 12 && string(data[4:8]) == "ftyp":
 		switch string(data[8:12]) {
-		case "avif", "avis", "heic", "heix", "mif1":
-			return true
+		case "avif", "avis":
+			return "avif", true
+		case "heic", "heix", "mif1":
+			return "heic", true
 		}
 	}
-	return false
+	return "", false
 }
 
 // Fetch 是 client 提供给媒体解码器的原始资源读取回调。

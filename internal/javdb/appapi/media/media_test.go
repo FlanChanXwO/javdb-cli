@@ -51,6 +51,30 @@ func TestFetchMediaRejectsNon2xxResponse(t *testing.T) {
 	}
 }
 
+// 媒体请求只允许 UA 等非敏感 header;登录 token 不得随媒体请求进入任意 CDN host。
+func TestFetchMediaNeverSendsAuthHeaders(t *testing.T) {
+	var gotHeader http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Clone()
+		_, _ = w.Write([]byte{0xFF, 0xD8, 0xFF, 0xE0})
+	}))
+	defer server.Close()
+
+	apiClient, err := client.New(client.Options{Host: server.URL})
+	if err != nil {
+		t.Fatalf("new app API client: %v", err)
+	}
+	apiClient.SetToken("secret-bearer-token")
+	if _, err := apiClient.FetchMedia(server.URL + "/img"); err != nil {
+		t.Fatalf("fetch media: %v", err)
+	}
+	for _, name := range []string{"Authorization", "Jdsignature"} {
+		if gotHeader.Get(name) != "" {
+			t.Fatalf("media request carried %q header", name)
+		}
+	}
+}
+
 func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	key := []byte("0123456789abcdef")
