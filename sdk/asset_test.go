@@ -1,10 +1,15 @@
 package javdb
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +140,109 @@ func TestClientMovieAssetsPropagatesDetailError(t *testing.T) {
 	}
 	if _, err := client.MovieAssets(context.Background(), "abc123"); err == nil {
 		t.Fatal("expected detail error to propagate")
+	}
+}
+
+// DownloadMovieAsset:image 走验证链落盘;video 输出格式由 target 后缀决定,
+// .ts 保留 MPEG-TS,其余后缀在 remux 层落地前一律拒绝。
+
+var testJPEGPayload = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01}
+
+func TestClientDownloadMovieAssetImageWritesValidatedFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write(testJPEGPayload)
+	}))
+	defer server.Close()
+
+	client, err := New(WithHost(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir() + "/out.jpg"
+	written, err := client.DownloadMovieAsset(context.Background(), MovieAsset{Type: "image", URL: server.URL + "/img.bin"}, target)
+	if err != nil {
+		t.Fatalf("DownloadMovieAsset() error = %v", err)
+	}
+	if written != int64(len(testJPEGPayload)) {
+		t.Fatalf("written = %d, want %d", written, len(testJPEGPayload))
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, testJPEGPayload) {
+		t.Fatalf("target bytes = %x, want %x", got, testJPEGPayload)
+	}
+}
+
+func TestClientDownloadMovieAssetVideoTSDownloadsHLS(t *testing.T) {
+	segment := []byte{0x47, 0x40, 0x00, 0x10, 0x00}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/video.m3u8":
+			_, _ = writer.Write([]byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\nseg1.ts\n#EXT-X-ENDLIST\n"))
+		case "/seg1.ts":
+			_, _ = writer.Write(segment)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	client, err := New(WithHost(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir() + "/out.ts"
+	written, err := client.DownloadMovieAsset(context.Background(), MovieAsset{Type: "video", URL: server.URL + "/video.m3u8"}, target)
+	if err != nil {
+		t.Fatalf("DownloadMovieAsset() error = %v", err)
+	}
+	if written != int64(len(segment)) {
+		t.Fatalf("written = %d, want %d", written, len(segment))
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, segment) {
+		t.Fatalf("target bytes = %x, want %x", got, segment)
+	}
+}
+
+func TestClientDownloadMovieAssetVideoRejectsUnsupportedFormats(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		t.Fatal("no media request expected for unsupported format")
+	}))
+	defer server.Close()
+
+	client, err := New(WithHost(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, target := range []string{dir + "/preview.mkv", dir + "/preview.mp4", dir + "/novalue"} {
+		_, err := client.DownloadMovieAsset(context.Background(), MovieAsset{Type: "video", URL: server.URL + "/video.m3u8"}, target)
+		if err == nil {
+			t.Fatalf("target %q: expected unsupported format error", target)
+		}
+		want := fmt.Sprintf("unsupported video output format %q", filepath.Ext(target))
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("target %q: error %q, want contains %q", target, err.Error(), want)
+		}
+		if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+			t.Fatalf("target %q: expected no output file", target)
+		}
+	}
+}
+
+func TestClientDownloadMovieAssetRejectsUnknownAssetType(t *testing.T) {
+	client, err := New(WithHost("https://unused.example.test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.DownloadMovieAsset(context.Background(), MovieAsset{Type: "audio", URL: "https://x.example.test/a"}, t.TempDir()+"/a.bin")
+	if err == nil || !strings.Contains(err.Error(), `unsupported asset type "audio"`) {
+		t.Fatalf("error = %v, want unsupported asset type", err)
 	}
 }

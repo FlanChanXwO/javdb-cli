@@ -3,6 +3,8 @@ package javdb
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 )
 
 // 资产类型常量。资产领域只有这两种媒体类型。
@@ -29,6 +31,36 @@ func (c *Client) MovieAssets(ctx context.Context, movieID string) ([]MovieAsset,
 		return nil, fmt.Errorf("fetch movie detail: %w", err)
 	}
 	return movieAssetsFromDetail(movie), nil
+}
+
+// DownloadMovieAsset 下载单个影片资产到 target 路径,返回写入字节数。
+// image:下载 → 必要时 XOR 解包 → 图片魔数校验 → 原子写入,不做任何格式转换。
+// video:输出格式由 target 后缀决定——.ts 保留 MPEG-TS(解密后的完整流),
+// 其余后缀(含 .mp4,remux 层落地前)一律拒绝,不做转码。
+func (c *Client) DownloadMovieAsset(ctx context.Context, asset MovieAsset, target string) (int64, error) {
+	_ = ctx
+	switch asset.Type {
+	case assetTypeImage:
+		written, err := c.api.DownloadImage(asset.URL, target)
+		if err != nil {
+			return 0, fmt.Errorf("download image asset: %w", err)
+		}
+		return written, nil
+	case assetTypeVideo:
+		switch strings.ToLower(filepath.Ext(target)) {
+		case ".ts":
+			written, err := c.api.DownloadHLS(asset.URL, target)
+			if err != nil {
+				return 0, fmt.Errorf("download video asset: %w", err)
+			}
+			return written, nil
+		default:
+			// .mp4 在 TS→MP4 remux 实装前与未知后缀同路拒绝,文案与最终契约一致。
+			return 0, fmt.Errorf("unsupported video output format %q", filepath.Ext(target))
+		}
+	default:
+		return 0, fmt.Errorf("unsupported asset type %q", asset.Type)
+	}
 }
 
 // movieAssetsFromDetail 把影片详情 map 转成资产序列。
