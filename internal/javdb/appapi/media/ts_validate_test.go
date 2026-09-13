@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -77,7 +78,8 @@ func pmtSection() []byte {
 func validTSSegment() []byte { return validTSSegmentAt(0) }
 
 func validTSSegmentAt(base uint64) []byte {
-	sps := h264Frame(7, []byte{0xAA, 0xBB})
+	// 真实可解析的 SPS(baseline 66/level 40,640x480,无 crop),供 MP4 mux 使用。
+	sps := append([]byte{0x00, 0x00, 0x00, 0x01, 0x67}, []byte{0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2}...)
 	pps := h264Frame(8, []byte{0xCC, 0xDD})
 	frame0 := append(append(append([]byte{}, sps...), pps...), h264Frame(5, []byte{0x01, 0x02})...)
 	frame1 := h264Frame(1, []byte{0x03, 0x04})
@@ -133,8 +135,8 @@ func TestValidateTSSegment(t *testing.T) {
 
 // ---- DownloadHLS 的 Layer A 集成:per-segment 校验 + bounded retry + 原子发布 ----
 
-func hlsFetch(resources map[string][]byte) Fetch {
-	return func(uri string) ([]byte, error) {
+func hlsFetch(resources map[string][]byte) FetchContext {
+	return func(_ context.Context, uri string) ([]byte, error) {
 		body, ok := resources[uri]
 		if !ok {
 			return nil, errors.New("unexpected media URI " + uri)
@@ -147,7 +149,7 @@ func TestDownloadHLSRetriesInvalidSegmentThenSucceeds(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	good := validTSSegment()
 	attempts := 0
-	fetch := func(uri string) ([]byte, error) {
+	fetch := func(_ context.Context, uri string) ([]byte, error) {
 		switch uri {
 		case playlistURL:
 			return []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\ns1.ts\n#EXT-X-ENDLIST\n"), nil
@@ -162,7 +164,7 @@ func TestDownloadHLSRetriesInvalidSegmentThenSucceeds(t *testing.T) {
 		}
 	}
 	target := t.TempDir() + "/preview.ts"
-	written, err := downloadHLS(fetch, playlistURL, target)
+	written, err := downloadTS(context.Background(), fetch, playlistURL, target)
 	if err != nil {
 		t.Fatalf("download HLS: %v", err)
 	}
@@ -173,7 +175,7 @@ func TestDownloadHLSRetriesInvalidSegmentThenSucceeds(t *testing.T) {
 
 func TestDownloadHLSFailsAfterExhaustedSegmentRetries(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	fetch := func(uri string) ([]byte, error) {
+	fetch := func(_ context.Context, uri string) ([]byte, error) {
 		switch uri {
 		case playlistURL:
 			return []byte("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:17\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\ns1.ts\n#EXT-X-ENDLIST\n"), nil
@@ -184,7 +186,7 @@ func TestDownloadHLSFailsAfterExhaustedSegmentRetries(t *testing.T) {
 		}
 	}
 	target := t.TempDir() + "/preview.ts"
-	_, err := downloadHLS(fetch, playlistURL, target)
+	_, err := downloadTS(context.Background(), fetch, playlistURL, target)
 	if err == nil || !strings.Contains(err.Error(), "segment 17 remained invalid after 3 attempts") {
 		t.Fatalf("error = %v, want exhausted retries", err)
 	}
@@ -204,7 +206,7 @@ func TestDownloadHLSAcceptsDiscontinuityPlaylist(t *testing.T) {
 		"https://media.example.test/previews/b.ts": validTSSegmentAt(180000),
 	}
 	target := t.TempDir() + "/preview.ts"
-	written, err := downloadHLS(hlsFetch(resources), playlistURL, target)
+	written, err := downloadTS(context.Background(), hlsFetch(resources), playlistURL, target)
 	if err != nil {
 		t.Fatalf("download HLS: %v", err)
 	}
@@ -221,7 +223,7 @@ func TestDownloadHLSPublishesWithoutOverwriteAndLeavesNoTemp(t *testing.T) {
 	}
 	dir := t.TempDir()
 	target := dir + "/preview.ts"
-	if _, err := downloadHLS(hlsFetch(resources), playlistURL, target); err != nil {
+	if _, err := downloadTS(context.Background(), hlsFetch(resources), playlistURL, target); err != nil {
 		t.Fatalf("download HLS: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
@@ -235,7 +237,7 @@ func TestDownloadHLSPublishesWithoutOverwriteAndLeavesNoTemp(t *testing.T) {
 	if err := os.WriteFile(target, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := downloadHLS(hlsFetch(resources), playlistURL, target); err == nil {
+	if _, err := downloadTS(context.Background(), hlsFetch(resources), playlistURL, target); err == nil {
 		t.Fatal("expected failure for existing target")
 	}
 	if data, err := os.ReadFile(target); err != nil || string(data) != "keep" {
@@ -261,7 +263,7 @@ func TestDownloadHLSRejectsUnsupportedCodecAtFinalValidation(t *testing.T) {
 		"https://media.example.test/previews/s1.ts":     hevcSegment(),
 	}
 	target := t.TempDir() + "/preview.ts"
-	_, err := downloadHLS(hlsFetch(resources), "https://media.example.test/previews/hevc.m3u8", target)
+	_, err := downloadTS(context.Background(), hlsFetch(resources), "https://media.example.test/previews/hevc.m3u8", target)
 	if err == nil || !strings.Contains(err.Error(), "unsupported video codec") {
 		t.Fatalf("error = %v, want unsupported video codec", err)
 	}

@@ -129,8 +129,9 @@ func (c *Client) SetLanguage(lang string) { c.lang = lang }
 // CloseIdleConnections 释放短生命周期 client 的空闲连接。
 func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 
-// FetchMedia 获取未经过 App envelope 包装的媒体资源，供 media 包通过 callback 使用。
-func (c *Client) FetchMedia(rawURL string) ([]byte, error) {
+// FetchMedia 获取未经过 App envelope 包装的媒体资源,供 media 包通过 callback 使用。
+// ctx 贯穿媒体请求(计划 #44):取消时立即中断网络读取。
+func (c *Client) FetchMedia(ctx context.Context, rawURL string) ([]byte, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("invalid media URL")
@@ -138,7 +139,7 @@ func (c *Client) FetchMedia(rawURL string) ([]byte, error) {
 	if u.Scheme != "https" && u.Scheme != "http" {
 		return nil, fmt.Errorf("unsupported media URL scheme %q", u.Scheme)
 	}
-	resp, err := c.http.Get(rawURL, map[string]string{"user-agent": UserAgent})
+	resp, err := c.http.GetWithContext(ctx, rawURL, map[string]string{"user-agent": UserAgent})
 	if err != nil {
 		return nil, fmt.Errorf("request media: %w", err)
 	}

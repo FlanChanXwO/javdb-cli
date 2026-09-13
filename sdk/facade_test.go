@@ -1,6 +1,7 @@
 package javdb
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -20,8 +21,8 @@ var (
 	_ func(c *appapi.Client, kind string) ([]map[string]any, error)                                                          = (*appapi.Client).Collected
 	_ func(c *appapi.Client, kind string, page int) ([]map[string]any, error)                                                = (*appapi.Client).CollectedPage
 	_ func(c *appapi.Client, path string, params map[string]string, dest any) error                                          = (*appapi.Client).DeleteJSON
-	_ func(c *appapi.Client, playlistURL, target string) (int64, error)                                                      = (*appapi.Client).DownloadHLS
-	_ func(c *appapi.Client, sourceURL, target string) (int64, error)                                                        = (*appapi.Client).DownloadImage
+	_ func(c *appapi.Client, ctx context.Context, playlistURL, target string) (int64, error)                                 = (*appapi.Client).DownloadHLS
+	_ func(c *appapi.Client, ctx context.Context, sourceURL, target string) (int64, error)                                   = (*appapi.Client).DownloadImage
 	_ func(c *appapi.Client, kind, id string) (map[string]any, error)                                                        = (*appapi.Client).EntityDetail
 	_ func(c *appapi.Client, kind, entityID string, opt appapi.EntityMoviesOptions) (appapi.SearchResult, error)             = (*appapi.Client).EntityMovies
 	_ func(c *appapi.Client, path string, params map[string]string, dest any) error                                          = (*appapi.Client).GetJSON

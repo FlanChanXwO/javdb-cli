@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
@@ -14,29 +15,34 @@ import (
 	"strings"
 )
 
+// FetchContext 是 client 提供给媒体解码器的原始资源读取回调。
+// context 贯穿全部媒体请求(计划 #44):取消时立即停止网络与工作。
+type FetchContext func(ctx context.Context, url string) ([]byte, error)
+
 // MediaEndpoint 提供图片与 HLS 预览媒体的下载 capability。
 type MediaEndpoint struct {
-	fetch Fetch
+	fetch FetchContext
 }
 
 // NewMedia 用 transport 提供的原始资源读取回调构造 media capability。
-func NewMedia(fetch Fetch) *MediaEndpoint {
+func NewMedia(fetch FetchContext) *MediaEndpoint {
 	return &MediaEndpoint{fetch: fetch}
 }
 
-// DownloadImage 下载并还原图片媒体，委托包级纯实现。
-func (e *MediaEndpoint) DownloadImage(sourceURL, target string) (int64, error) {
-	return DownloadImage(e.fetch, sourceURL, target)
+// DownloadImage 下载并还原图片媒体,委托包级纯实现。
+func (e *MediaEndpoint) DownloadImage(ctx context.Context, sourceURL, target string) (int64, error) {
+	return DownloadImage(ctx, e.fetch, sourceURL, target)
 }
 
-// DownloadHLS 下载已结束的 HLS 预览媒体，委托包级纯实现。
-func (e *MediaEndpoint) DownloadHLS(playlistURL, target string) (int64, error) {
-	return DownloadHLS(e.fetch, playlistURL, target)
+// DownloadHLS 下载已结束的 HLS 预览媒体,委托包级纯实现;输出格式由
+// target 后缀决定(.ts 保留 Transport Stream,.mp4 输出 Fast Start MP4)。
+func (e *MediaEndpoint) DownloadHLS(ctx context.Context, playlistURL, target string) (int64, error) {
+	return DownloadHLS(ctx, e.fetch, playlistURL, target)
 }
 
 // DownloadImage 下载并还原图片 CDN 返回的图片数据,再原子发布到 target。
-func DownloadImage(fetch Fetch, sourceURL, target string) (int64, error) {
-	raw, err := fetch(sourceURL)
+func DownloadImage(ctx context.Context, fetch FetchContext, sourceURL, target string) (int64, error) {
+	raw, err := fetch(ctx, sourceURL)
 	if err != nil {
 		return 0, err
 	}
@@ -54,9 +60,18 @@ func DownloadImage(fetch Fetch, sourceURL, target string) (int64, error) {
 	}, nil)
 }
 
-// DownloadHLS 下载一个已结束的 HLS 媒体播放列表，并将解密后的媒体分片串接到 target。
-func DownloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
-	return downloadHLS(fetch, playlistURL, target)
+// DownloadHLS 下载一个已结束的 HLS 播放列表到 target,输出格式由后缀决定:
+// .ts 保留 Transport Stream(解密+校验后的拼接流);.mp4 输出 Fast Start MP4;
+// 其余后缀明确拒绝,不做转码(计划 #17/#18/#25)。
+func DownloadHLS(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
+	switch strings.ToLower(filepath.Ext(target)) {
+	case ".ts":
+		return downloadTS(ctx, fetch, playlistURL, target)
+	case ".mp4":
+		return downloadMP4(ctx, fetch, playlistURL, target)
+	default:
+		return 0, fmt.Errorf("unsupported video output format %q", filepath.Ext(target))
+	}
 }
 
 func validateMediaURL(rawURL string) error {
@@ -140,8 +155,10 @@ type hlsMediaPlaylist struct {
 // 依据 input.md 计划 #32 的明文要求(损坏 segment 重试同一 segment,至多 3 次)。
 const maxSegmentAttempts = 3
 
-func downloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
-	playlistBody, err := fetch(playlistURL)
+// downloadTS 产出保留 Transport Stream 的 .ts:每个 segment 通过 Layer A 与
+// codec 检查后写入 .part,最终做分块结构校验后原子发布(计划 #33)。
+func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
+	playlistBody, err := fetch(ctx, playlistURL)
 	if err != nil {
 		return 0, fmt.Errorf("download HLS playlist: %w", err)
 	}
@@ -154,8 +171,11 @@ func downloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
 		var total int64
 		keys := map[string][]byte{}
 		for _, segment := range playlist.segments {
-			payload, err := fetchValidatedSegment(fetch, segment, keys)
+			payload, err := fetchValidatedSegment(ctx, fetch, segment, keys)
 			if err != nil {
+				return total, err
+			}
+			if err := validateSegmentCodecs(payload); err != nil {
 				return total, err
 			}
 			n, err := w.Write(payload)
@@ -168,15 +188,56 @@ func downloadHLS(fetch Fetch, playlistURL, target string) (int64, error) {
 			total += int64(n)
 		}
 		return total, nil
-	}, validateMediaFile)
+	}, validateTSFileStream)
+}
+
+// downloadMP4 走 spool 管线产出 Fast Start MP4(计划 #35/#36)。
+func downloadMP4(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
+	playlistBody, err := fetch(ctx, playlistURL)
+	if err != nil {
+		return 0, fmt.Errorf("download HLS playlist: %w", err)
+	}
+	playlist, err := parseHLSMediaPlaylist(playlistURL, playlistBody)
+	if err != nil {
+		return 0, err
+	}
+
+	spoolPath := target + ".spool"
+	spool, err := newMP4Spooler(spoolPath)
+	if err != nil {
+		return 0, err
+	}
+	defer os.Remove(spoolPath)
+	defer spool.file.Close()
+
+	return publishMediaFile(target, func(w io.Writer) (int64, error) {
+		keys := map[string][]byte{}
+		for _, segment := range playlist.segments {
+			payload, err := fetchValidatedSegment(ctx, fetch, segment, keys)
+			if err != nil {
+				return 0, err
+			}
+			if err := spool.addSegment(payload); err != nil {
+				return 0, err
+			}
+		}
+		spool.finalize()
+		return writeMP4Body(spool, w)
+	}, validateMP4File)
 }
 
 // fetchValidatedSegment 获取、解密并校验单个 segment(Layer A per-segment gate)。
 // 校验失败或传输失败时重试同一 segment,至多 maxSegmentAttempts 次。
-func fetchValidatedSegment(fetch Fetch, segment hlsSegment, keys map[string][]byte) ([]byte, error) {
+func fetchValidatedSegment(ctx context.Context, fetch FetchContext, segment hlsSegment, keys map[string][]byte) ([]byte, error) {
 	var lastErr error
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	for attempt := 1; attempt <= maxSegmentAttempts; attempt++ {
-		raw, err := fetch(segment.uri)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		raw, err := fetch(ctx, segment.uri)
 		if err != nil {
 			lastErr = fmt.Errorf("download HLS segment: %w", err)
 			continue
@@ -189,7 +250,7 @@ func fetchValidatedSegment(fetch Fetch, segment hlsSegment, keys map[string][]by
 		if segment.key != nil {
 			key, ok := keys[segment.key.uri]
 			if !ok {
-				key, err = fetch(segment.key.uri)
+				key, err = fetch(ctx, segment.key.uri)
 				if err != nil {
 					lastErr = fmt.Errorf("download HLS key: %w", err)
 					continue

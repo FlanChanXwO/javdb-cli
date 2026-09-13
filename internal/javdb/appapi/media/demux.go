@@ -138,9 +138,13 @@ func parsePMTTypes(payload []byte) (map[uint16]byte, error) {
 }
 
 // parsePESFrame 解析 PES header,返回帧与其时间戳。
+// TS packet 的 0xFF stuffing 不属于 PES:按 PES_packet_length 截断(0=未定长,取整段)。
 func parsePESFrame(pes []byte) (demuxedFrame, error) {
 	if len(pes) < 9 || !isPESPayload(pes) {
 		return demuxedFrame{}, fmt.Errorf("malformed PES header")
+	}
+	if pesLen := int(pes[4])<<8 | int(pes[5]); pesLen > 0 && 6+pesLen <= len(pes) {
+		pes = pes[:6+pesLen]
 	}
 	flags := pes[7]
 	headerLen := int(pes[8])

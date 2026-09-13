@@ -2,6 +2,7 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"fmt"
@@ -45,7 +46,7 @@ func TestFetchMediaRejectsNon2xxResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new app API client: %v", err)
 	}
-	_, err = apiClient.FetchMedia(server.URL)
+	_, err = apiClient.FetchMedia(context.Background(), server.URL)
 	if err == nil || !strings.Contains(err.Error(), "HTTP 410") {
 		t.Fatalf("fetch media error = %v, want HTTP status error", err)
 	}
@@ -65,7 +66,7 @@ func TestFetchMediaNeverSendsAuthHeaders(t *testing.T) {
 		t.Fatalf("new app API client: %v", err)
 	}
 	apiClient.SetToken("secret-bearer-token")
-	if _, err := apiClient.FetchMedia(server.URL + "/img"); err != nil {
+	if _, err := apiClient.FetchMedia(context.Background(), server.URL+"/img"); err != nil {
 		t.Fatalf("fetch media: %v", err)
 	}
 	for _, name := range []string{"Authorization", "Jdsignature"} {
@@ -86,7 +87,7 @@ func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 		"https://media.example.test/previews/first.ts":  encryptHLSTestPayload(t, first, key, hlsSequenceIV(7)),
 		"https://media.example.test/previews/second.ts": encryptHLSTestPayload(t, second, key, hlsSequenceIV(8)),
 	}
-	fetch := func(uri string) ([]byte, error) {
+	fetch := func(_ context.Context, uri string) ([]byte, error) {
 		body, ok := resources[uri]
 		if !ok {
 			return nil, fmt.Errorf("unexpected media URI %q", uri)
@@ -95,7 +96,7 @@ func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 	}
 
 	target := filepath.Join(t.TempDir(), "preview.ts")
-	n, err := downloadHLS(fetch, playlistURL, target)
+	n, err := downloadTS(context.Background(), fetch, playlistURL, target)
 	if err != nil {
 		t.Fatalf("download HLS: %v", err)
 	}
@@ -115,7 +116,7 @@ func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 func TestDownloadHLSRejectsUnfinishedPlaylistWithoutCreatingFile(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	target := filepath.Join(t.TempDir(), "preview.ts")
-	_, err := downloadHLS(func(uri string) ([]byte, error) {
+	_, err := downloadTS(context.Background(), func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("#EXTM3U\n#EXTINF:1.0,\nsegment.ts\n"), nil
 	}, playlistURL, target)
 	if err == nil {
@@ -136,7 +137,7 @@ func TestDownloadHLSRejectsInvalidPKCS7PaddingWithoutOutput(t *testing.T) {
 		"https://media.example.test/previews/key.bin":    key,
 		"https://media.example.test/previews/segment.ts": encryptHLSRawPayload(t, invalidPlaintext, key, hlsSequenceIV(0)),
 	}
-	fetch := func(uri string) ([]byte, error) {
+	fetch := func(_ context.Context, uri string) ([]byte, error) {
 		body, ok := resources[uri]
 		if !ok {
 			return nil, fmt.Errorf("unexpected media URI %q", uri)
@@ -145,7 +146,7 @@ func TestDownloadHLSRejectsInvalidPKCS7PaddingWithoutOutput(t *testing.T) {
 	}
 
 	target := filepath.Join(t.TempDir(), "preview.ts")
-	_, err := downloadHLS(fetch, playlistURL, target)
+	_, err := downloadTS(context.Background(), fetch, playlistURL, target)
 	if err == nil || !strings.Contains(err.Error(), "PKCS#7") {
 		t.Fatalf("download HLS error = %v, want invalid padding", err)
 	}

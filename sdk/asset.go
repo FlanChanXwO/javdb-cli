@@ -28,8 +28,7 @@ type MovieAsset struct {
 // thumbnail → cover(若详情提供)→ preview_images[](large_url 优先,回退 thumb_url)→ preview video。
 // 详情中缺失的项直接跳过,因此序列长度随影片而变。
 func (c *Client) MovieAssets(ctx context.Context, movieID string) ([]MovieAsset, error) {
-	_ = ctx
-	movie, err := c.api.MovieDetail(movieID)
+	movie, err := c.api.MovieDetailContext(ctx, movieID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch movie detail: %w", err)
 	}
@@ -38,27 +37,26 @@ func (c *Client) MovieAssets(ctx context.Context, movieID string) ([]MovieAsset,
 
 // DownloadMovieAsset 下载单个影片资产到 target 路径,返回写入字节数。
 // image:下载 → 必要时 XOR 解包 → 图片魔数校验 → 原子写入,不做任何格式转换。
-// video:输出格式由 target 后缀决定——.ts 保留 MPEG-TS(解密后的完整流),
-// 其余后缀(含 .mp4,remux 层落地前)一律拒绝,不做转码。
+// video:输出格式由 target 后缀决定——.ts 保留解密校验后的 MPEG-TS,
+// .mp4 输出 Fast Start MP4(纯 remux,不转码);其余后缀明确拒绝。
+// ctx 贯穿全部阶段(计划 #44):取消时立即停止网络与工作,不留输出文件。
 func (c *Client) DownloadMovieAsset(ctx context.Context, asset MovieAsset, target string) (int64, error) {
-	_ = ctx
 	switch asset.Type {
 	case assetTypeImage:
-		written, err := c.api.DownloadImage(asset.URL, target)
+		written, err := c.api.DownloadImage(ctx, asset.URL, target)
 		if err != nil {
 			return 0, fmt.Errorf("download image asset: %w", err)
 		}
 		return written, nil
 	case assetTypeVideo:
 		switch strings.ToLower(filepath.Ext(target)) {
-		case ".ts":
-			written, err := c.api.DownloadHLS(asset.URL, target)
+		case ".ts", ".mp4":
+			written, err := c.api.DownloadHLS(ctx, asset.URL, target)
 			if err != nil {
 				return 0, fmt.Errorf("download video asset: %w", err)
 			}
 			return written, nil
 		default:
-			// .mp4 在 TS→MP4 remux 实装前与未知后缀同路拒绝,文案与最终契约一致。
 			return 0, fmt.Errorf("unsupported video output format %q", filepath.Ext(target))
 		}
 	default:

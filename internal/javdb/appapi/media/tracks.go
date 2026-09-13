@@ -244,3 +244,31 @@ func isVideoStreamType(t byte) bool {
 func isAudioStreamType(t byte) bool {
 	return t == 0x0F || t == 0x11 || t == 0x03 || t == 0x04 || t == 0x81 || t == 0x84 || t == 0x87
 }
+
+// validateSegmentCodecs 是单 segment 的 codec 分类检查(.ts 模式逐段执行):
+// 不支持的 codec 明确拒绝;timed ID3 丢弃;参数集等文件级检查不在此处。
+func validateSegmentCodecs(data []byte) error {
+	streams, err := parseTSStreams(data)
+	if err != nil {
+		return err
+	}
+	for _, stream := range streams {
+		switch stream.streamType {
+		case streamTypeH264, streamTypeAAC, streamTypeID3:
+			continue
+		default:
+			name := codecNames[uint16(stream.streamType)]
+			if name == "" {
+				name = fmt.Sprintf("0x%02X", stream.streamType)
+			}
+			if isVideoStreamType(stream.streamType) {
+				return fmt.Errorf("unsupported video codec: %s", name)
+			}
+			if isAudioStreamType(stream.streamType) {
+				return fmt.Errorf("unsupported audio codec: %s", name)
+			}
+			return fmt.Errorf("unsupported stream type %s", name)
+		}
+	}
+	return nil
+}

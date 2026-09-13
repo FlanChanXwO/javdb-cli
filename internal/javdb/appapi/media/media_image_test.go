@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func TestDownloadImageAcceptsPlainAndXORWrappedImages(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			target := filepath.Join(t.TempDir(), "out.jpg")
-			written, err := DownloadImage(func(string) ([]byte, error) { return tc.payload, nil }, "https://media.example.test/i", target)
+			written, err := DownloadImage(context.Background(), func(_ context.Context, _ string) ([]byte, error) { return tc.payload, nil }, "https://media.example.test/i", target)
 			if err != nil {
 				t.Fatalf("DownloadImage error = %v", err)
 			}
@@ -59,7 +60,7 @@ func TestDownloadImageRejectsNonImagePayloads(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			target := filepath.Join(t.TempDir(), "out.jpg")
-			_, err := DownloadImage(func(string) ([]byte, error) { return tc.payload, nil }, "https://media.example.test/i", target)
+			_, err := DownloadImage(context.Background(), func(_ context.Context, _ string) ([]byte, error) { return tc.payload, nil }, "https://media.example.test/i", target)
 			if err == nil {
 				t.Fatal("expected failure for non-image payload")
 			}
@@ -72,7 +73,7 @@ func TestDownloadImageRejectsNonImagePayloads(t *testing.T) {
 
 func TestDownloadImagePropagatesFetchError(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "out.jpg")
-	_, err := DownloadImage(func(string) ([]byte, error) { return nil, errors.New("HTTP 403") }, "https://media.example.test/i", target)
+	_, err := DownloadImage(context.Background(), func(_ context.Context, _ string) ([]byte, error) { return nil, errors.New("HTTP 403") }, "https://media.example.test/i", target)
 	if err == nil || !strings.Contains(err.Error(), "HTTP 403") {
 		t.Fatalf("error = %v, want fetch error to propagate", err)
 	}

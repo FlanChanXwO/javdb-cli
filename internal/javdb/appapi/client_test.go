@@ -55,8 +55,8 @@ var (
 	_ func(*Client, string, int, int) ([]map[string]any, error)                         = (*Client).MovieComments
 	_ func(*Client, string) (string, error)                                             = (*Client).ResolveMovieID
 	_ func(a, b map[string]any) bool                                                    = MagnetBetter
-	_ func(*Client, string, string) (int64, error)                                      = (*Client).DownloadImage
-	_ func(*Client, string, string) (int64, error)                                      = (*Client).DownloadHLS
+	_ func(*Client, context.Context, string, string) (int64, error)                     = (*Client).DownloadImage
+	_ func(*Client, context.Context, string, string) (int64, error)                     = (*Client).DownloadHLS
 	_ func(*Client, string, string) (SearchResult, error)                               = (*Client).RankingsMovies
 	_ func(*Client, string) (SearchResult, error)                                       = (*Client).RankingsActors
 	_ func(*Client, string, string) (SearchResult, error)                               = (*Client).RankingsPlayback

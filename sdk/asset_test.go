@@ -260,7 +260,7 @@ func TestClientDownloadMovieAssetVideoRejectsUnsupportedFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	for _, target := range []string{dir + "/preview.mkv", dir + "/preview.mp4", dir + "/novalue"} {
+	for _, target := range []string{dir + "/preview.mkv", dir + "/novalue"} {
 		_, err := client.DownloadMovieAsset(context.Background(), MovieAsset{Type: "video", URL: server.URL + "/video.m3u8"}, target)
 		if err == nil {
 			t.Fatalf("target %q: expected unsupported format error", target)
