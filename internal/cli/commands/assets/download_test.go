@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -219,7 +220,8 @@ func validTSSegmentFixture() []byte {
 		0x1B, 0xE1, 0x01, 0xF0, 0x00, 0x0F, 0xE1, 0x02, 0xF0, 0x00,
 	})
 	start := []byte{0x00, 0x00, 0x00, 0x01}
-	sps := append(append([]byte{}, start...), 0x67, 0xAA, 0xBB)
+	// 真实可解析 SPS(baseline 66/level 40,640x480),供 MP4 mux 使用。
+	sps := append(append([]byte{}, start...), 0x67, 0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2)
 	pps := append(append([]byte{}, start...), 0x68, 0xCC, 0xDD)
 	idr := append(append([]byte{}, start...), 0x65, 0x01, 0x02)
 	nonIDR := append(append([]byte{}, start...), 0x41, 0x03, 0x04)
@@ -235,4 +237,65 @@ func validTSSegmentFixture() []byte {
 	data = append(data, tsPacket(0x0101, video1)...)
 	data = append(data, tsPacket(0x0102, audio)...)
 	return data
+}
+
+// T11 补充:视频自动命名 .mp4 端到端(T10 remux 落地后),以及
+// assets list 输出直接喂给 assets download 的真管道组合。
+
+func TestDownloadVideoAutoNamesMP4(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := runDownload(t, "video\t<SERVER>/v.m3u8\n", "-d", dir); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	target := filepath.Join(dir, "video-001.mp4")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	if len(data) < 8 || string(data[4:8]) != "ftyp" {
+		t.Fatalf("output is not an MP4: head=% X", data[:min(12, len(data))])
+	}
+	// Fast Start:moov 必须在 mdat 之前。
+	if bytes.Index(data, []byte("moov")) > bytes.Index(data, []byte("mdat")) {
+		t.Fatal("moov must precede mdat (fast start)")
+	}
+}
+
+func TestListPipeIntoDownload(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := newListServer(t)
+	defer server.Close()
+
+	// list:非 TTY 输出 TYPE<TAB>URL。
+	streams := invocation.NewStreams(strings.NewReader(""), &strings.Builder{}, &strings.Builder{})
+	listCmd := NewList(&invocation.RootOptions{Host: server.URL}, streams)
+	listCmd.SetArgs([]string{"SSIS-589", "--type", "image", "1-2"})
+	if err := listCmd.Execute(); err != nil {
+		t.Fatalf("list error = %v", err)
+	}
+	listOut := streams.Out.(*strings.Builder).String()
+
+	// 把 list 输出原样接到 download stdin(与真实管道一致)。
+	dlStreams := invocation.NewStreams(strings.NewReader(listOut), &strings.Builder{}, &strings.Builder{})
+	dlCmd := NewDownload(&invocation.RootOptions{Host: server.URL}, dlStreams)
+	dlCmd.SetArgs([]string{"-d", dir})
+	if err := dlCmd.Execute(); err != nil {
+		t.Fatalf("download error = %v", err)
+	}
+	for _, name := range []string{"image-001.jpg", "image-002.jpg"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("expected %s: %v", name, err)
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
