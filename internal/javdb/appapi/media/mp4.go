@@ -169,7 +169,13 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	videoTrak := buildVideoTrak(video, mdatStart)
 	traks := [][]byte{videoTrak}
 	if audio != nil {
-		traks = append(traks, buildAudioTrak(audio, mdatStart))
+		// mdat 布局:视频样本连续在前,音频样本紧随其后;
+		// 音频 stco 的基址 = mdatStart + 视频样本总字节。
+		var videoTotal int64
+		for _, s := range video.Samples {
+			videoTotal += int64(s.Size)
+		}
+		traks = append(traks, buildAudioTrak(audio, mdatStart+videoTotal))
 	}
 	return mp4Box("moov", mvhd, flatten(traks)), nil
 }
@@ -292,10 +298,15 @@ func buildSTSZ(samples []mp4SampleMeta) []byte {
 	return mp4FullBox("stsz", 0, 0, mp4U32(0), mp4U32(uint32(len(samples))), flatten(entries))
 }
 
+// buildSTCO 的 chunk 偏移指向各 track 在 mdat 数据区内的位置:
+// mdat 按 track 分区、样本按 Samples 顺序连续存放,偏移 = 之前样本 Size 之和。
+// mp4SampleMeta.Offset 是 spool 内的物理位置,只用于数据拷贝,不用于 stco。
 func buildSTCO(samples []mp4SampleMeta, mdatStart int64) []byte {
 	entries := make([][]byte, 0, len(samples))
+	var off int64
 	for _, s := range samples {
-		entries = append(entries, mp4U32(uint32(mdatStart+s.Offset)))
+		entries = append(entries, mp4U32(uint32(mdatStart+off)))
+		off += int64(s.Size)
 	}
 	return mp4FullBox("stco", 0, 0, mp4U32(uint32(len(samples))), flatten(entries))
 }
@@ -550,7 +561,7 @@ func buildMP4(video *h264Track, audio *aacTrack) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	mdatStart := int64(len(ftyp)+len(moov)+8) + 8
+	mdatStart := int64(len(ftyp) + len(moov) + 8)
 	moov, err = buildMoov(videoMeta, audioMeta, mdatStart)
 	if err != nil {
 		return nil, err

@@ -13,14 +13,15 @@ import (
 // 临时磁盘峰值 ≈ spool(≈1×输出)+ video.tmp(≈1×输出),换取有界内存与 Fast Start。
 
 // mp4Spooler 把样本数据顺序写入 spool 文件并累积元数据。
+// 视频/音频样本交错追加(段内顺序不定),每个样本的 Offset 都记录
+// spool 内的全局物理位置,保证读回与写入严格一致。
 type mp4Spooler struct {
-	file        *os.File
-	video       *mp4TrackMeta
-	audio       *mp4TrackMeta
-	videoOffset int64
-	audioOffset int64
-	minStart    uint64
-	lastEnd     uint64
+	file       *os.File
+	video      *mp4TrackMeta
+	audio      *mp4TrackMeta
+	fileOffset int64
+	minStart   uint64
+	lastEnd    uint64
 }
 
 func newMP4Spooler(path string) (*mp4Spooler, error) {
@@ -66,10 +67,10 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					return err
 				}
 				s.video.Samples = append(s.video.Samples, mp4SampleMeta{
-					Offset: s.videoOffset, Size: uint32(len(sample.Data)),
+					Offset: s.fileOffset, Size: uint32(len(sample.Data)),
 					PTS: sample.PTS, DTS: sample.DTS, Sync: sample.Sync,
 				})
-				s.videoOffset += int64(len(sample.Data))
+				s.fileOffset += int64(len(sample.Data))
 				s.noteTimeline(sample.PTS, sample.DTS)
 			}
 		case streamTypeAAC:
@@ -90,9 +91,9 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					return err
 				}
 				s.audio.Samples = append(s.audio.Samples, mp4SampleMeta{
-					Offset: s.audioOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
+					Offset: s.fileOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
 				})
-				s.audioOffset += int64(len(sample.Data))
+				s.fileOffset += int64(len(sample.Data))
 				s.noteTimeline(sample.PTS, sample.PTS)
 			}
 		}
@@ -146,12 +147,12 @@ func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	mdatStart := int64(len(ftyp)+len(moov)+8) + 8
+	mdatStart := int64(len(ftyp) + len(moov) + 8)
 	moov, err = buildMoov(spool.video, spool.audio, mdatStart)
 	if err != nil {
 		return 0, err
 	}
-	mdatSize := spool.videoOffset + spool.audioOffset
+	mdatSize := spool.fileOffset
 	var written int64
 	// mdat 头的 size 必须包含随后拷贝的样本数据总量。
 	mdatHeader := append(mp4U32(uint32(8+mdatSize)), "mdat"...)
@@ -161,6 +162,10 @@ func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 		if err != nil {
 			return written, err
 		}
+	}
+	var videoTotal int64
+	for _, s := range spool.video.Samples {
+		videoTotal += int64(s.Size)
 	}
 	videoCopied, err := copySamplesFromSpool(spool, spool.video.Samples, out)
 	written += videoCopied
@@ -420,16 +425,15 @@ func validateTSFileStream(path string) error {
 	if info.Size() == 0 || info.Size()%tsPacketSize != 0 {
 		return fmt.Errorf("TS output size %d is not %d-byte aligned", info.Size(), tsPacketSize)
 	}
+	// 逐 packet 校验同步字节即可:PSI/PES 完整性已在 per-segment Layer A
+	// 与 codec 检查中覆盖,整文件级重复会因块边界无 PAT 而误报。
 	buf := make([]byte, tsStreamChunkSize)
 	var off int64
 	for {
 		n, err := file.ReadAt(buf, off)
-		if n > 0 {
-			if n%tsPacketSize != 0 {
-				return fmt.Errorf("TS chunk at %d is misaligned", off)
-			}
-			if err := validateTSSegment(buf[:n]); err != nil {
-				return fmt.Errorf("final TS validation at offset %d: %w", off, err)
+		for p := 0; p < n; p += tsPacketSize {
+			if buf[p] != 0x47 {
+				return fmt.Errorf("final TS validation: invalid sync byte at offset %d", off+int64(p))
 			}
 		}
 		if err != nil {

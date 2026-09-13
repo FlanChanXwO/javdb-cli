@@ -146,7 +146,11 @@ func parsePSIMap(payload []byte, tableID byte) (map[uint16]bool, error) {
 			if pos+5 > end {
 				return nil, fmt.Errorf("truncated PMT entry")
 			}
-			table[(uint16(section[pos+1]&0x1F)<<8)|uint16(section[pos+2])] = true
+			// timed ID3 元数据流(0x15)默认丢弃(计划 #39),
+			// 不参与 Layer A 的"每条声明流必须有载荷"检查。
+			if section[pos] != 0x15 {
+				table[(uint16(section[pos+1]&0x1F)<<8)|uint16(section[pos+2])] = true
+			}
 			esLen := (int(section[pos+3]&0x0F) << 8) | int(section[pos+4])
 			pos += 5 + esLen
 		}

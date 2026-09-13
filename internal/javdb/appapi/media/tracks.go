@@ -110,20 +110,28 @@ func trimLeadingZero(data []byte) []byte {
 }
 
 // parseAACTrack 把 AAC ADTS 帧序列转成 raw 样本,并从首个 ADTS 头提取配置。
+// 一个音频 PES 常承载多个 ADTS 帧,必须逐帧切分,每帧一个样本;
+// 帧的 PTS 按 1024 samples/frame 在 90kHz 时间轴上顺次推进。
 func parseAACTrack(stream demuxedStream) (*aacTrack, error) {
 	track := &aacTrack{}
 	for _, frame := range stream.frames {
-		payload, freqIdx, channels, err := parseADTS(frame.ES)
-		if err != nil {
-			return nil, err
+		es := frame.ES
+		pts := frame.PTS
+		for len(es) > 0 {
+			payload, freqIdx, channels, consumed, err := parseADTS(es)
+			if err != nil {
+				return nil, err
+			}
+			if track.Config == nil {
+				// AudioSpecificConfig:AOT=2(AAC-LC)+ 频率索引 + 通道配置。
+				track.Config = []byte{byte(2)<<3 | freqIdx>>1, freqIdx<<7 | channels<<3}
+				track.SampleRate = aacFrequencies[freqIdx]
+				track.Channels = int(channels)
+			}
+			track.Samples = append(track.Samples, aacSample{Data: append([]byte(nil), payload...), PTS: pts})
+			pts += uint64(1024) * 90000 / uint64(track.SampleRate)
+			es = es[consumed:]
 		}
-		if track.Config == nil {
-			// AudioSpecificConfig:AOT=2(AAC-LC)+ 频率索引 + 通道配置。
-			track.Config = []byte{byte(2)<<3 | freqIdx>>1, freqIdx<<7 | channels<<3}
-			track.SampleRate = aacFrequencies[freqIdx]
-			track.Channels = int(channels)
-		}
-		track.Samples = append(track.Samples, aacSample{Data: append([]byte(nil), payload...), PTS: frame.PTS})
 	}
 	if track.Config == nil {
 		return nil, fmt.Errorf("audio track has no AAC frames")
@@ -131,21 +139,21 @@ func parseAACTrack(stream demuxedStream) (*aacTrack, error) {
 	return track, nil
 }
 
-// parseADTS 剥离单个 ADTS 帧(protection_absent=1,7 字节头)。
-func parseADTS(data []byte) (payload []byte, freqIdx byte, channels byte, err error) {
+// parseADTS 剥离单个 ADTS 帧(protection_absent=1,7 字节头),返回帧总长。
+func parseADTS(data []byte) (payload []byte, freqIdx byte, channels byte, consumed int, err error) {
 	if len(data) < 7 || data[0] != 0xFF || data[1]&0xF0 != 0xF0 {
-		return nil, 0, 0, fmt.Errorf("malformed ADTS frame")
+		return nil, 0, 0, 0, fmt.Errorf("malformed ADTS frame")
 	}
 	if data[1]&0x01 != 1 {
-		return nil, 0, 0, fmt.Errorf("ADTS CRC frames are not supported")
+		return nil, 0, 0, 0, fmt.Errorf("ADTS CRC frames are not supported")
 	}
 	freqIdx = (data[2] >> 2) & 0x0F
 	channels = (data[2]&0x01)<<1 | data[3]>>6
 	length := int(data[3]&0x03)<<11 | int(data[4])<<3 | int(data[5])>>5
 	if length < 7 || length > len(data) {
-		return nil, 0, 0, fmt.Errorf("ADTS frame length %d out of bounds", length)
+		return nil, 0, 0, 0, fmt.Errorf("ADTS frame length %d out of bounds", length)
 	}
-	return data[7:length], freqIdx, channels, nil
+	return data[7:length], freqIdx, channels, length, nil
 }
 
 // codecNames 映射已知 stream_type 到可读名称,用于明确的不支持错误。
