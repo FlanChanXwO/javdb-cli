@@ -84,6 +84,17 @@ func movieAssetsFromDetail(movie map[string]any) []MovieAsset {
 	return assets
 }
 
+// movieString 把详情 map 中的 any 字段安全转成字符串,缺失/类型异常返回空串。
+func movieString(value any) string {
+	if value == nil {
+		return ""
+	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return fmt.Sprint(value)
+}
+
 // moviePreviewImageURLs 展开全部 preview_images 的展示 URL。
 // 同一张图内 large_url 与 thumb_url 是同一资产的不同来源,只产出一个 URL。
 func moviePreviewImageURLs(movie map[string]any) []string {

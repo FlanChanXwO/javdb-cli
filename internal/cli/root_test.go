@@ -36,7 +36,6 @@ Usage:
 
 Available Commands:
   actor       List movies for an actor (id or name)
-  assets      Save selected movie thumbnail and preview assets to new files
   auth        Account login and multi-account management
   browse      Browse movies by content tags / year / month
   cache       Inspect or clear the local reverse-search cache
@@ -81,60 +80,6 @@ func TestRootHelpFullLiteral(t *testing.T) {
 	}
 	if out.String() != rootHelpLiteral {
 		t.Fatalf("root help mismatch:\n--- want ---\n%q\n--- got ---\n%q", rootHelpLiteral, out.String())
-	}
-}
-
-func TestAssetsCommandAndDownloadAliasShareCommand(t *testing.T) {
-	root := New(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-
-	assets, _, err := root.Find([]string{"assets"})
-	if err != nil {
-		t.Fatalf("find assets command: %v", err)
-	}
-	download, _, err := root.Find([]string{"download"})
-	if err != nil {
-		t.Fatalf("find download alias: %v", err)
-	}
-	if assets != download {
-		t.Fatal("download must resolve to the canonical assets command object")
-	}
-	if got, want := assets.Name(), "assets"; got != want {
-		t.Fatalf("canonical command name = %q, want %q", got, want)
-	}
-	if got, want := assets.Use, "assets NUMBER"; got != want {
-		t.Fatalf("canonical command use = %q, want %q", got, want)
-	}
-	if !assets.HasAlias("download") {
-		t.Fatal("canonical assets command is missing download alias")
-	}
-	for _, name := range []string{"id", "thumbnail", "preview-image", "preview-video", "json", "ndjson"} {
-		if assets.LocalNonPersistentFlags().Lookup(name) == nil {
-			t.Fatalf("canonical assets command missing flag %q", name)
-		}
-	}
-}
-
-func TestAssetsHelpAndDownloadAliasHelpDescribeLocalAssets(t *testing.T) {
-	var help [2]string
-	for i, name := range []string{"assets", "download"} {
-		var out, errb bytes.Buffer
-		code := Run([]string{name, "--help"}, strings.NewReader(""), &out, &errb)
-		if code != 0 {
-			t.Fatalf("%s --help: code=%d stderr=%q", name, code, errb.String())
-		}
-		help[i] = out.String()
-		for _, phrase := range []string{
-			"thumbnail and preview assets",
-			"does not download full movies",
-			"magnets",
-		} {
-			if !strings.Contains(help[i], phrase) {
-				t.Fatalf("%s --help missing %q:\n%s", name, phrase, help[i])
-			}
-		}
-	}
-	if help[0] != help[1] {
-		t.Fatalf("canonical and alias help differ:\nassets=%q\ndownload=%q", help[0], help[1])
 	}
 }
 
@@ -390,7 +335,7 @@ func TestRootCommandSetMatchesHelp(t *testing.T) {
 		t.Fatalf("code=%d", code)
 	}
 	for _, name := range []string{
-		"actor", "assets", "auth", "browse", "code", "collections", "comments", "config", "detail",
+		"actor", "auth", "browse", "code", "collections", "comments", "config", "detail",
 		"director", "list", "lists", "magnets", "maker", "mark", "rankings",
 		"recent", "search", "series", "tags", "top250", "unmark", "update", "want", "watched",
 	} {
@@ -398,8 +343,9 @@ func TestRootCommandSetMatchesHelp(t *testing.T) {
 			t.Fatalf("root help missing command %q", name)
 		}
 	}
+	// 资产下载只存在于 javdb assets download 子命令;顶层 download 永不恢复。
 	if strings.Contains(out.String(), "  download ") {
-		t.Fatalf("root help exposes compatibility alias as primary command:\n%s", out.String())
+		t.Fatalf("root help exposes a top-level download command:\n%s", out.String())
 	}
 }
 
@@ -432,7 +378,7 @@ func TestConfigCreationTriggerMatrix(t *testing.T) {
 		{"illegal flag combo no create", []string{"update", "--json"}, false},
 		{"invalid config key no create", []string{"config", "get", "bogus"}, false},
 		{"invalid config value no create", []string{"config", "set", "host", "bogus"}, false},
-		{"download without output flag no create", []string{"download", "ABC-123"}, false},
+		{"removed download command no create", []string{"download", "ABC-123"}, false},
 		{"invalid proxy no create", []string{"search", "test", "--host", "mirror", "--proxy", "://bad"}, false},
 		{"blank proxy flag no create", []string{"search", "test", "--host", "mirror", "--proxy", "   "}, false},
 		{"invalid proxy empty host no create", []string{"search", "test", "--host", "mirror", "--proxy", "http://:8080"}, false},
