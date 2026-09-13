@@ -1,0 +1,139 @@
+package javdb
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"testing"
+)
+
+// 资产契约:MovieAsset 只有 Type("image"/"video")与 URL 两个字段;
+// 序列顺序固定 thumbnail → cover(若详情提供)→ preview_images[](large_url 优先)→ preview video;
+// 详情中缺失的项直接跳过(input.md 计划 #2/#4/#5)。
+
+func TestMovieAssetsFromDetailOrdersAllAssetKinds(t *testing.T) {
+	got := movieAssetsFromDetail(map[string]any{
+		"thumb_url":         "https://media.example.test/thumb.jpg",
+		"cover_url":         "https://media.example.test/cover.jpg",
+		"preview_video_url": "https://media.example.test/preview.m3u8",
+		"preview_images": []any{
+			map[string]any{"large_url": "https://media.example.test/p1-large.jpg", "thumb_url": "https://media.example.test/p1-thumb.jpg"},
+			map[string]any{"thumb_url": "https://media.example.test/p2-thumb.jpg"},
+			map[string]any{"large_url": "https://media.example.test/p3-large.jpg"},
+		},
+	})
+	want := []MovieAsset{
+		{Type: "image", URL: "https://media.example.test/thumb.jpg"},
+		{Type: "image", URL: "https://media.example.test/cover.jpg"},
+		{Type: "image", URL: "https://media.example.test/p1-large.jpg"},
+		{Type: "image", URL: "https://media.example.test/p2-thumb.jpg"},
+		{Type: "image", URL: "https://media.example.test/p3-large.jpg"},
+		{Type: "video", URL: "https://media.example.test/preview.m3u8"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("assets mismatch:\n got  = %+v\n want = %+v", got, want)
+	}
+}
+
+func TestMovieAssetsFromDetailSkipsMissingItems(t *testing.T) {
+	// 无 cover_url、无 thumb_url、无 preview_video_url:只保留唯一一张 preview。
+	got := movieAssetsFromDetail(map[string]any{
+		"preview_images": []any{map[string]any{"large_url": "https://media.example.test/only.jpg"}},
+	})
+	want := []MovieAsset{{Type: "image", URL: "https://media.example.test/only.jpg"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("assets mismatch:\n got  = %+v\n want = %+v", got, want)
+	}
+}
+
+func TestMovieAssetsFromDetailSkipsPreviewWithoutAnyURL(t *testing.T) {
+	// 预览项既无 large_url 也无 thumb_url:整项跳过,不产出空 URL 资产。
+	got := movieAssetsFromDetail(map[string]any{
+		"thumb_url": "https://media.example.test/thumb.jpg",
+		"preview_images": []any{
+			map[string]any{"other": "field"},
+			map[string]any{"large_url": "https://media.example.test/p2.jpg"},
+		},
+	})
+	want := []MovieAsset{
+		{Type: "image", URL: "https://media.example.test/thumb.jpg"},
+		{Type: "image", URL: "https://media.example.test/p2.jpg"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("assets mismatch:\n got  = %+v\n want = %+v", got, want)
+	}
+}
+
+func TestMovieAssetsFromDetailToleratesMalformedPreviewImages(t *testing.T) {
+	// preview_images 非数组、元素非 map、空数组:全部安全跳过。
+	for name, detail := range map[string]map[string]any{
+		"not an array":   {"preview_images": "oops"},
+		"mixed elements": {"preview_images": []any{"string", 42, map[string]any{"large_url": "https://media.example.test/ok.jpg"}}},
+		"empty array":    {"preview_images": []any{}},
+	} {
+		got := movieAssetsFromDetail(detail)
+		if name == "mixed elements" {
+			if len(got) != 1 || got[0].URL != "https://media.example.test/ok.jpg" {
+				t.Fatalf("%s: got %+v", name, got)
+			}
+			continue
+		}
+		if len(got) != 0 {
+			t.Fatalf("%s: expected no assets, got %+v", name, got)
+		}
+	}
+}
+
+func TestMovieAssetsFromDetailEmptyDetailReturnsEmptySlice(t *testing.T) {
+	got := movieAssetsFromDetail(map[string]any{})
+	if got == nil {
+		t.Fatal("expected non-nil empty slice for stable JSON output")
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 assets, got %+v", got)
+	}
+}
+
+func TestClientMovieAssetsReadsDetail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v4/movies/abc123" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"success":true,"data":{"movie":{"thumb_url":"https://m.example.test/t.jpg","preview_video_url":"https://m.example.test/p.m3u8"}}}`))
+	}))
+	defer server.Close()
+
+	client, err := New(WithHost(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets, err := client.MovieAssets(context.Background(), "abc123")
+	if err != nil {
+		t.Fatalf("MovieAssets() error = %v", err)
+	}
+	want := []MovieAsset{
+		{Type: "image", URL: "https://m.example.test/t.jpg"},
+		{Type: "video", URL: "https://m.example.test/p.m3u8"},
+	}
+	if !reflect.DeepEqual(assets, want) {
+		t.Fatalf("MovieAssets mismatch:\n got  = %+v\n want = %+v", assets, want)
+	}
+}
+
+func TestClientMovieAssetsPropagatesDetailError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "boom", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client, err := New(WithHost(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.MovieAssets(context.Background(), "abc123"); err == nil {
+		t.Fatal("expected detail error to propagate")
+	}
+}
