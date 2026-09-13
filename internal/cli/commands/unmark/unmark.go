@@ -40,7 +40,8 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		},
 		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
 			ref := pipeline.ConsumerRef(input)
-			mid, ok, err := fetch(c, ctx, ref, isID && input.ID == "")
+			// 管道信封的内部 ID 是权威目标；无 ID 时再由 --id 决定 raw ref 是否直用。
+			mid, ok, err := fetch(c, ctx, ref, input.ID != "" || isID)
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}

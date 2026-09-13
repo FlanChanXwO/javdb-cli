@@ -171,6 +171,12 @@ javdb download SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg 
 Run `javdb --help` or read the [complete command reference](docs/en/cli-reference.md) for
 all commands, flags, configuration keys, and authentication requirements.
 
+Movie-number targeting is safe and format-tolerant: surrounding whitespace is
+trimmed, matching is case-insensitive, and one unique formatting-equivalent
+number may be accepted. Ambiguous or fuzzy-only results fail instead of
+selecting the first fuzzy result. Use `--id` only for a confirmed internal movie
+ID.
+
 ## Choose your interface
 
 ### CLI
