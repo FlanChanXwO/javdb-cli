@@ -285,3 +285,27 @@ func TestClientDownloadMovieAssetRejectsUnknownAssetType(t *testing.T) {
 		t.Fatalf("error = %v, want unsupported asset type", err)
 	}
 }
+
+// ImageAssetFormat 读取已验证的本地图片文件头,返回下载层默认命名用的格式名。
+
+func TestImageAssetFormatReadsLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	jpg := filepath.Join(dir, "a.bin")
+	if err := os.WriteFile(jpg, testJPEGPayload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	format, ok := ImageAssetFormat(jpg)
+	if !ok || format != "jpg" {
+		t.Fatalf("format = (%q, %v), want jpg", format, ok)
+	}
+	notImage := filepath.Join(dir, "b.bin")
+	if err := os.WriteFile(notImage, []byte("<html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ImageAssetFormat(notImage); ok {
+		t.Fatal("html file must not be detected as image")
+	}
+	if _, ok := ImageAssetFormat(filepath.Join(dir, "missing.bin")); ok {
+		t.Fatal("missing file must not be detected as image")
+	}
+}

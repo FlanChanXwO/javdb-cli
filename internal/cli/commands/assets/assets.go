@@ -18,5 +18,6 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			"This command does not download full movies or magnets.",
 	}
 	cmd.AddCommand(NewList(options, streams))
+	cmd.AddCommand(NewDownload(options, streams))
 	return cmd
 }

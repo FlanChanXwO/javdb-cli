@@ -3,8 +3,11 @@ package javdb
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/media"
 )
 
 // 资产类型常量。资产领域只有这两种媒体类型。
@@ -77,6 +80,23 @@ func MovieAssetsFromDetail(movie map[string]any) []MovieAsset {
 func MovieAssetDescriptions(movie map[string]any) []string {
 	_, descs := movieAssetsWithDescriptions(movie)
 	return descs
+}
+
+// ImageAssetFormat 读取本地图片文件的头部字节,返回稳定格式名
+// (jpg/png/gif/webp/avif/heic),供 assets download 在下载后确定最终扩展名。
+// 文件缺失或不是已验证的图片格式时返回 false。
+func ImageAssetFormat(path string) (string, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+	head := make([]byte, 64)
+	n, err := file.Read(head)
+	if err != nil && n == 0 {
+		return "", false
+	}
+	return media.ImagePayloadFormat(head[:n])
 }
 
 // movieAssetsWithDescriptions 单次遍历详情 map,同序产出资产与其 TTY 描述。
