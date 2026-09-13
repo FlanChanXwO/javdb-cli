@@ -213,7 +213,7 @@ func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest
 }
 
 // ResolveMovieIDExact 使用 zone=all 搜索，只接受大小写不敏感的完整相等番号；
-// 零匹配与多重精确匹配都显式失败，不沿用旧 ResolveMovieID 的首项回退语义。
+// 零匹配与多重精确匹配都显式失败，不允许模糊搜索首项回退。
 func (c *Client) ResolveMovieIDExact(ctx context.Context, number string) (string, error) {
 	if c == nil || c.api == nil {
 		return "", errNilClient()
