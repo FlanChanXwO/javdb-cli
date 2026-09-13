@@ -30,7 +30,7 @@ func (c *Client) MovieAssets(ctx context.Context, movieID string) ([]MovieAsset,
 	if err != nil {
 		return nil, fmt.Errorf("fetch movie detail: %w", err)
 	}
-	return movieAssetsFromDetail(movie), nil
+	return MovieAssetsFromDetail(movie), nil
 }
 
 // DownloadMovieAsset 下载单个影片资产到 target 路径,返回写入字节数。
@@ -63,25 +63,46 @@ func (c *Client) DownloadMovieAsset(ctx context.Context, asset MovieAsset, targe
 	}
 }
 
-// movieAssetsFromDetail 把影片详情 map 转成资产序列。
+// MovieAssetsFromDetail 把影片详情 map 转成资产序列(与 MovieAssetDescriptions 同序)。
 // 详情无 typed struct(上层 API 返回 map[string]any),字段缺失/类型异常一律跳过。
-func movieAssetsFromDetail(movie map[string]any) []MovieAsset {
+func MovieAssetsFromDetail(movie map[string]any) []MovieAsset {
+	assets, _ := movieAssetsWithDescriptions(movie)
+	return assets
+}
+
+// MovieAssetDescriptions 返回与 MovieAssetsFromDetail 同序的 TTY 描述文本
+// (thumbnail / cover / preview N / preview)。
+// 描述仅供 assets list 的人类渲染,不属于 MovieAsset 数据模型,
+// 不得进入 JSON/pipe 输出或任何持久化状态。跳过的项不占 preview 编号。
+func MovieAssetDescriptions(movie map[string]any) []string {
+	_, descs := movieAssetsWithDescriptions(movie)
+	return descs
+}
+
+// movieAssetsWithDescriptions 单次遍历详情 map,同序产出资产与其 TTY 描述。
+func movieAssetsWithDescriptions(movie map[string]any) ([]MovieAsset, []string) {
 	assets := make([]MovieAsset, 0)
+	descs := make([]string, 0)
+	add := func(assetType, url, desc string) {
+		assets = append(assets, MovieAsset{Type: assetType, URL: url})
+		descs = append(descs, desc)
+	}
 	if url := movieString(movie["thumb_url"]); url != "" {
-		assets = append(assets, MovieAsset{Type: assetTypeImage, URL: url})
+		add(assetTypeImage, url, "thumbnail")
 	}
 	if url := movieString(movie["cover_url"]); url != "" {
-		assets = append(assets, MovieAsset{Type: assetTypeImage, URL: url})
+		add(assetTypeImage, url, "cover")
 	}
-	if url := moviePreviewImageURLs(movie); len(url) > 0 {
-		for _, preview := range url {
-			assets = append(assets, MovieAsset{Type: assetTypeImage, URL: preview})
-		}
+	// preview_images 内 large_url 与 thumb_url 是同一张图的不同来源,只产出一个 URL。
+	preview := 0
+	for _, url := range moviePreviewImageURLs(movie) {
+		preview++
+		add(assetTypeImage, url, fmt.Sprintf("preview %d", preview))
 	}
 	if url := movieString(movie["preview_video_url"]); url != "" {
-		assets = append(assets, MovieAsset{Type: assetTypeVideo, URL: url})
+		add(assetTypeVideo, url, "preview")
 	}
-	return assets
+	return assets, descs
 }
 
 // movieString 把详情 map 中的 any 字段安全转成字符串,缺失/类型异常返回空串。

@@ -36,6 +36,7 @@ Usage:
 
 Available Commands:
   actor       List movies for an actor (id or name)
+  assets      Discover and download movie media assets
   auth        Account login and multi-account management
   browse      Browse movies by content tags / year / month
   cache       Inspect or clear the local reverse-search cache
@@ -335,7 +336,7 @@ func TestRootCommandSetMatchesHelp(t *testing.T) {
 		t.Fatalf("code=%d", code)
 	}
 	for _, name := range []string{
-		"actor", "auth", "browse", "code", "collections", "comments", "config", "detail",
+		"actor", "assets", "auth", "browse", "code", "collections", "comments", "config", "detail",
 		"director", "list", "lists", "magnets", "maker", "mark", "rankings",
 		"recent", "search", "series", "tags", "top250", "unmark", "update", "want", "watched",
 	} {

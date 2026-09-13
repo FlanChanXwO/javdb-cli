@@ -18,7 +18,7 @@ import (
 // 详情中缺失的项直接跳过(input.md 计划 #2/#4/#5)。
 
 func TestMovieAssetsFromDetailOrdersAllAssetKinds(t *testing.T) {
-	got := movieAssetsFromDetail(map[string]any{
+	got := MovieAssetsFromDetail(map[string]any{
 		"thumb_url":         "https://media.example.test/thumb.jpg",
 		"cover_url":         "https://media.example.test/cover.jpg",
 		"preview_video_url": "https://media.example.test/preview.m3u8",
@@ -43,7 +43,7 @@ func TestMovieAssetsFromDetailOrdersAllAssetKinds(t *testing.T) {
 
 func TestMovieAssetsFromDetailSkipsMissingItems(t *testing.T) {
 	// 无 cover_url、无 thumb_url、无 preview_video_url:只保留唯一一张 preview。
-	got := movieAssetsFromDetail(map[string]any{
+	got := MovieAssetsFromDetail(map[string]any{
 		"preview_images": []any{map[string]any{"large_url": "https://media.example.test/only.jpg"}},
 	})
 	want := []MovieAsset{{Type: "image", URL: "https://media.example.test/only.jpg"}}
@@ -54,7 +54,7 @@ func TestMovieAssetsFromDetailSkipsMissingItems(t *testing.T) {
 
 func TestMovieAssetsFromDetailSkipsPreviewWithoutAnyURL(t *testing.T) {
 	// 预览项既无 large_url 也无 thumb_url:整项跳过,不产出空 URL 资产。
-	got := movieAssetsFromDetail(map[string]any{
+	got := MovieAssetsFromDetail(map[string]any{
 		"thumb_url": "https://media.example.test/thumb.jpg",
 		"preview_images": []any{
 			map[string]any{"other": "field"},
@@ -77,7 +77,7 @@ func TestMovieAssetsFromDetailToleratesMalformedPreviewImages(t *testing.T) {
 		"mixed elements": {"preview_images": []any{"string", 42, map[string]any{"large_url": "https://media.example.test/ok.jpg"}}},
 		"empty array":    {"preview_images": []any{}},
 	} {
-		got := movieAssetsFromDetail(detail)
+		got := MovieAssetsFromDetail(detail)
 		if name == "mixed elements" {
 			if len(got) != 1 || got[0].URL != "https://media.example.test/ok.jpg" {
 				t.Fatalf("%s: got %+v", name, got)
@@ -91,12 +91,51 @@ func TestMovieAssetsFromDetailToleratesMalformedPreviewImages(t *testing.T) {
 }
 
 func TestMovieAssetsFromDetailEmptyDetailReturnsEmptySlice(t *testing.T) {
-	got := movieAssetsFromDetail(map[string]any{})
+	got := MovieAssetsFromDetail(map[string]any{})
 	if got == nil {
 		t.Fatal("expected non-nil empty slice for stable JSON output")
 	}
 	if len(got) != 0 {
 		t.Fatalf("expected 0 assets, got %+v", got)
+	}
+}
+
+// 描述文本与资产序列同序,仅供 assets list TTY 渲染;跳过项不占 preview 编号。
+
+func TestMovieAssetDescriptionsMatchAssetOrder(t *testing.T) {
+	movie := map[string]any{
+		"thumb_url":         "https://media.example.test/thumb.jpg",
+		"cover_url":         "https://media.example.test/cover.jpg",
+		"preview_video_url": "https://media.example.test/preview.m3u8",
+		"preview_images": []any{
+			map[string]any{"large_url": "https://media.example.test/p1-large.jpg"},
+			map[string]any{"thumb_url": "https://media.example.test/p2-thumb.jpg"},
+			map[string]any{"large_url": "https://media.example.test/p3-large.jpg"},
+		},
+	}
+	assets := MovieAssetsFromDetail(movie)
+	descs := MovieAssetDescriptions(movie)
+	wantDescs := []string{"thumbnail", "cover", "preview 1", "preview 2", "preview 3", "preview"}
+	if !reflect.DeepEqual(descs, wantDescs) {
+		t.Fatalf("descriptions mismatch:\n got  = %q\n want = %q", descs, wantDescs)
+	}
+	if len(assets) != len(descs) {
+		t.Fatalf("assets/descriptions length mismatch: %d vs %d", len(assets), len(descs))
+	}
+}
+
+func TestMovieAssetDescriptionsSkipMissingItems(t *testing.T) {
+	movie := map[string]any{
+		"thumb_url": "https://media.example.test/thumb.jpg",
+		"preview_images": []any{
+			map[string]any{"other": "field"},
+			map[string]any{"large_url": "https://media.example.test/p2.jpg"},
+		},
+	}
+	descs := MovieAssetDescriptions(movie)
+	want := []string{"thumbnail", "preview 1"}
+	if !reflect.DeepEqual(descs, want) {
+		t.Fatalf("descriptions mismatch:\n got  = %q\n want = %q", descs, want)
 	}
 }
 
