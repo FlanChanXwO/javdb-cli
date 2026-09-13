@@ -65,18 +65,18 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			for _, path := range expanded.list() {
 				if seen[path] {
-					return fmt.Errorf("download targets must be unique, got duplicate %q", path)
+					return fmt.Errorf("asset targets must be unique, got duplicate %q", path)
 				}
 				seen[path] = true
 				if _, err := os.Stat(path); err == nil {
-					return fmt.Errorf("download target already exists: %s", path)
+					return fmt.Errorf("asset target already exists: %s", path)
 				} else if !os.IsNotExist(err) {
-					return fmt.Errorf("check download target %q: %w", path, err)
+					return fmt.Errorf("check asset target %q: %w", path, err)
 				}
 				parent := filepath.Dir(path)
 				info, err := os.Stat(parent)
 				if err != nil || !info.IsDir() {
-					return fmt.Errorf("download target parent directory does not exist: %s", parent)
+					return fmt.Errorf("asset target parent directory does not exist: %s", parent)
 				}
 			}
 		}
@@ -84,7 +84,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	}
 
 	runner := &pipeline.BatchRunner{
-		Name:  "download",
+		Name:  "assets",
 		Kinds: []pipeline.Kind{pipeline.KindMovie},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
@@ -94,7 +94,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				return nil
 			}
 			if !hasPlaceholder() {
-				return fmt.Errorf("download batch targets must contain {number} or {id} placeholders")
+				return fmt.Errorf("asset batch targets must contain {number} or {id} placeholders")
 			}
 			c, err := client.NewWithDefaultToken(options)
 			if err != nil {
