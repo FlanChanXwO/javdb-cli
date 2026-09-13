@@ -70,8 +70,8 @@ HTTP、签名或上游响应解码。目录职责如下：
 公开 Go SDK，导入路径为 `github.com/FlanChanXwO/javdb-cli/sdk`，声明为
 `package javdb`。它提供 client options、稳定的操作方法、公开的请求/错误别名、本机
 device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`，以及影片单页评论和
-本地影片资源写入的 typed 请求类型（`DownloadMovieAssets`、`MovieAssetDownloadOptions`、
-`MovieAssetDownloadResult`）。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
+本地影片资源 API（`MovieAssets`、`DownloadMovieAsset` 与最小 `MovieAsset{Type,URL}` 模型，
+辅以 `MovieAssetsFromDetail`、`MovieAssetDescriptions`、`ImageAssetFormat`）。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
 集成 API。`SelectAutoHost` 显式联网选线并返回具体 URL，`javdb.New(WithHost("auto"))`
 不会自动联网。排行 zone 与 period 的协议归一化由 `internal/javdb/appapi` 负责；`sdk`
 暴露通用 `RankingPeriod`，并保留 `ActorPeriod` 废弃别名以兼容既有调用方，CLI 不预先复制
@@ -88,7 +88,11 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
 - `appapi/model`：Options、SearchResult、错误类型及 wire/domain model。
 - `appapi/endpoint/{auth,browse,entity,lists,magnets,movie,rankings,route,search,user}`：有状态 capability service；`endpoint/magnets` 保持纯 helper，`endpoint/route` 是自动选线 capability（startup 域名解密、并发探测与确定性选择），经根 Client 组合。
 - `appapi/codec`：App JSON、JWT、用户 ID 和响应数组解析。
-- `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理和独占文件写入，通过 fetch callback 接入 client。
+- `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理、三层完整性
+  （Layer A segment 校验、Layer B 媒体模型校验、Layer C MP4 容器校验）、bounded retry 的
+  segment 获取、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与原子发布，
+  通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
+  javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。
 
 详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责写入、解密并合并；
 该能力不包含完整影片或磁力目标下载。

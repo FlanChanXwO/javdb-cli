@@ -117,25 +117,35 @@ for that page.
 ## Local movie assets
 
 ```bash
-javdb assets NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
+javdb assets list NUMBER [SELECTOR...] [--type image|video] [--json|--ndjson]
+javdb assets download [-d DIR] [-o PATH]
 ```
 
-`download` is a compatibility alias for the canonical `assets` command. This
-command writes only selected local thumbnail and preview assets; it does not
-download a full movie or a magnet target. Set at least one output flag.
-`--thumbnail` writes the detail thumbnail; `--preview-image` writes only
-`preview_images[0]` (the first preview image) and does not enumerate or fall
-through to later previews. `--preview-video` writes the complete HLS preview
-stream to the given path, including AES-128 decryption when the playlist
-requires it. Use a `.ts` path for the current transport-stream previews.
+`assets list` discovers the media assets attached to a movie — thumbnail,
+cover, preview images and the preview video — in a fixed order. Processing is
+strictly: fetch all assets → filter by `--type` (`image` or `video`) → number
+the remaining assets `1..N` → apply selectors. Selectors are 1-based positions
+in that filtered list (`1`, `1-4`, `1,3-5`, or several tokens such as
+`1 3 5`); overlapping numbers deduplicate and keep list order; `0`, `4-1`,
+`1-` and non-numeric tokens fail, and out-of-range numbers fail with the valid
+range. Without a selector every asset of the requested type is listed.
 
-Output paths support the `{number}` and `{id}` placeholders; a piped batch of
-movie refs must use them (all expanded targets are preflighted for uniqueness,
-existing files, and missing parent directories before anything is written).
-The command creates new files only: it refuses an existing output path and does
-not create missing parent directories. It accepts completed single-media HLS
-playlists; master playlists, byte-range media, fragmented-MP4 media, and
-unfinished/live playlists fail explicitly instead of producing a partial file.
+On a TTY the output is a numbered table with human-only descriptions; piped
+output is exactly one `TYPE<TAB>URL` record per line; `--json` prints one JSON
+array and `--ndjson` prints one JSON object per line — machine output contains
+only `type` and `url`. The numbers are positional, not persistent asset IDs.
+
+`assets download` consumes `TYPE<TAB>URL` records from `assets list` on stdin.
+`-d DIR` (default `.`) places auto-named files (`image-001.jpg` — the extension
+comes from the detected image magic — and `video-001.mp4`); `-o PATH` writes
+exactly one asset to an exact path and fails with more than one input. Existing
+files are never overwritten; failed downloads leave no output behind. `.mp4`
+output is a fast-start MP4 (ftyp → moov → mdat) remuxed in pure Go from the
+H.264/AAC preview stream — no ffmpeg, no transcoding; `.ts` keeps the decrypted
+MPEG-TS. Unsupported codecs (HEVC, AC-3, ...) fail explicitly. Completed
+single-media HLS playlists only; master, byte-range, fragmented-MP4, and
+unfinished/live playlists fail explicitly. Neither command downloads a full
+movie or a magnet target.
 
 ## Reverse image search
 
@@ -316,7 +326,7 @@ failure is not represented as a fabricated empty result.
    command; verify flags with `--help`.
 3. Use `magnets --best --json` only after confirming that a magnet URI is in
    scope for the user.
-4. Treat `assets` (or its `download` compatibility alias) as a local asset file
+4. Treat `javdb assets download` as a local asset file consumer
    write: obtain an explicit output path and do not replace an existing file.
 5. Treat login, tag refresh, configuration edits, account selection, and
    mark/unmark operations as state changes and ask before performing them.

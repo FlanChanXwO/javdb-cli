@@ -87,7 +87,7 @@ userID, username, err := client.ResolveUserID(ctx)
 | --- | --- |
 | 发现 | `Search`、`MovieDetail`、`ResolveMovieID`、`Browse`、`ResolveTags` |
 | 评论 | `MovieComments` |
-| 本地影片资源 | `DownloadMovieAssets`、`MovieAssetDownloadOptions`、`MovieAssetDownloadResult` |
+| 本地影片资源 | `MovieAssets`、`DownloadMovieAsset`、`MovieAsset`、`MovieAssetsFromDetail`、`MovieAssetDescriptions`、`ImageAssetFormat` |
 | 实体图 | `ResolveEntity`、`EntityDetail`、`EntityMovies`、`AllEntityMovies` |
 | 磁力 | `MovieMagnets`、`FilterMagnets`、`PickBestMagnet`、`RankMagnets`、`MagnetURI` |
 | 排行 | `RankingsMovies`、`RankingsActors`、`RankingsPlayback`、`Top250` |
@@ -118,27 +118,36 @@ actors := result.Named("actors")
 `MovieComments(ctx, movieID, page, limit)` 只请求一页，绝不会遍历后续页。非正值会使用第 `1` 页、
 每页 `20` 条，与 CLI 的单页默认语义一致。
 
-只有在调用方已明确选择新的本地路径时才使用 `DownloadMovieAssets`：
+`MovieAssets(ctx, movieID)` 以固定的顺序返回影片媒体资产的最小 `MovieAsset{Type, URL}` 序列：
+thumbnail、cover（详情提供时）、全部预览图（优先 `large_url`，回退 `thumb_url`）、预览视频。
+缺失项直接跳过，因此序列长度随影片而变。`Type` 只有 `"image"` 与 `"video"`；该模型刻意不携带
+id/index/role 等元数据。
+
+`DownloadMovieAsset(ctx, asset, target)` 把单个资产下载到精确路径并返回写入字节数。图片会先校验
+（CDN 混淆时 XOR 解包，再魔数校验）并原子发布，不做任何格式转换。视频由 target 后缀决定输出格式：
+`.ts` 保留解密校验后的 MPEG-TS；`.mp4` 通过纯 Go remux 生成 Fast Start MP4（ftyp → moov → mdat），
+无 ffmpeg、无转码；其余后缀返回 `unsupported video output format`。不支持的编码（HEVC、AC-3 等）
+明确失败。context 取消会中断所有阶段且不留下输出文件。
+
+`MovieAssetsFromDetail` / `MovieAssetDescriptions` 把已取得的详情 map 映射为同一资产序列与仅用于
+TTY 渲染的描述文本；描述文本不得进入机器输出。`ImageAssetFormat(path)` 报告本地图片的检测格式。
 
 ```go
-downloaded, err := client.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
-    PreviewImagePath: "/chosen/output/preview-0.jpg", // 只取 preview_images[0]
-    PreviewVideoPath: "/chosen/output/preview.ts",
-})
+assets, err := client.MovieAssets(ctx, movieID)
 if err != nil {
     return err
 }
-fmt.Println(downloaded.PreviewImageBytes, downloaded.PreviewVideoBytes)
+for _, asset := range assets {
+    if asset.Type == "video" {
+        _, err := client.DownloadMovieAsset(ctx, asset, "/chosen/output/preview.mp4")
+        return err
+    }
+}
 ```
 
-每个非空路径选择一个本地资源。`PreviewImagePath` 始终只取首张预览图，不会遍历后续图片；图片会在
-写入前校验。视频路径支持已结束的单媒体 HLS playlist（含 AES-128）；master、byte-range、
-fragmented MP4、未结束或直播 playlist 会返回错误。所有输出路径必须互异、父目录必须已存在，且
-目标文件不得存在。本 API 只写入 thumbnail/preview 资源，不下载完整影片或磁力目标。
-
-这是一次破坏性 API 重命名：`DownloadMovieMedia`、`MovieMediaDownloadOptions` 和
-`MovieMediaDownloadResult` 已移除，不保留类型别名或转发包装；请分别改用
-`DownloadMovieAssets`、`MovieAssetDownloadOptions` 和 `MovieAssetDownloadResult`。
+本 API 只写入 thumbnail/preview 资源，不下载完整影片或磁力目标。这是一次破坏性变更：path-per-type
+的 `DownloadMovieAssets`、`MovieAssetDownloadOptions` 与 `MovieAssetDownloadResult` 已移除，
+不保留别名。
 
 更新看过/想看状态及刷新本机公开标签缓存都是 mutation；只有在应用获得明确授权时才调用。
 本地资源写入会创建本地文件，也必须由应用用户明确指定目标路径。

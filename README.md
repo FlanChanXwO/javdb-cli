@@ -164,9 +164,9 @@ javdb comments SSIS-589 --page 1 --limit 20 --json
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 
-# Save selected local assets; --preview-image writes only the first preview.
-javdb assets SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg --preview-video ./preview.ts
-# `download` remains a compatibility alias for `assets`.
+# Discover movie media assets, then download exactly what you need.
+javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./images
+javdb assets list SSIS-589 --type video | javdb assets download -o ./preview.mp4
 ```
 
 Run `javdb --help` or read the [complete command reference](docs/en/cli-reference.md) for
@@ -270,8 +270,8 @@ javdb config set auto_relogin true
 Magnet commands work anonymously and use the saved token when available.
 TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
-local state and should be used deliberately. `assets` writes selected thumbnail
-and preview assets to explicit new local paths; `download` is a compatibility
+local state and should be used deliberately. `javdb assets download` writes
+selected media assets to explicit new local paths; it is a
 alias. It never downloads a full movie or magnet target and never replaces an
 existing file.
 
