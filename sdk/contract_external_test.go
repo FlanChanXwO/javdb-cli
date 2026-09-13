@@ -47,7 +47,7 @@ var (
 	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions, maxPages int) ([]map[string]any, error)  = (*javdb.Client).AllEntityMovies
 	_ func(c *javdb.Client, ctx context.Context, opt javdb.BrowseOptions) (javdb.SearchResult, error)                                           = (*javdb.Client).Browse
 	_ func(c *javdb.Client, ctx context.Context, kind string) ([]map[string]any, error)                                                         = (*javdb.Client).Collected
-	_ func(c *javdb.Client, ctx context.Context, movieID string, opt javdb.MovieMediaDownloadOptions) (javdb.MovieMediaDownloadResult, error)   = (*javdb.Client).DownloadMovieMedia
+	_ func(c *javdb.Client, ctx context.Context, movieID string, opt javdb.MovieAssetDownloadOptions) (javdb.MovieAssetDownloadResult, error)   = (*javdb.Client).DownloadMovieAssets
 	_ func(c *javdb.Client, ctx context.Context, kind, id string) (map[string]any, error)                                                       = (*javdb.Client).EntityDetail
 	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions) (javdb.SearchResult, error)              = (*javdb.Client).EntityMovies
 	_ func(c *javdb.Client, ctx context.Context, listID string) (map[string]any, error)                                                         = (*javdb.Client).ListInfo
@@ -87,8 +87,8 @@ var (
 	_ javdb.EntityMoviesOptions                               = javdb.EntityMoviesOptions{}
 	_ javdb.SearchOptions                                     = javdb.SearchOptions{}
 	_ javdb.Option                                            = javdb.WithHost("mirror")
-	_ javdb.MovieMediaDownloadOptions                         = javdb.MovieMediaDownloadOptions{}
-	_ javdb.MovieMediaDownloadResult                          = javdb.MovieMediaDownloadResult{}
+	_ javdb.MovieAssetDownloadOptions                         = javdb.MovieAssetDownloadOptions{}
+	_ javdb.MovieAssetDownloadResult                          = javdb.MovieAssetDownloadResult{}
 )
 
 func TestExternalConstantsMatchLogicalHostNames(t *testing.T) {

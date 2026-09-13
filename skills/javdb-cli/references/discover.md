@@ -10,6 +10,6 @@
 6. 磁力：`javdb magnets NUMBER --json` 无需登录即可获取磁力链接；已保存默认账号 token 时自动带上，token 失效则回退匿名。用户要求一条推荐结果时才加 `--best`；需要指定条件可用 `--cnsub`、`--hd`、`--min-size`，并在回应中说明过滤条件。
 7. 排行：`javdb rankings movies|actors|playback --json` 无需登录；`javdb top250 --json` 需要登录。影片与播放排行的结果字段为 `movies`，演员排行为 `actors`。需要仅保留有磁力的影片时加 `--has-magnets`，不要把过滤后结果误称为完整榜单。
 8. 评论：`javdb comments NUMBER --page 1 --limit 20 --json` 每次只取所选一页；不要自动读取后续页，也不要把页面评论误称为全量评论。
-9. 媒体：只有用户明确要求写入本机文件时，才执行 `javdb download NUMBER --thumbnail PATH`、`--preview-image PATH` 或 `--preview-video PATH`。`--preview-image` 只下载首张预览图；路径必须是新的，不能替换已有文件。
+9. 本地资源：只有用户明确要求写入本机文件时，才执行 `javdb assets NUMBER --thumbnail PATH`、`--preview-image PATH` 或 `--preview-video PATH`。`download` 是兼容别名；`--preview-image` 只写入首张预览图。该命令只保存 thumbnail/preview 资源，不下载完整影片或磁力目标；路径必须是新的，不能替换已有文件。
 
 每个阶段先检查退出码；API 返回错误、空结果或认证失败均应如实呈现，而不是更换主机、代理、账号或关键字来“补救”。

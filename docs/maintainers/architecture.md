@@ -60,6 +60,8 @@ HTTP、签名或上游响应解码。目录职责如下：
 - `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
+  其中 `commands/download` 持有正式 `assets` 命令实现，`download` 仅是同一 Cobra
+  command object 的兼容别名。
   `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info
   获取（未导出 helper）。
 
@@ -68,7 +70,8 @@ HTTP、签名或上游响应解码。目录职责如下：
 公开 Go SDK，导入路径为 `github.com/FlanChanXwO/javdb-cli/sdk`，声明为
 `package javdb`。它提供 client options、稳定的操作方法、公开的请求/错误别名、本机
 device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`，以及影片单页评论和
-选定媒体下载的请求类型。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
+本地影片资源写入的 typed 请求类型（`DownloadMovieAssets`、`MovieAssetDownloadOptions`、
+`MovieAssetDownloadResult`）。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
 集成 API。`SelectAutoHost` 显式联网选线并返回具体 URL，`javdb.New(WithHost("auto"))`
 不会自动联网。排行 zone 与 period 的协议归一化由 `internal/javdb/appapi` 负责；`sdk`
 暴露通用 `RankingPeriod`，并保留 `ActorPeriod` 废弃别名以兼容既有调用方，CLI 不预先复制
@@ -87,7 +90,8 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
 - `appapi/codec`：App JSON、JWT、用户 ID 和响应数组解析。
 - `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理和独占文件写入，通过 fetch callback 接入 client。
 
-详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责下载、解密并合并。
+详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责写入、解密并合并；
+该能力不包含完整影片或磁力目标下载。
 App API 不解析终端参数，也不格式化面向用户的输出。
 
 ### `internal/javdb/protocol/httpx` 与 `signature`
@@ -176,7 +180,7 @@ sync-history）；核心实现位于
 `internal/common/` 是纯共享转换，`internal/storage/` 是本机持久化，
 `scripts/internal/releasenotes/` 是 release-note 工具的领域实现，
 `docs/maintainers/` 是开发者权威文档。JavDB 没有 MCP、独立下载器
-服务或 Rust 组件；媒体下载只属于 `sdk/` 与 `internal/javdb/appapi/media`，
+服务或 Rust 组件；本地影片资源写入只属于 `sdk/` 与 `internal/javdb/appapi/media`，
 不能为了目录对称创建空层。
 
 内部兼容 facade/compat 是已经删除的既定过渡产物：`sdk/`、`internal/javdb/appapi`、

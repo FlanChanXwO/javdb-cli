@@ -11,9 +11,10 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 )
 
-func TestNewHelpDocumentsSinglePreviewImage(t *testing.T) {
+func TestNewHelpDescribesLocalMovieAssets(t *testing.T) {
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	cmd := New(&invocation.RootOptions{}, streams)
 	var out, errb bytes.Buffer
@@ -23,9 +24,37 @@ func TestNewHelpDocumentsSinglePreviewImage(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("help error = %v", err)
 	}
-	for _, want := range []string{"--thumbnail", "--preview-image", "--preview-video", "only the first preview image"} {
+	for _, want := range []string{
+		"--thumbnail",
+		"--preview-image",
+		"--preview-video",
+		"only the first preview image",
+		"thumbnail and preview assets",
+		"does not download full movies",
+		"magnets",
+	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("download help missing %q: %s", want, out.String())
+		}
+	}
+}
+
+func TestNewUsesAssetsAsCanonicalCommand(t *testing.T) {
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{}, streams)
+
+	if got, want := cmd.Name(), "assets"; got != want {
+		t.Fatalf("canonical command name = %q, want %q", got, want)
+	}
+	if got, want := cmd.Use, "assets NUMBER"; got != want {
+		t.Fatalf("canonical command use = %q, want %q", got, want)
+	}
+	if !cmd.HasAlias("download") {
+		t.Fatal("canonical assets command is missing download alias")
+	}
+	for _, name := range []string{"id", "thumbnail", "preview-image", "preview-video", "json", "ndjson"} {
+		if cmd.LocalNonPersistentFlags().Lookup(name) == nil {
+			t.Fatalf("canonical assets command missing flag %q", name)
 		}
 	}
 }
@@ -64,8 +93,34 @@ func TestDownloadBatchRequiresPlaceholders(t *testing.T) {
 	cmd := New(&invocation.RootOptions{}, streams)
 	cmd.SetArgs([]string{"--thumbnail", "/tmp/out.jpg"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "{number} or {id}") {
+	if err == nil || !strings.Contains(err.Error(), "asset batch targets must contain {number} or {id} placeholders") {
 		t.Fatalf("expected placeholder error, got %v", err)
+	}
+}
+
+func TestDownloadPipelineErrorsUseAssetsCommandName(t *testing.T) {
+	isolateDownloadTestHome(t)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "detail unavailable", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"movie-id", "--id", "--thumbnail", filepath.Join(t.TempDir(), "out.jpg"), "--ndjson"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected pipeline item error")
+	}
+
+	var output pipeline.Envelope
+	if err := json.Unmarshal(streams.Out.(*bytes.Buffer).Bytes(), &output); err != nil {
+		t.Fatalf("decode error envelope: %v; output=%q", err, streams.Out.(*bytes.Buffer).String())
+	}
+	if output.Kind != pipeline.KindError {
+		t.Fatalf("output kind = %q, want %q", output.Kind, pipeline.KindError)
+	}
+	if got, want := output.Data["command"], "assets"; got != want {
+		t.Fatalf("error command = %#v, want %q", got, want)
 	}
 }
 
@@ -94,7 +149,7 @@ func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"--thumbnail", dir + "/{id}.jpg"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "duplicate") {
+	if err == nil || !strings.Contains(err.Error(), "asset targets must be unique") {
 		t.Fatalf("expected duplicate-target error, got %v", err)
 	}
 	// 已存在文件 → 冲突。
@@ -110,7 +165,7 @@ func TestDownloadBatchPreflightRejectsDuplicateTargets(t *testing.T) {
 	cmd = New(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs([]string{"--thumbnail", dir + "/{id}.jpg"})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err == nil || !strings.Contains(err.Error(), "asset target already exists") {
 		t.Fatalf("expected existing-target error, got %v", err)
 	}
 }
@@ -169,4 +224,16 @@ func TestDownloadPipelineIDDoesNotResolveAsNumber(t *testing.T) {
 	if !bytes.Equal(body, []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03}) {
 		t.Fatalf("output content = %x", body)
 	}
+}
+
+func isolateDownloadTestHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(home))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(home, filepath.VolumeName(home)))
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("ALL_PROXY", "")
 }
