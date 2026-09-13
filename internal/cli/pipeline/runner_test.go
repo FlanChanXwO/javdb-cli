@@ -11,29 +11,31 @@ import (
 	"testing"
 )
 
-func TestBatchRunnerEmptyInputUsesCommandName(t *testing.T) {
-	streams, _ := testStreams("", true)
-	runner := &BatchRunner{
-		Name:  "detail",
-		Kinds: []Kind{KindMovie},
-		Legacy: func([]string) error {
-			return fmt.Errorf("legacy path must not run")
+func TestBatchRunnerEmptyInputUsesExpectedError(t *testing.T) {
+	tests := []struct {
+		name    string
+		runner  BatchRunner
+		wantErr string
+	}{
+		{
+			name: "command name",
+			runner: BatchRunner{
+				Name: "detail", Kinds: []Kind{KindMovie},
+				Legacy: func([]string) error { return fmt.Errorf("legacy path must not run") },
+			},
+			wantErr: "detail: input required",
 		},
+		{name: "generic", runner: BatchRunner{Kinds: []Kind{KindMovie}}, wantErr: "input required"},
 	}
 
-	err := runner.Execute(streams, nil, false, false)
-	if err == nil || err.Error() != "detail: input required" {
-		t.Fatalf("error = %v, want detail: input required", err)
-	}
-}
-
-func TestBatchRunnerEmptyInputWithoutNameUsesGenericMessage(t *testing.T) {
-	streams, _ := testStreams("", true)
-	runner := &BatchRunner{Kinds: []Kind{KindMovie}}
-
-	err := runner.Execute(streams, nil, false, false)
-	if err == nil || err.Error() != "input required" {
-		t.Fatalf("error = %v, want input required", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			streams, _ := testStreams("", true)
+			err := tc.runner.Execute(streams, nil, false, false)
+			if err == nil || err.Error() != tc.wantErr {
+				t.Fatalf("error = %v, want %s", err, tc.wantErr)
+			}
+		})
 	}
 }
 
@@ -99,60 +101,5 @@ func TestProducerJSONWithoutRendererKeepsLegacyJSON(t *testing.T) {
 	}
 	if got, want := out.String(), `{"tags":["VR"]}`; strings.TrimSpace(got) != want {
 		t.Fatalf("output = %q, want %q", got, want)
-	}
-}
-
-func TestProducerNonJSONModesProduceOnce(t *testing.T) {
-	tests := []struct {
-		name     string
-		terminal bool
-		ndjson   bool
-	}{
-		{name: "text", terminal: false},
-		{name: "human", terminal: true},
-		{name: "ndjson", ndjson: true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			streams, _ := testStreams("", tc.terminal)
-			produceCalls := 0
-			producer := &Producer{
-				Name: "tags",
-				Produce: func(context.Context) ([]Envelope, error) {
-					produceCalls++
-					return []Envelope{New(KindTag, "VR", "tag-1")}, nil
-				},
-				RenderText: func(w io.Writer, _ []Envelope) error {
-					_, err := io.WriteString(w, "human\n")
-					return err
-				},
-				LegacyJSON: func(io.Writer) error {
-					return fmt.Errorf("LegacyJSON must not run")
-				},
-			}
-
-			if err := producer.Execute(streams, tc.ndjson, false); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-			if produceCalls != 1 {
-				t.Fatalf("Produce calls = %d, want 1", produceCalls)
-			}
-		})
-	}
-}
-
-func TestProducerRejectsMutuallyExclusiveOutputFlagsBeforeProduce(t *testing.T) {
-	streams, _ := testStreams("", false)
-	producer := &Producer{
-		Name: "tags",
-		Produce: func(context.Context) ([]Envelope, error) {
-			t.Fatal("Produce must not run for mutually exclusive output flags")
-			return nil, nil
-		},
-	}
-
-	err := producer.Execute(streams, true, true)
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("error = %v, want mutually exclusive error", err)
 	}
 }

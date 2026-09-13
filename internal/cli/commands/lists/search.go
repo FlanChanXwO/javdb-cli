@@ -40,12 +40,11 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 			}
 			envelopes := make([]pipeline.Envelope, 0, len(items))
 			for _, item := range items {
-				id := display(item["id"])
-				ref := display(item["name"])
-				if ref == "" {
-					ref = id
+				envelope, err := listEnvelope(item)
+				if err != nil {
+					return nil, err
 				}
-				envelopes = append(envelopes, pipeline.New(pipeline.KindList, ref, id).WithData(map[string]any{"list": item}))
+				envelopes = append(envelopes, envelope)
 			}
 			return envelopes, nil
 		},

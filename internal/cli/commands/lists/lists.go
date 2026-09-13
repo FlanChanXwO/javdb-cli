@@ -35,7 +35,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			items := res.Named("lists")
 			envelopes := make([]pipeline.Envelope, 0, len(items))
 			for _, item := range items {
-				envelopes = append(envelopes, pipeline.New(pipeline.KindList, display(item["name"]), display(item["id"])).WithData(map[string]any{"list": item}))
+				envelope, err := listEnvelope(item)
+				if err != nil {
+					return nil, err
+				}
+				envelopes = append(envelopes, envelope)
 			}
 			return envelopes, nil
 		},

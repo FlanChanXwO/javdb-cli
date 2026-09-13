@@ -31,6 +31,8 @@
   （`javdb search --ndjson | javdb detail`）；适用时 `--json` 保留既有聚合 shape，
   列表与合集的 fan-out 结果使用稳定的 `id`/`ref`，原始值分别位于
   `data.list`/`data.entity`。
+  列表与合集的 fan-out NDJSON 是有意的 v1 machine-contract 迁移；legacy 人类输出和显式
+  聚合 `--json` 保持兼容。
 - **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
   显示，不会伪装成空结果。
 - **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供

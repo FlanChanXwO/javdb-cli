@@ -5,12 +5,49 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 )
+
+func TestListEnvelopeProjectsIdentityAndRawItem(t *testing.T) {
+	tests := []struct {
+		name    string
+		item    map[string]any
+		wantRef string
+		wantID  string
+		wantErr bool
+	}{
+		{name: "name and id", item: map[string]any{"id": "list-1", "name": "My List"}, wantRef: "My List", wantID: "list-1"},
+		{name: "name without id", item: map[string]any{"name": "Name Only"}, wantRef: "Name Only"},
+		{name: "id fallback", item: map[string]any{"id": "list-2", "name": ""}, wantRef: "list-2", wantID: "list-2"},
+		{name: "missing identity", item: map[string]any{"name": ""}, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := listEnvelope(tc.item)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("listEnvelope error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("listEnvelope: %v", err)
+			}
+			if got.Kind != pipeline.KindList || got.Ref != tc.wantRef || got.ID != tc.wantID {
+				t.Fatalf("envelope = %#v, want kind=list ref=%q id=%q", got, tc.wantRef, tc.wantID)
+			}
+			if !reflect.DeepEqual(got.Data["list"], tc.item) {
+				t.Fatalf("data.list = %#v, want %#v", got.Data["list"], tc.item)
+			}
+		})
+	}
+}
 
 func TestNewBuildsListsGroup(t *testing.T) {
 	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})

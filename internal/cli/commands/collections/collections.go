@@ -16,27 +16,44 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
+var collectionKinds = map[string]pipeline.Kind{
+	"actors":    pipeline.KindActor,
+	"series":    pipeline.KindSeries,
+	"codes":     pipeline.KindCode,
+	"makers":    pipeline.KindMaker,
+	"directors": pipeline.KindDirector,
+}
+
+func collectionKind(selector string) (pipeline.Kind, error) {
+	kind, ok := collectionKinds[selector]
+	if !ok {
+		return "", fmt.Errorf("collection kind must be one of actors|series|codes|makers|directors")
+	}
+	return kind, nil
+}
+
 // New builds the collection listing command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var asJSON, asNDJSON bool
-	collectionKinds := map[string]pipeline.Kind{
-		"actors":    pipeline.KindActor,
-		"series":    pipeline.KindSeries,
-		"codes":     pipeline.KindCode,
-		"makers":    pipeline.KindMaker,
-		"directors": pipeline.KindDirector,
-	}
 	runner := &pipeline.BatchRunner{
 		Name:       "collections",
 		LegacyJSON: true,
+		Preflight: func(inputs []pipeline.Envelope) error {
+			for _, input := range inputs {
+				if _, err := collectionKind(pipeline.ConsumerRef(input)); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
 		RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
 			kind := pipeline.ConsumerRef(input)
-			pipelineKind, ok := collectionKinds[kind]
-			if !ok {
-				return nil, fmt.Errorf("collection kind must be one of actors|series|codes|makers|directors")
+			pipelineKind, err := collectionKind(kind)
+			if err != nil {
+				return nil, err
 			}
 			items, err := c.Collected(ctx, kind)
 			if err != nil {
@@ -75,6 +92,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List a collection: actors|series|codes|makers|directors",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				if _, err := collectionKind(args[0]); err != nil {
+					return err
+				}
+			}
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}

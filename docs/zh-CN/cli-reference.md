@@ -168,12 +168,15 @@ SDK 嵌入方必须自行施加网络边界。
 
 TTY stdout 默认使用人类可读文本；非 TTY stdout 默认输出逐行稳定记录流。`--ndjson` 与
 `--json` 互斥；只有显式指定对应 flag 才输出 JSON 或 NDJSON。显式 `--json` 单项保持既有
-shape，多项输出信封数组。生产者命令
+shape，多项输入输出信封数组。消费输入的命令对原始位置参数单项保留命令既有 shape；生产者命令
 （如 `browse`、`tags`、`lists`、`rankings`、`top250`、`watched`、`want`、`recent`）
-不读 stdin，且遵循相同的 TTY/非 TTY 文本分流；使用 `--ndjson` 才逐条输出信封。Fan-out
-命令每个结果输出一个信封：列表记录在 `id` 放稳定 list ID，`ref` 使用显示名称并在缺失时
-回退到 ID，原始对象放在 `data.list`；合集实体使用对应的单数 kind，原始对象放在
-`data.entity`。
+不读 stdin，`--json` 保留其聚合 JSON shape，`--ndjson` 才逐条输出信封。Fan-out 命令每个
+结果输出一个信封：列表记录在 `id` 放稳定 list ID，`ref` 使用显示名称并在缺失时回退到 ID，
+原始对象放在 `data.list`；合集实体使用对应的单数 kind，原始对象放在 `data.entity`。
+
+列表与合集的 fan-out NDJSON shape 是有意的 `javdb.pipeline/v1` machine-contract 迁移。消费
+旧聚合 `data.lists`/`data.items` 的程序必须迁移为每个信封读取一个 `data.list` 或 `data.entity`；
+legacy 人类输出和显式聚合 `--json` 保持兼容，且没有旧的聚合 NDJSON 模式。
 
 ## 实体与合集导航
 

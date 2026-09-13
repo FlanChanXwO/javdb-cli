@@ -211,14 +211,21 @@ continues after item failures, and exits non-zero with a summary on stderr.
 TTY stdout defaults to human-readable text; non-TTY stdout defaults to a
 stable, newline-delimited record stream. `--ndjson` and `--json` are mutually
 exclusive; JSON or NDJSON is emitted only when its flag is explicit.
-`--json` keeps the legacy single-item shape and emits a JSON array of envelopes
-for batch input. Producers (e.g. `browse`, `tags`, `lists`, `rankings`,
-`top250`, `watched`, `want`, `recent`) never read stdin and follow the same
-TTY/non-TTY text split; use `--ndjson` to emit one envelope per record. Fan-out
-commands emit one envelope per result: list records use the stable list ID in
-`id`, the display name with ID fallback in `ref`, and keep the raw object under
-`data.list`; collection records use the corresponding singular entity kind
-and keep the raw object under `data.entity`.
+For consumer commands, `--json` keeps the legacy command-specific shape for a
+raw positional input and emits a JSON array of envelopes for batch input.
+Producers (e.g. `browse`, `tags`, `lists`, `rankings`, `top250`, `watched`,
+`want`, `recent`) never read stdin: `--json` keeps their aggregate JSON shape,
+while `--ndjson` emits one envelope per result. Fan-out commands emit one
+envelope per result: list records use the stable list ID in `id`, the display
+name with ID fallback in `ref`, and keep the raw object under `data.list`;
+collection records use the corresponding singular entity kind and keep the
+raw object under `data.entity`.
+
+The lists/collections fan-out NDJSON shape is an intentional
+`javdb.pipeline/v1` machine-contract migration. Consumers of the former
+aggregate `data.lists`/`data.items` shape must migrate to one `data.list` or
+`data.entity` per envelope; legacy human output and explicit aggregate
+`--json` remain compatible, and there is no legacy aggregate NDJSON mode.
 
 ## Entity and list navigation
 
