@@ -23,7 +23,7 @@ func TestMovieEndpointResolveMovieIDUsesStrictSearch(t *testing.T) {
 			name:      "normalizes exact input before search",
 			input:     "  ssis-589  ",
 			wantID:    "id-exact",
-			wantQuery: "ssis-589",
+			wantQuery: "SSIS-589",
 			movies: []map[string]any{
 				{"number": "SSIS-589", "id": "id-exact"},
 			},

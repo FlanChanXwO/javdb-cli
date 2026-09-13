@@ -71,7 +71,7 @@ func (e *MovieEndpoint) ResolveMovieID(number string) (string, error) {
 
 // ResolveMovieIDExact searches with zone=all and applies strict exact matching.
 func (e *MovieEndpoint) ResolveMovieIDExact(ctx context.Context, number string) (string, error) {
-	normalized := strings.TrimSpace(number)
+	normalized := strings.ToUpper(strings.TrimSpace(number))
 	if normalized == "" {
 		return "", fmt.Errorf("empty number")
 	}
