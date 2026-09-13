@@ -127,8 +127,10 @@ func parsePMTTypes(payload []byte) (map[uint16]byte, error) {
 		return nil, fmt.Errorf("section length %d out of bounds", length)
 	}
 	types := map[uint16]byte{}
-	// body 前 9 字节:program_number(2)+version(1)+序号(2)+PCR_PID(2)+info_length(2)。
-	for pos := 3 + 9; pos+5 <= end; {
+	// body 前 9 字节:program_number(2)+version(1)+序号(2)+PCR_PID(2)+info_length(2);
+	// info_length 指向的 program 描述符区必须跳过(真实流常非零)。
+	infoLen := (int(section[10]&0x0F) << 8) | int(section[11])
+	for pos := 3 + 9 + infoLen; pos+5 <= end; {
 		entryPID := (uint16(section[pos+1]&0x1F) << 8) | uint16(section[pos+2])
 		types[entryPID] = section[pos]
 		esLen := (int(section[pos+3]&0x0F) << 8) | int(section[pos+4])

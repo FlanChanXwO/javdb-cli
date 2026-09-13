@@ -125,10 +125,12 @@ func parsePSIMap(payload []byte, tableID byte) (map[uint16]bool, error) {
 		return nil, fmt.Errorf("section length %d out of bounds", length)
 	}
 	table := map[uint16]bool{}
-	// body 前缀:公共 5 字节(TSID/版本/序号);PMT 再加 4 字节(PCR_PID+program_info_length)。
+	// body 前缀:公共 5 字节(TSID/版本/序号);PMT 再加 4 字节(PCR_PID+info_length),
+	// 且 program_info_length 指向的描述符区必须跳过(真实流常带 ID3 相关描述符)。
 	start := 3 + 5
 	if tableID == 0x02 {
-		start = 3 + 9
+		infoLen := (int(section[10]&0x0F) << 8) | int(section[11])
+		start = 3 + 9 + infoLen
 	}
 	for pos := start; pos < end; {
 		switch tableID {
