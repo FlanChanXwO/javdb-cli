@@ -158,9 +158,13 @@ func TestProbeVideoNeverInfersFromURLName(t *testing.T) {
 
 // 并发与去重:同 URL 只 probe 一次(计划 #6)。
 func TestProbeAssetsConcurrentDeduplicatesURLs(t *testing.T) {
+	var mu sync.Mutex
 	calls := 0
 	fetch := func(_ context.Context, uri string) ([]byte, error) {
+		// probe 并发回调的计数访问需要互斥。
+		mu.Lock()
 		calls++
+		mu.Unlock()
 		return testJPEG640x404(), nil
 	}
 	urls := []string{
@@ -170,6 +174,8 @@ func TestProbeAssetsConcurrentDeduplicatesURLs(t *testing.T) {
 	}
 	types := []string{"image", "image", "image"}
 	results := ProbeAssetsConcurrent(context.Background(), fetch, types, urls, probeTestLimits())
+	mu.Lock()
+	defer mu.Unlock()
 	if calls != 2 {
 		t.Fatalf("fetch calls = %d, want 2 (URL dedup)", calls)
 	}
