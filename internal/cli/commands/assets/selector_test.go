@@ -1,6 +1,10 @@
 package assets
 
 import (
+	"strings"
+
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
+
 	"reflect"
 	"testing"
 )
@@ -34,7 +38,7 @@ func TestParseAssetSelector(t *testing.T) {
 		{input: "1.5", wantErr: true},
 	}
 	for _, tc := range cases {
-		got, err := parseAssetSelector(tc.input)
+		got, err := parseAssetSelector(tc.input, 100)
 		if tc.wantErr {
 			if err == nil {
 				t.Fatalf("parseAssetSelector(%q) = %v, want error", tc.input, got)
@@ -55,3 +59,30 @@ func TestParseAssetSelector(t *testing.T) {
 		}
 	}
 }
+
+// ---- 计划 #9:selector 防止巨型区间提前展开 ----
+
+// 1-1000000000 会在检查实际资产数量前尝试分配巨大 slice:
+// 必须先解析 start/end,结合资产数校验,再展开。
+func TestParseAssetSelectorRejectsHugeRange(t *testing.T) {
+	// 资产数 6:range 1-1000000000 超出范围,必须在展开前报错。
+	_, err := parseAssetSelector("1-1000000000", 6)
+	if err == nil {
+		t.Fatal("huge range must be rejected before expansion")
+	}
+}
+
+// 结合资产数校验:selectAssets 必须先校验 range 上界。
+func TestSelectAssetsRejectsRangeBeyondAssets(t *testing.T) {
+	assets := []javdb.MovieAsset{
+		{Type: "image", URL: "a"},
+		{Type: "image", URL: "b"},
+	}
+	descs := []string{"a", "b"}
+	_, _, err := selectAssets(assets, descs, "1-1000000000")
+	if err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("error = %v, want out of range before expansion", err)
+	}
+}
+
+// ---- 计划 #10:movieString 只接受 string ----

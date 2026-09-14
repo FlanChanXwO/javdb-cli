@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,9 +15,14 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
+// stdinLineLimit 是 stdin 单行记录的明确上限(计划 #8):64 KiB。
+const stdinLineLimit = 64 * 1024
+
 // NewDownload builds the `assets download` pipe consumer.
-// 输入是 `assets list` 的 TYPE<TAB>URL 记录流;-d/-o 与默认命名遵循
-// input.md 计划 #13-#16/#42-#43:失败不落盘、绝不覆盖已有文件。
+// 输入是 `assets list` 的 TYPE<TAB>URL 记录流,流式逐条处理(计划 #8):
+// scan → parse → download → next,不缓存全部记录。
+// -d/-o 与默认命名遵循 input.md 计划 #13-#16/#42-#43:失败不落盘、绝不覆盖已有文件。
+// stdout 只输出最终路径(计划 #7),不再输出 saved/bytes 装饰。
 func NewDownload(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var dir, out string
 
@@ -28,23 +32,14 @@ func NewDownload(options *invocation.RootOptions, streams *invocation.Streams) *
 		Long: "Download movie assets from TYPE<TAB>URL records piped by `javdb assets list`. " +
 			"-d places auto-named files (image-001.jpg, video-001.mp4) into DIR; " +
 			"-o writes a single asset to an exact path (.ts keeps the transport stream, " +
-			".mp4 produces a fast-start MP4). Existing files are never overwritten.",
+			".mp4 produces a fast-start MP4). Existing files are never overwritten. " +
+			"Output is the final written path per line.",
 		Example: "  javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./media\n" +
 			"  javdb assets list SSIS-589 --type video | javdb assets download -o preview.mp4",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			assets, err := readAssetRecords(streams.In)
-			if err != nil {
-				return err
-			}
-			if len(assets) == 0 {
-				return fmt.Errorf("assets download: no assets on stdin")
-			}
-			if out != "" && len(assets) != 1 {
-				return fmt.Errorf("assets download: -o requires exactly one asset, got %d", len(assets))
-			}
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {
-				return downloadAssets(cmd.Context(), c, streams, assets, dir, out)
+				return downloadAssetsStream(cmd.Context(), c, streams, dir, out)
 			})
 		},
 	}
@@ -53,103 +48,128 @@ func NewDownload(options *invocation.RootOptions, streams *invocation.Streams) *
 	return cmd
 }
 
-// assetRecord 是 pipe 输入中的一条 TYPE<TAB>URL 记录。
-type assetRecord struct {
-	Type string
-	URL  string
-}
-
-// readAssetRecords 解析 stdin 的 TYPE<TAB>URL 记录流;空行跳过,坏行带行号报错。
-func readAssetRecords(in io.Reader) ([]assetRecord, error) {
-	scanner := bufio.NewScanner(in)
-	var records []assetRecord
+// downloadAssetsStream 流式处理 stdin 的 TYPE<TAB>URL 记录(计划 #8):
+// 逐条 scan → parse → download → next,不缓存全部记录。
+// -o 只需要读取第一条,再尝试读取第二条:存在第二条则报错,无需读完整个 stdin。
+func downloadAssetsStream(ctx context.Context, c *javdb.Client, streams *invocation.Streams, dir, out string) error {
+	dir = filepath.Clean(dir)
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return fmt.Errorf("assets download: -d %q is not a directory", dir)
+	}
+	scanner := bufio.NewScanner(streams.In)
+	scanner.Buffer(make([]byte, 0, stdinLineLimit), stdinLineLimit)
+	pos := 0
 	lineNo := 0
+	var firstRecord *assetRecord
 	for scanner.Scan() {
 		lineNo++
 		line := strings.TrimRight(scanner.Text(), "\r")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		parts := strings.Split(line, "\t")
-		if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
-			return nil, fmt.Errorf("invalid input at line %d: %q (want TYPE<TAB>URL)", lineNo, line)
-		}
-		assetType := strings.TrimSpace(parts[0])
-		switch assetType {
-		case "image", "video":
-		default:
-			return nil, fmt.Errorf("invalid input at line %d: unsupported asset type %q", lineNo, assetType)
-		}
-		records = append(records, assetRecord{Type: assetType, URL: strings.TrimSpace(parts[1])})
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read stdin: %w", err)
-	}
-	return records, nil
-}
-
-// downloadAssets 逐个下载并落盘,输出 saved 行。
-// 自动命名的图片先写到目录内临时文件,按 magic 检测结果确定最终扩展名后再发布,
-// 发布前做冲突检查(#43);任何失败都保证最终目标不出现半成品。
-func downloadAssets(ctx context.Context, c *javdb.Client, streams *invocation.Streams, records []assetRecord, dir, out string) error {
-	dir = filepath.Clean(dir)
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return fmt.Errorf("assets download: -d %q is not a directory", dir)
-	}
-	for i, record := range records {
-		pos := i + 1
-		if out != "" {
-			written, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: record.Type, URL: record.URL}, out)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(streams.Out, "saved %s (%d bytes)\n", out, written)
-			continue
-		}
-		target, written, err := downloadAutoNamed(ctx, c, record, dir, pos)
+		// pos 是当前记录在非空记录流中的位置,空行不占编号。
+		pos++
+		record, err := parseAssetRecord(line, lineNo)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(streams.Out, "saved %s (%d bytes)\n", target, written)
+		if out != "" {
+			// -o 模式只需要读取第一条,再尝试读取第二条(计划 #8):
+			// 存在第二条则报错,无需把整个 stdin 读完。
+			if firstRecord != nil {
+				return fmt.Errorf("assets download: -o requires exactly one asset, got more")
+			}
+			firstRecord = &record
+			continue
+		}
+		target, err := downloadAutoNamed(ctx, c, record, dir, pos)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(streams.Out, target); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+	if out != "" {
+		if firstRecord == nil {
+			return fmt.Errorf("assets download: no assets on stdin")
+		}
+		written, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: firstRecord.Type, URL: firstRecord.URL}, out)
+		if err != nil {
+			return err
+		}
+		_ = written
+		if _, err := fmt.Fprintln(streams.Out, out); err != nil {
+			return err
+		}
+		return nil
+	}
+	if pos == 0 {
+		return fmt.Errorf("assets download: no assets on stdin")
 	}
 	return nil
 }
 
+// assetRecord 是 pipe 输入中的一条 TYPE<TAB>URL 记录。
+type assetRecord struct {
+	Type string
+	URL  string
+}
+
+// parseAssetRecord 解析单条 TYPE<TAB>URL 记录;空行跳过,坏行带行号报错。
+func parseAssetRecord(line string, lineNo int) (assetRecord, error) {
+	parts := strings.Split(line, "\t")
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+		return assetRecord{}, fmt.Errorf("invalid input at line %d: %q (want TYPE<TAB>URL)", lineNo, line)
+	}
+	assetType := strings.TrimSpace(parts[0])
+	switch assetType {
+	case "image", "video":
+	default:
+		return assetRecord{}, fmt.Errorf("invalid input at line %d: unsupported asset type %q", lineNo, assetType)
+	}
+	return assetRecord{Type: assetType, URL: strings.TrimSpace(parts[1])}, nil
+}
+
 // downloadAutoNamed 处理自动命名:图片下载后按 magic 定扩展名,视频默认 .mp4。
-func downloadAutoNamed(ctx context.Context, c *javdb.Client, record assetRecord, dir string, pos int) (string, int64, error) {
+func downloadAutoNamed(ctx context.Context, c *javdb.Client, record assetRecord, dir string, pos int) (string, error) {
 	switch record.Type {
 	case "video":
 		target := filepath.Join(dir, fmt.Sprintf("video-%03d.mp4", pos))
-		written, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: record.Type, URL: record.URL}, target)
-		if err != nil {
-			return "", 0, err
+		if _, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: record.Type, URL: record.URL}, target); err != nil {
+			return "", err
 		}
-		return target, written, nil
+		return target, nil
 	case "image":
-		tmp := filepath.Join(dir, fmt.Sprintf(".assets-download-%03d.tmp", pos))
-		defer os.Remove(tmp)
+		// 临时文件名唯一(计划 #27):os.MkdirTemp 生成一次性目录,
+		// 下载产物发布到目录内唯一路径,无并发/残留冲突。
+		tmpDir, err := os.MkdirTemp(dir, ".assets-download-")
+		if err != nil {
+			return "", err
+		}
+		defer os.RemoveAll(tmpDir)
+		tmp := filepath.Join(tmpDir, "image.raw")
 		if _, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: record.Type, URL: record.URL}, tmp); err != nil {
-			return "", 0, err
+			return "", err
 		}
 		format, ok := javdb.ImageAssetFormat(tmp)
 		if !ok {
-			return "", 0, fmt.Errorf("assets download: downloaded image is not a recognized format")
+			return "", fmt.Errorf("assets download: downloaded image is not a recognized format")
 		}
 		target := filepath.Join(dir, fmt.Sprintf("image-%03d.%s", pos, format))
 		if _, err := os.Lstat(target); err == nil {
-			return "", 0, fmt.Errorf("assets download: target already exists: %s", target)
+			return "", fmt.Errorf("assets download: target already exists: %s", target)
 		} else if !os.IsNotExist(err) {
-			return "", 0, fmt.Errorf("assets download: check target %q: %w", target, err)
+			return "", fmt.Errorf("assets download: check target %q: %w", target, err)
 		}
 		if err := os.Rename(tmp, target); err != nil {
-			return "", 0, fmt.Errorf("assets download: publish %q: %w", target, err)
+			return "", fmt.Errorf("assets download: publish %q: %w", target, err)
 		}
-		info, err := os.Stat(target)
-		if err != nil {
-			return "", 0, err
-		}
-		return target, info.Size(), nil
+		return target, nil
 	default:
-		return "", 0, fmt.Errorf("assets download: unsupported asset type %q", record.Type)
+		return "", fmt.Errorf("assets download: unsupported asset type %q", record.Type)
 	}
 }

@@ -25,17 +25,23 @@ type configKey struct {
 // knownConfigKeys 是 config.toml 支持的键集合。未知键必须先报错，再决定是否
 // 创建或读取配置，避免把无效命令的副作用落盘。
 var knownConfigKeys = map[string]configKey{
-	"host":                           {kind: "string"},
-	"https_proxy":                    {kind: "string"},
-	"proxy":                          {kind: "string"},
-	"auto_relogin":                   {kind: "bool"},
-	"lang":                           {kind: "string"},
-	"reverse_search.default_source":  {kind: "string"},
-	"reverse_search.cache":           {kind: "bool"},
-	"reverse_search.cache_ttl":       {kind: "string"},
-	"reverse_search.retries":         {kind: "int"},
-	"reverse_search.retry_wait":      {kind: "string"},
-	"reverse_search.request_timeout": {kind: "string"},
+	"host":                                 {kind: "string"},
+	"https_proxy":                          {kind: "string"},
+	"proxy":                                {kind: "string"},
+	"auto_relogin":                         {kind: "bool"},
+	"lang":                                 {kind: "string"},
+	"reverse_search.default_source":        {kind: "string"},
+	"reverse_search.cache":                 {kind: "bool"},
+	"reverse_search.cache_ttl":             {kind: "string"},
+	"reverse_search.retries":               {kind: "int"},
+	"reverse_search.retry_wait":            {kind: "string"},
+	"reverse_search.request_timeout":       {kind: "string"},
+	"assets.probe.enabled":                 {kind: "bool"},
+	"assets.probe.concurrency":             {kind: "int"},
+	"assets.probe.image_max_bytes":         {kind: "int"},
+	"assets.probe.playlist_max_bytes":      {kind: "int"},
+	"assets.probe.video_segment_max_bytes": {kind: "int"},
+	"assets.probe.timeout":                 {kind: "string"},
 }
 
 func knownConfigKey(key string) bool {
@@ -74,6 +80,12 @@ var displayConfigKeys = []string{
 	"reverse_search.retries",
 	"reverse_search.retry_wait",
 	"reverse_search.request_timeout",
+	"assets.probe.enabled",
+	"assets.probe.concurrency",
+	"assets.probe.image_max_bytes",
+	"assets.probe.playlist_max_bytes",
+	"assets.probe.video_segment_max_bytes",
+	"assets.probe.timeout",
 }
 
 // New builds config path/get/set/unset commands.
@@ -317,6 +329,18 @@ func lookupKey(cfg settings.Settings, key string) (string, error) {
 		return cfg.ReverseSearch.RetryWait, nil
 	case "reverse_search.request_timeout":
 		return cfg.ReverseSearch.RequestTimeout, nil
+	case "assets.probe.enabled":
+		return strconv.FormatBool(cfg.Assets.Probe.EnabledValue()), nil
+	case "assets.probe.concurrency":
+		return strconv.Itoa(cfg.Assets.Probe.ConcurrencyValue()), nil
+	case "assets.probe.image_max_bytes":
+		return strconv.FormatInt(cfg.Assets.Probe.ImageMaxBytesValue(), 10), nil
+	case "assets.probe.playlist_max_bytes":
+		return strconv.FormatInt(cfg.Assets.Probe.PlaylistMaxBytesValue(), 10), nil
+	case "assets.probe.video_segment_max_bytes":
+		return strconv.FormatInt(cfg.Assets.Probe.VideoSegmentMaxBytesValue(), 10), nil
+	case "assets.probe.timeout":
+		return cfg.Assets.Probe.TimeoutValue(), nil
 	default:
 		return "", fmt.Errorf("unknown key %q", key)
 	}

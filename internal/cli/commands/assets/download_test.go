@@ -299,3 +299,73 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// ---- 计划 #7/#8:download stdout 与 stdin 流式处理 ----
+
+// stdout 只输出最终路径;不再输出 `saved <path> (<bytes> bytes)`。
+func TestDownloadOutputsOnlyFinalPath(t *testing.T) {
+	dir := t.TempDir()
+	stdout, err := runDownload(t, "image\t<SERVER>/a.jpg\n", "-d", dir)
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("stdout lines = %d, want 1 (out=%q)", len(lines), stdout)
+	}
+	if strings.Contains(stdout, "saved") || strings.Contains(stdout, "bytes") {
+		t.Fatalf("stdout must be path-only, got %q", stdout)
+	}
+	if !strings.HasPrefix(lines[0], dir+"/") {
+		t.Fatalf("stdout = %q, want final path under %s", lines[0], dir)
+	}
+}
+
+// -o 模式 stdout 只输出最终路径。
+func TestDownloadOutOutputsOnlyFinalPath(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "preview.ts")
+	stdout, err := runDownload(t, "video\t<SERVER>/v.m3u8\n", "-o", target)
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	if strings.TrimRight(stdout, "\n") != target {
+		t.Fatalf("stdout = %q, want %q", stdout, target)
+	}
+}
+
+// stdin 流式处理(计划 #8):第一条失败立即停止,不缓存全部记录;
+// 巨型 stdin 不应先全量读入。
+func TestDownloadStreamsStdin(t *testing.T) {
+	dir := t.TempDir()
+	// 第一条坏行必须立即报错,后续行不处理。
+	_, err := runDownload(t, "badline\nimage\t<SERVER>/a.jpg\n", "-d", dir)
+	if err == nil || !strings.Contains(err.Error(), "invalid input") {
+		t.Fatalf("error = %v, want invalid input at line 1", err)
+	}
+}
+
+// -o 只需读取两条判断:第二条存在时报错,不读完整个 stdin(计划 #8)。
+func TestDownloadOStopsAfterSecondRecord(t *testing.T) {
+	dir := t.TempDir()
+	// 大量后续行;-o 模式不应处理它们。
+	var lines strings.Builder
+	lines.WriteString("image\t<SERVER>/a.jpg\nimage\t<SERVER>/b.jpg\n")
+	for i := 0; i < 1000; i++ {
+		lines.WriteString("bad-line-without-tab\n")
+	}
+	_, err := runDownload(t, lines.String(), "-o", filepath.Join(dir, "out.jpg"))
+	if err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("error = %v, want exactly one asset", err)
+	}
+}
+
+// stdin 单行设置明确上限(64 KiB):超长行明确报错。
+func TestDownloadRejectsOverlongLine(t *testing.T) {
+	dir := t.TempDir()
+	longURL := "image\t" + strings.Repeat("a", 70000) + "\n"
+	_, err := runDownload(t, longURL, "-d", dir)
+	if err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("error = %v, want line too long", err)
+	}
+}

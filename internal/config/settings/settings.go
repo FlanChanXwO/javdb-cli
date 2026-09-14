@@ -33,15 +33,25 @@ type Settings struct {
 	Lang          string                `toml:"lang,omitempty"`
 	DeviceUUID    string                `toml:"device_uuid,omitempty"` // optional override; else file/device_uuid
 	ReverseSearch ReverseSearchSettings `toml:"reverse_search"`
+	Assets        AssetsSettings        `toml:"assets"`
+}
+
+// AssetsSettings 是 [assets] 表的 typed 视图;probe 是嵌套 [assets.probe]。
+type AssetsSettings struct {
+	Probe AssetsProbeSettings `toml:"probe"`
 }
 
 // Defaults returns baseline settings.
+// AssetsProbe 已填充等效默认指针(计划 #3):整个 [assets.probe] 表
+// 不存在时等效于默认配置。
 func Defaults() Settings {
-	return Settings{
+	s := Settings{
 		Host:        HostAuto,
 		AutoRelogin: false,
 		Lang:        "en",
 	}
+	s.Assets.Probe.applyDefaults()
+	return s
 }
 
 // LoadFile reads config.toml; missing file returns Defaults().
@@ -61,6 +71,7 @@ func LoadFile(path string) (Settings, error) {
 		s.Host = HostAuto
 	}
 	s.ReverseSearch.applyDefaults()
+	s.Assets.Probe.applyDefaults()
 	return s, nil
 }
 
