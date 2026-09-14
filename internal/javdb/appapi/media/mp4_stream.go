@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 )
 
 // MP4 生产管线(input.md 计划 #35/#36/#37/#40):
@@ -67,7 +68,7 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					return err
 				}
 				s.video.Samples = append(s.video.Samples, mp4SampleMeta{
-					Offset: s.fileOffset, Size: uint32(len(sample.Data)),
+					SpoolOffset: s.fileOffset, Size: uint32(len(sample.Data)),
 					PTS: sample.PTS, DTS: sample.DTS, Sync: sample.Sync,
 				})
 				s.fileOffset += int64(len(sample.Data))
@@ -91,7 +92,7 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					return err
 				}
 				s.audio.Samples = append(s.audio.Samples, mp4SampleMeta{
-					Offset: s.fileOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
+					SpoolOffset: s.fileOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
 				})
 				s.fileOffset += int64(len(sample.Data))
 				s.noteTimeline(sample.PTS, sample.PTS)
@@ -140,22 +141,30 @@ func (s *mp4Spooler) finalize() {
 }
 
 // writeMP4Body 完成 Phase2:ftyp → moov → mdat(从 spool 拷贝样本)。
+// mdat 使用 chunk 级 A/V interleave(计划 #25):按时间顺序交锳视频/音频
+// chunk(约 1 秒)，样本从 spool 按交错顺序拷出，stco 指向交错后的绝对位置。
 func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 	ftyp := buildFTYP()
-	// moov 尺寸与 stco 取值无关:先用占位求尺寸,再用真实 mdatStart 重建。
+	// moov 尺寸与 stco 取值无关:先用占位求尺寸，再用真实 mdatStart 重建。
 	moov, err := buildMoov(spool.video, spool.audio, int64(len(ftyp))+1<<20)
 	if err != nil {
 		return 0, err
 	}
 	mdatStart := int64(len(ftyp) + len(moov) + 8)
+	// 交错 chunk 表：重分配每个样本在 mdat 数据区内的绝对 Offset。
+	videoChunks, audioChunks := interleaveSamples(spool.video, spool.audio, mdatStart)
 	moov, err = buildMoov(spool.video, spool.audio, mdatStart)
 	if err != nil {
 		return 0, err
 	}
-	mdatSize := spool.fileOffset
+	var mdatPayloadSize int64
+	for _, chunk := range append(videoChunks, audioChunks...) {
+		for _, sample := range chunk.samples {
+			mdatPayloadSize += int64(sample.Size)
+		}
+	}
 	var written int64
-	// mdat 头的 size 必须包含随后拷贝的样本数据总量。
-	mdatHeader := append(mp4U32(uint32(8+mdatSize)), "mdat"...)
+	mdatHeader := append(mp4U32(uint32(8+mdatPayloadSize)), "mdat"...)
 	for _, chunk := range [][]byte{ftyp, moov, mdatHeader} {
 		n, err := out.Write(chunk)
 		written += int64(n)
@@ -163,24 +172,106 @@ func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 			return written, err
 		}
 	}
-	var videoTotal int64
-	for _, s := range spool.video.Samples {
-		videoTotal += int64(s.Size)
+	// mdat 数据区按交错顺序写出：先写 videoChunks 与 audioChunks 合并后
+	// 按 Offset 排序的顺序，保证 stco 偏移与物理位置一致。
+	allChunks := append(videoChunks, audioChunks...)
+	sort.Slice(allChunks, func(i, j int) bool { return allChunks[i].offset < allChunks[j].offset })
+	for _, chunk := range allChunks {
+		n, err := copySamplesFromSpool(spool, chunk.samples, out)
+		written += n
+		if err != nil {
+			return written, fmt.Errorf("copy chunk samples: %w", err)
+		}
 	}
-	videoCopied, err := copySamplesFromSpool(spool, spool.video.Samples, out)
-	written += videoCopied
-	if err != nil {
-		return written, fmt.Errorf("copy video samples: %w", err)
-	}
-	audioCopied, err := copySamplesFromSpool(spool, spool.audio.Samples, out)
-	written += audioCopied
-	if err != nil {
-		return written, fmt.Errorf("copy audio samples: %w", err)
-	}
-	if written != int64(len(ftyp)+len(moov)+8)+mdatSize {
-		return written, fmt.Errorf("mp4 body size %d != expected %d", written, int64(len(ftyp)+len(moov)+8)+mdatSize)
+	if written != int64(len(ftyp)+len(moov)+8)+mdatPayloadSize {
+		return written, fmt.Errorf("mp4 body size %d != expected %d", written, int64(len(ftyp)+len(moov)+8)+mdatPayloadSize)
 	}
 	return written, nil
+}
+
+// mp4Chunk 是 mdat 数据区内的一个连续 chunk:同一 track 的一组样本。
+type mp4Chunk struct {
+	offset  int64
+	video   bool
+	samples []mp4SampleMeta
+}
+
+// interleaveSamples 按 chunk 级 A/V interleave(计划 #25)重分配样本的
+// mdat Offset：视频按 GOP(以 sync sample 边界)、音频按约 1 秒时间窗口，
+// 按时间顺序交锳。stco 指向交错后的绝对位置，样本顺序由 chunk 表决定。
+func interleaveSamples(video, audio *mp4TrackMeta, mdatStart int64) (videoChunks, audioChunks []mp4Chunk) {
+	if video == nil {
+		return nil, nil
+	}
+	// chunk 记录样本在 track.Samples 中的下标,便于回写 Offset。
+	type pending struct {
+		indexes []int
+	}
+	// 视频 chunk 边界:每个 sync sample 开一个新 chunk(GOP 级)。
+	var videoPending []pending
+	for i, s := range video.Samples {
+		if s.Sync || len(videoPending) == 0 {
+			videoPending = append(videoPending, pending{})
+		}
+		videoPending[len(videoPending)-1].indexes = append(videoPending[len(videoPending)-1].indexes, i)
+	}
+	// 音频 chunk 边界:约 1 秒时间窗口(以 90kHz 时间轴的 PTS 推进为准)。
+	var audioPending []pending
+	if audio != nil {
+		windowNS := uint64(mp4ChunkInterleaveSeconds * float64(mp4VideoTimescale))
+		var chunkStartPTS uint64
+		for i, s := range audio.Samples {
+			if len(audioPending) == 0 || s.PTS >= chunkStartPTS+windowNS {
+				audioPending = append(audioPending, pending{})
+				chunkStartPTS = s.PTS
+			}
+			audioPending[len(audioPending)-1].indexes = append(audioPending[len(audioPending)-1].indexes, i)
+		}
+	}
+	// 按 chunk 首 PTS 交错:视频 chunk 与音频 chunk 依时间顺序交错分配 mdat Offset。
+	type chunkRef struct {
+		isVideo  bool
+		index    int
+		startPTS uint64
+	}
+	var refs []chunkRef
+	for i, p := range videoPending {
+		if len(p.indexes) == 0 {
+			continue
+		}
+		refs = append(refs, chunkRef{isVideo: true, index: i, startPTS: video.Samples[p.indexes[0]].PTS})
+	}
+	for i, p := range audioPending {
+		if len(p.indexes) == 0 {
+			continue
+		}
+		refs = append(refs, chunkRef{isVideo: false, index: i, startPTS: audio.Samples[p.indexes[0]].PTS})
+	}
+	sort.Slice(refs, func(i, j int) bool { return refs[i].startPTS < refs[j].startPTS })
+	offset := mdatStart
+	for _, ref := range refs {
+		var meta *mp4TrackMeta
+		var p *pending
+		if ref.isVideo {
+			meta, p = video, &videoPending[ref.index]
+		} else {
+			meta, p = audio, &audioPending[ref.index]
+		}
+		chunk := mp4Chunk{offset: offset, video: ref.isVideo}
+		// 重分配每个样本的 Offset 为交错后的绝对位置(写回 meta.Samples,
+		// buildSTCO 从 meta.Samples 读取)。
+		for _, idx := range p.indexes {
+			meta.Samples[idx].Offset = offset
+			chunk.samples = append(chunk.samples, meta.Samples[idx])
+			offset += int64(meta.Samples[idx].Size)
+		}
+		if ref.isVideo {
+			videoChunks = append(videoChunks, chunk)
+		} else {
+			audioChunks = append(audioChunks, chunk)
+		}
+	}
+	return videoChunks, audioChunks
 }
 
 // copySamplesFromSpool 把样本按元数据顺序从 spool 拷出;错误以负数长度返回。
@@ -188,8 +279,8 @@ func copySamplesFromSpool(spool *mp4Spooler, samples []mp4SampleMeta, out io.Wri
 	var written int64
 	for _, sample := range samples {
 		data := make([]byte, sample.Size)
-		if _, err := spool.file.ReadAt(data, sample.Offset); err != nil {
-			return written, fmt.Errorf("read spool at %d: %w", sample.Offset, err)
+		if _, err := spool.file.ReadAt(data, sample.SpoolOffset); err != nil {
+			return written, fmt.Errorf("read spool at %d: %w", sample.SpoolOffset, err)
 		}
 		n, err := out.Write(data)
 		written += int64(n)
@@ -266,10 +357,22 @@ func validateMP4File(path string) error {
 		stcoCnt int64
 	}
 	var tables []sampleTable
+	seenTrackIDs := map[uint32]bool{}
+	sttsOK := false
 	durationOK := false
 	sampleEntryKinds := map[string]bool{}
 	if err := walkBoxes(moov, 8, int64(len(moov)), func(ref boxWalker) error {
 		switch ref.kind {
+		case "tkhd":
+			// track_ID 唯一(计划 #30):禁止音视频共用 track ID。
+			trackID := beU32(moov[ref.off+20 : ref.off+24])
+			if trackID == 0 {
+				return fmt.Errorf("tkhd track_ID is zero")
+			}
+			if seenTrackIDs[trackID] {
+				return fmt.Errorf("duplicate track ID %d", trackID)
+			}
+			seenTrackIDs[trackID] = true
 		case "mdhd":
 			timescale := beU32(moov[ref.off+20 : ref.off+24])
 			duration := beU32(moov[ref.off+24 : ref.off+28])
@@ -277,6 +380,16 @@ func validateMP4File(path string) error {
 				return fmt.Errorf("track duration %d (timescale %d) is not positive", duration, timescale)
 			}
 			durationOK = true
+		case "stts":
+			// stts:[size kind][ver/flags][entry_count][entries(count,delta)]:
+			// entries 越出 box 是损坏容器,显式拒绝(计划 #30)。
+			// entryCount 可能是损坏的超大值,乘法前先证明上限,避免 int64 溢出。
+			tsBoxSize := int64(beU32(moov[ref.off : ref.off+4]))
+			tsEntryCount := int64(beU32(moov[ref.off+12 : ref.off+16]))
+			if tsEntryCount > tsBoxSize/8 || ref.off+16+tsEntryCount*8 > int64(len(moov)) {
+				return fmt.Errorf("stts entries (%d) exceed box bounds", tsEntryCount)
+			}
+			sttsOK = true
 		case "stsd":
 			// stsd:[size kind][ver/flags][entry_count][sample entry(size+kind+...)]:
 			// entry 的 kind 字段在 box 起始 +20。
@@ -305,6 +418,9 @@ func validateMP4File(path string) error {
 	}
 	if !durationOK {
 		return fmt.Errorf("moov has no positive mdhd duration")
+	}
+	if !sttsOK {
+		return fmt.Errorf("moov missing stts timing table")
 	}
 	videoOK = sampleEntryKinds["avc1"]
 	audioOK = sampleEntryKinds["mp4a"]

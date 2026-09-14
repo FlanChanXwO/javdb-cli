@@ -2,6 +2,7 @@ package media
 
 import (
 	"fmt"
+	"sort"
 )
 
 // MP4 mux(input.md 计划 #26/#35/#38/#39):纯容器级 remux,不转码。
@@ -11,13 +12,31 @@ import (
 
 const mp4VideoTimescale = 90000
 
-// mp4SampleMeta 记录单个样本的时间戳与它在 mdat 数据区内的位置。
+// mp4MovieTimescale 是 movie 层的独立固定时间基;tkhd/mvhd duration
+// 必须换算到它,不能直接用视频 90k 或音频采样率时间(计划 #22)。
+const mp4MovieTimescale = 1000
+
+// mp4 track ID 唯一分配(计划 #22):禁止音视频共用 track ID 1。
+const (
+	mp4VideoTrackID = 1
+	mp4AudioTrackID = 2
+	mp4NextTrackID  = 3
+)
+
+// mp4ChunkInterleaveSeconds 是 A/V chunk 交错的目标准(计划 #25):
+// 约 0.5～1 秒,无需 per-sample 超细粒度。
+const mp4ChunkInterleaveSeconds = 1.0
+
+// mp4SampleMeta 记录单个样本的时间戳与它的两个位置:
+// Offset 是样本在最终 mdat 数据区内的位置(interleave 后,stco 使用);
+// SpoolOffset 是样本在 spool 文件内的物理位置(数据拷贝使用)。
 type mp4SampleMeta struct {
-	Offset int64
-	Size   uint32
-	PTS    uint64
-	DTS    uint64
-	Sync   bool
+	Offset      int64
+	SpoolOffset int64
+	Size        uint32
+	PTS         uint64
+	DTS         uint64
+	Sync        bool
 }
 
 // mp4TrackMeta 是一个 track 的完整 moov 级元数据。
@@ -44,6 +63,17 @@ func planVideoTrack(video *h264Track) (*mp4TrackMeta, error) {
 	width, height, err := parseSPSDimensions(video.ParamSets[0])
 	if err != nil {
 		return nil, fmt.Errorf("parse SPS: %w", err)
+	}
+	// MP4 中省略 stss 表示全部 sample 都是同步样本;完全没有可确认的
+	// sync sample 时拒绝生成 MP4,不伪造全部可 seek(计划 #23)。
+	syncCount := 0
+	for _, s := range video.Samples {
+		if s.Sync {
+			syncCount++
+		}
+	}
+	if syncCount == 0 {
+		return nil, fmt.Errorf("video track has no sync samples; refusing to write an MP4 that claims all samples are seekable")
 	}
 	meta := &mp4TrackMeta{
 		Timescale: mp4VideoTimescale,
@@ -145,44 +175,73 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	if video == nil || len(video.Samples) == 0 {
 		return nil, fmt.Errorf("mp4 requires a video track with samples")
 	}
-	var mvhdDuration uint64
+	// mdat 偏移与 moov 尺寸都是 32-bit 字段;可能溢出时明确拒绝,
+	// 不产生损坏的容器(计划 #26)。
+	const maxBoxOffset = int64(0xFFFFFFFF)
+	// stco 偏移是 32-bit:mdat 数据区末尾(含全部样本)溢出时拒绝。
+	var mdatPayload int64
 	for _, s := range video.Samples {
-		if end := s.PTS; end > mvhdDuration {
-			mvhdDuration = end
+		mdatPayload += int64(s.Size)
+	}
+	if audio != nil {
+		for _, s := range audio.Samples {
+			mdatPayload += int64(s.Size)
 		}
 	}
-	if audio != nil && audio.Duration > mvhdDuration {
-		mvhdDuration = audio.Duration
+	if mdatStart > maxBoxOffset || mdatStart+mdatPayload > maxBoxOffset {
+		return nil, fmt.Errorf("mdat payload exceeds 32-bit MP4 bounds (start %d, payload %d)", mdatStart, mdatPayload)
 	}
-	if mvhdDuration == 0 {
+	// movie duration 在 movie timescale 下取音视频时长最大值;
+	// mdhd duration 用各自 media timescale,tkhd/mvhd 换算到 movie timescale(计划 #22)。
+	videoMovieDur := u64ScaleToMovieTimescale(video.Duration, video.Timescale)
+	var audioMovieDur uint64
+	if audio != nil && len(audio.Samples) > 0 {
+		audioMovieDur = u64ScaleToMovieTimescale(audio.Duration, audio.Timescale)
+	}
+	movieDuration := maxU64(videoMovieDur, audioMovieDur)
+	if movieDuration == 0 {
 		return nil, fmt.Errorf("mp4 duration is zero")
 	}
 	mvhd := mp4FullBox("mvhd", 0, 0,
-		mp4U32(0), mp4U32(0), mp4U32(mp4VideoTimescale),
-		mp4U32(uint32(mvhdDuration)),
+		mp4U32(0), mp4U32(0), mp4U32(mp4MovieTimescale),
+		mp4U32(uint32(movieDuration)),
 		mp4U32(0x00010000), mp4U16(0x0100), mp4U16(0),
-		mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0),
-		mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0),
-		[]byte{0, 0, 0, 0, 0, 0},
-		mp4U16(3),
+		mp4U32(0), mp4U32(0), // reserved
+		mp4U32(0x00010000), mp4U32(0), mp4U32(0), // matrix a/b/c
+		mp4U32(0), mp4U32(0x00010000), mp4U32(0), // matrix d/e/f
+		mp4U32(0), mp4U32(0), mp4U32(0x40000000), // matrix g/x/y
+		mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), // pre_defined
+		mp4U32(mp4NextTrackID),
 	)
-	videoTrak := buildVideoTrak(video, mdatStart)
+	videoTrak, err := buildVideoTrak(video, mdatStart)
+	if err != nil {
+		return nil, err
+	}
 	traks := [][]byte{videoTrak}
-	if audio != nil {
-		// mdat 布局:视频样本连续在前,音频样本紧随其后;
-		// 音频 stco 的基址 = mdatStart + 视频样本总字节。
-		var videoTotal int64
-		for _, s := range video.Samples {
-			videoTotal += int64(s.Size)
+	if audio != nil && len(audio.Samples) > 0 {
+		audioTrak, err := buildAudioTrak(audio, mdatStart)
+		if err != nil {
+			return nil, err
 		}
-		traks = append(traks, buildAudioTrak(audio, mdatStart+videoTotal))
+		traks = append(traks, audioTrak)
 	}
 	return mp4Box("moov", mvhd, flatten(traks)), nil
 }
 
-func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) []byte {
-	duration := meta.Duration
-	avcC := buildAVCC(meta.ParamSets)
+// u64ScaleToMovieTimescale 把 media timescale 下的 duration 换算到 movie timescale。
+func u64ScaleToMovieTimescale(duration uint64, mediaTimescale uint32) uint64 {
+	if mediaTimescale == 0 {
+		return 0
+	}
+	return duration * mp4MovieTimescale / uint64(mediaTimescale)
+}
+
+func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
+	duration := u64ScaleToMovieTimescale(meta.Duration, meta.Timescale)
+	avcC, err := buildAVCC(meta.ParamSets)
+	if err != nil {
+		return nil, err
+	}
 	avc1 := mp4Box("avc1",
 		make([]byte, 6), mp4U16(1),
 		mp4U16(0), mp4U16(0),
@@ -196,26 +255,32 @@ func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) []byte {
 	)
 	stsd := mp4FullBox("stsd", 0, 0, mp4U32(1), avc1)
 	stts, ctts, stss := buildVideoTimingBoxes(meta.Samples)
-	stbl := mp4Box("stbl", stsd, stts, ctts, stss, buildSTSC(len(meta.Samples)), buildSTSZ(meta.Samples), buildSTCO(meta.Samples, mdatStart))
+	boxes := [][]byte{stsd, stts, stss}
+	if ctts != nil {
+		boxes = append(boxes, ctts)
+	}
+	boxes = append(boxes, buildSTSC(meta.Samples), buildSTSZ(meta.Samples), buildSTCO(meta.Samples))
+	stbl := mp4Box("stbl", boxes...)
 	media := mp4Box("minf",
 		mp4FullBox("vmhd", 0, 1, mp4U16(0), mp4U16(0), mp4U16(0), mp4U16(0)),
 		buildDINF(), stbl)
 	mdhd := mp4FullBox("mdhd", 0, 0,
-		mp4U32(0), mp4U32(0), mp4U32(meta.Timescale), mp4U32(uint32(duration)),
+		mp4U32(0), mp4U32(0), mp4U32(meta.Timescale), mp4U32(uint32(meta.Duration)),
 		mp4U32(0x55C40000), mp4U16(0), mp4U16(0))
 	hdlr := mp4FullBox("hdlr", 0, 0, mp4U32(0), []byte("vide"), mp4U32(0), mp4U32(0), mp4U32(0), append([]byte("VideoHandler"), 0))
 	md := mp4Box("mdia", mdhd, hdlr, media)
 	tkhd := mp4FullBox("tkhd", 0, 3,
-		mp4U32(0), mp4U32(uint32(duration)), mp4U32(1),
-		mp4U32(0), mp4U32(0),
-		mp4U32(0),
-		mp4U16(0), mp4U16(0), mp4U16(0),
+		mp4U32(0), mp4U32(0), // ctime/mtime
+		mp4U32(mp4VideoTrackID), mp4U32(0), // track_ID + reserved
+		mp4U32(uint32(duration)),
+		mp4U32(0), mp4U32(0), mp4U32(0), // reserved
+		mp4U16(0), mp4U16(0), mp4U16(0), // layer/alternate_group/volume
 		unitMatrix(), mp4U32(uint32(meta.Width)<<16), mp4U32(uint32(meta.Height)<<16))
-	return mp4Box("trak", tkhd, md)
+	return mp4Box("trak", tkhd, md), nil
 }
 
-func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) []byte {
-	duration := meta.Duration
+func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
+	duration := u64ScaleToMovieTimescale(meta.Duration, meta.Timescale)
 	esds := buildESDS(meta.ASC)
 	mp4a := mp4Box("mp4a",
 		make([]byte, 6), mp4U16(1),
@@ -226,52 +291,67 @@ func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) []byte {
 		esds,
 	)
 	stsd := mp4FullBox("stsd", 0, 0, mp4U32(1), mp4a)
-	stts := mp4FullBox("stts", 0, 0, mp4U32(1), mp4U32(uint32(len(meta.Samples))), mp4U32(1024))
-	stbl := mp4Box("stbl", stsd, stts, buildSTSC(len(meta.Samples)), buildSTSZ(meta.Samples), buildSTCO(meta.Samples, mdatStart))
+	// 音频 sample duration 固定 1024(AAC AAC-LC frame):RLE 成单 entry。
+	stts := buildRLE32([]uint32{1024})
+	stbl := mp4Box("stbl", stsd, stts, buildSTSC(meta.Samples), buildSTSZ(meta.Samples), buildSTCO(meta.Samples))
 	media := mp4Box("minf",
 		mp4FullBox("smhd", 0, 0, mp4U16(0), mp4U16(0)),
 		buildDINF(), stbl)
 	mdhd := mp4FullBox("mdhd", 0, 0,
-		mp4U32(0), mp4U32(0), mp4U32(meta.Timescale), mp4U32(uint32(duration)),
+		mp4U32(0), mp4U32(0), mp4U32(meta.Timescale), mp4U32(uint32(meta.Duration)),
 		mp4U32(0x55C40000), mp4U16(0), mp4U16(0))
 	hdlr := mp4FullBox("hdlr", 0, 0, mp4U32(0), []byte("soun"), mp4U32(0), mp4U32(0), mp4U32(0), append([]byte("SoundHandler"), 0))
 	md := mp4Box("mdia", mdhd, hdlr, media)
 	tkhd := mp4FullBox("tkhd", 0, 3,
-		mp4U32(0), mp4U32(uint32(duration)), mp4U32(1),
 		mp4U32(0), mp4U32(0),
-		mp4U32(0),
+		mp4U32(mp4AudioTrackID), mp4U32(0),
+		mp4U32(uint32(duration)),
+		mp4U32(0), mp4U32(0), mp4U32(0),
 		mp4U16(0), mp4U16(0), mp4U16(0x0100),
 		unitMatrix(), mp4U32(0), mp4U32(0))
-	return mp4Box("trak", tkhd, md)
+	return mp4Box("trak", tkhd, md), nil
 }
 
-// buildVideoTimingBoxes 产出 stts(DTS delta)、可选 ctts(PTS-DTS)与 stss(sync)。
+// buildVideoTimingBoxes 产出 stts(DTS delta RLE)、可选 ctts(PTS-DTS signed RLE)
+// 与可选 stss(sync)。
 // 时间戳以首样本为零基准(track 内时间从 0 开始)。
+// ISO BMFF 每个 stts/ctts entry 必须为 {sample_count, sample_delta/offset};
+// 末样本 delta 由倒数第二样本 delta 推导(计划 #19/#20)。
 func buildVideoTimingBoxes(samples []mp4SampleMeta) (stts, ctts, stss []byte) {
 	baseDTS := samples[0].DTS
-	deltas := make([][]byte, 0, len(samples))
-	deltas = append(deltas, mp4U32(uint32(baseDTS-baseDTS)))
+	// DTS delta 序列:最后一个样本的 delta 沿用倒数第二样本的 delta;
+	// 没有更可靠的信息时不隐式丢失。
+	deltas := make([]uint32, 0, len(samples))
 	prevDTS := baseDTS
+	lastDelta := uint32(0)
 	for i := 1; i < len(samples); i++ {
-		deltas = append(deltas, mp4U32(uint32(samples[i].DTS-prevDTS)))
+		delta := uint32(samples[i].DTS - prevDTS)
+		deltas = append(deltas, delta)
+		lastDelta = delta
 		prevDTS = samples[i].DTS
 	}
-	stts = mp4FullBox("stts", 0, 0, mp4U32(uint32(len(deltas))), flatten(deltas))
-
-	hasCTTS := false
-	offs := make([][]byte, 0, len(samples))
-	for _, s := range samples {
-		offset := int64(s.PTS) - int64(s.DTS)
-		if offset < 0 {
-			offset = 0
-		}
-		if offset != 0 {
-			hasCTTS = true
-		}
-		offs = append(offs, mp4U32(uint32(offset)))
+	if len(samples) > 1 {
+		deltas = append(deltas, lastDelta)
+	} else {
+		deltas = append(deltas, 0)
 	}
-	if hasCTTS {
-		ctts = mp4FullBox("ctts", 0, 0, mp4U32(uint32(len(offs))), flatten(offs))
+	stts = buildRLE32(deltas)
+
+	// ctts:offset = PTS - DTS(RLE);存在负 offset 时使用 version 1 signed。
+	hasNonZero := false
+	hasNegative := false
+	offsets := make([]int64, len(samples))
+	for i, s := range samples {
+		offsets[i] = int64(s.PTS) - int64(s.DTS)
+		if offsets[i] != 0 {
+			hasNonZero = true
+		}
+		if offsets[i] < 0 {
+			hasNegative = true
+		}
+	}
+	if hasNonZero {
+		ctts = buildRLE32Signed(offsets, hasNegative)
 	}
 
 	syncs := make([][]byte, 0, 8)
@@ -280,13 +360,71 @@ func buildVideoTimingBoxes(samples []mp4SampleMeta) (stts, ctts, stss []byte) {
 			syncs = append(syncs, mp4U32(uint32(i+1)))
 		}
 	}
+	// 存在部分 keyframe 时列出真正同步样本;全部都是 sync 时省略 stss
+	// (省略语义 = 全部同步,与事实一致)。
 	if len(syncs) > 0 && len(syncs) != len(samples) {
 		stss = mp4FullBox("stss", 0, 0, mp4U32(uint32(len(syncs))), flatten(syncs))
 	}
 	return stts, ctts, stss
 }
 
-func buildSTSC(count int) []byte {
+// buildRLE32 把 uint32 序列 RLE 成 {sample_count, value} entry。
+func buildRLE32(values []uint32) []byte {
+	type entry struct {
+		count uint32
+		value uint32
+	}
+	entries := make([]entry, 0, 8)
+	for _, v := range values {
+		if len(entries) > 0 && entries[len(entries)-1].value == v {
+			entries[len(entries)-1].count++
+			continue
+		}
+		entries = append(entries, entry{count: 1, value: v})
+	}
+	payload := make([][]byte, 0, len(entries)*2)
+	for _, e := range entries {
+		payload = append(payload, mp4U32(e.count), mp4U32(e.value))
+	}
+	return mp4FullBox("stts", 0, 0, mp4U32(uint32(len(entries))), flatten(payload))
+}
+
+// buildRLE32Signed 把 int64 序列 RLE 成 {sample_count, offset} entry;
+// 存在负 offset 时使用 version 1 的 signed 32-bit 字段。
+func buildRLE32Signed(values []int64, signed bool) []byte {
+	type entry struct {
+		count uint32
+		value int64
+	}
+	entries := make([]entry, 0, 8)
+	for _, v := range values {
+		if len(entries) > 0 && entries[len(entries)-1].value == v {
+			entries[len(entries)-1].count++
+			continue
+		}
+		entries = append(entries, entry{count: 1, value: v})
+	}
+	payload := make([][]byte, 0, len(entries)*2)
+	for _, e := range entries {
+		payload = append(payload, mp4U32(e.count))
+		if signed {
+			// version 1:signed 32-bit offset(计划 #20)。
+			payload = append(payload, mp4U32(uint32(int32(e.value))))
+		} else {
+			payload = append(payload, mp4U32(uint32(e.value)))
+		}
+	}
+	version := byte(0)
+	if signed {
+		version = 1
+	}
+	return mp4FullBox("ctts", version, 0, mp4U32(uint32(len(entries))), flatten(payload))
+}
+
+func buildSTSC(samples []mp4SampleMeta) []byte {
+	// mdat 布局是 chunk 级 A/V interleave(计划 #25):每个 chunk 含同一 track
+	// 的连续样本,stsc 描述 chunk 映射。interleave 计划在 buildMDATChunks
+	// 中产生,这里按 per-track 单 chunk 表示(交错的分配在 chunk 表里)。
 	return mp4FullBox("stsc", 0, 0, mp4U32(1), mp4U32(1), mp4U32(1), mp4U32(1))
 }
 
@@ -299,14 +437,12 @@ func buildSTSZ(samples []mp4SampleMeta) []byte {
 }
 
 // buildSTCO 的 chunk 偏移指向各 track 在 mdat 数据区内的位置:
-// mdat 按 track 分区、样本按 Samples 顺序连续存放,偏移 = 之前样本 Size 之和。
-// mp4SampleMeta.Offset 是 spool 内的物理位置,只用于数据拷贝,不用于 stco。
-func buildSTCO(samples []mp4SampleMeta, mdatStart int64) []byte {
+// mdat 按 A/V chunk 交错存放(计划 #25),每个 chunk 是同一 track 的一组连续
+// 样本,stco 逐 chunk 指向。samples 的 Offset 是 chunk 内首样本的 spool 物理位置。
+func buildSTCO(samples []mp4SampleMeta) []byte {
 	entries := make([][]byte, 0, len(samples))
-	var off int64
 	for _, s := range samples {
-		entries = append(entries, mp4U32(uint32(mdatStart+off)))
-		off += int64(s.Size)
+		entries = append(entries, mp4U32(uint32(s.Offset)))
 	}
 	return mp4FullBox("stco", 0, 0, mp4U32(uint32(len(samples))), flatten(entries))
 }
@@ -316,25 +452,50 @@ func buildDINF() []byte {
 	return mp4Box("dinf", dref)
 }
 
-// unitMatrix 是 transform matrix 的单位阵(36 字节)。
+// unitMatrix 是 transform matrix 的单位阵(36 字节);
+// 中间对角项 d = 0x00010000 必须存在(计划 #21)。
 func unitMatrix() []byte {
 	m := make([]byte, 36)
-	m[0], m[1], m[2], m[3] = 0, 0x01, 0x00, 0x00        // 0x00010000
-	m[32], m[33], m[34], m[35] = 0x40, 0x00, 0x00, 0x00 // 0x40000000
+	m[0], m[1], m[2], m[3] = 0, 0x01, 0x00, 0x00        // a = 0x00010000
+	m[12], m[13], m[14], m[15] = 0, 0x01, 0x00, 0x00    // d = 0x00010000(中间对角项)
+	m[32], m[33], m[34], m[35] = 0x40, 0x00, 0x00, 0x00 // f = 0x40000000
 	return m
 }
 
-// buildAVCC 把 SPS/PPS 参数集打包成 avcC(configuration record)。
-func buildAVCC(paramSets [][]byte) []byte {
-	payload := []byte{0x01, paramSets[0][1], paramSets[0][2], paramSets[0][3], 0xFF, 0xE1}
-	for i, ps := range paramSets {
-		if i == 1 {
-			payload = append(payload, 0x01)
+// buildAVCC 把参数集打包成 avcC(configuration record)。
+// 不假定 paramSets[0]=唯一 SPS、paramSets[1]=唯一 PPS:分别收集
+// SPS[] 与 PPS[],正确填写 numOfSequenceParameterSets/
+// numOfPictureParameterSets(计划 #24)。
+func buildAVCC(paramSets [][]byte) ([]byte, error) {
+	var spsList, ppsList [][]byte
+	for _, ps := range paramSets {
+		if len(ps) == 0 {
+			continue
 		}
-		payload = append(payload, byte(len(ps)>>8), byte(len(ps)))
-		payload = append(payload, ps...)
+		switch ps[0] & 0x1F {
+		case 7:
+			spsList = append(spsList, ps)
+		case 8:
+			ppsList = append(ppsList, ps)
+		}
 	}
-	return mp4Box("avcC", payload)
+	if len(spsList) == 0 || len(ppsList) == 0 {
+		return nil, fmt.Errorf("avcC requires at least one SPS and one PPS")
+	}
+	// configurationVersion + AVCProfileIndication + compat + level +
+	// 0xFF(6bit reserved + NALULengthSize-1 = 4)。
+	payload := []byte{0x01, spsList[0][1], spsList[0][2], spsList[0][3], 0xFF}
+	payload = append(payload, 0xE0|byte(len(spsList)&0x1F))
+	for _, sps := range spsList {
+		payload = append(payload, byte(len(sps)>>8), byte(len(sps)))
+		payload = append(payload, sps...)
+	}
+	payload = append(payload, byte(len(ppsList)))
+	for _, pps := range ppsList {
+		payload = append(payload, byte(len(pps)>>8), byte(len(pps)))
+		payload = append(payload, pps...)
+	}
+	return mp4Box("avcC", payload), nil
 }
 
 // buildESDS 用 ASC 构造 esds(ES_Descriptor → DecoderConfigDescriptor → DecoderSpecificInfo)。
@@ -550,7 +711,7 @@ func chromaCropUnits(chromaFormatIDC uint64, frameMBSOnly uint64) (uint64, uint6
 }
 
 // buildMP4 在内存中构造完整 MP4(测试与小文件便捷路径)。
-// 生产大文件路径走 writeMP4Stream(spool),两者共享 buildMoov。
+// 生产大文件路径走 writeMP4Stream(spool),两者共享 buildMoov 与交错逻辑。
 func buildMP4(video *h264Track, audio *aacTrack) ([]byte, error) {
 	videoMeta, err := planVideoTrack(video)
 	if err != nil {
@@ -565,25 +726,42 @@ func buildMP4(video *h264Track, audio *aacTrack) ([]byte, error) {
 	}
 	ftyp := buildFTYP()
 	// 先用占位 mdatStart 求 moov 尺寸,再用真实偏移重建。
-	// mdatStart 指向 mdat 数据区(box 起始 + 8 字节头),即第一个样本所在文件偏移。
 	moov, err := buildMoov(videoMeta, audioMeta, int64(len(ftyp))+1<<20)
 	if err != nil {
 		return nil, err
 	}
 	mdatStart := int64(len(ftyp) + len(moov) + 8)
+	// 交错 chunk 表与内存 mdat:与 spool 路径共享同一交错逻辑(计划 #25)。
+	videoChunks, audioChunks := interleaveSamples(videoMeta, audioMeta, mdatStart)
 	moov, err = buildMoov(videoMeta, audioMeta, mdatStart)
 	if err != nil {
 		return nil, err
 	}
+	// 样本物理数据在内存中:按 chunk 的样本顺序从 h264Track/aacTrack
+	// 取样本数据与 Metadata 序列一致(planVideoTrack/planAudioTrack 顺序)。
+	var mdatPayload []byte
 	out := append([]byte{}, ftyp...)
 	out = append(out, moov...)
-	var mdatPayload []byte
-	for _, s := range video.Samples {
-		mdatPayload = append(mdatPayload, s.Data...)
-	}
-	if audio != nil {
-		for _, s := range audio.Samples {
-			mdatPayload = append(mdatPayload, s.Data...)
+	// mdat 数据区按 chunk Offset 顺序写出：视频 chunk 与音频 chunk
+	// 各自按 Metadata 序列从内存样本取数据。
+	allChunks := append(videoChunks, audioChunks...)
+	sort.Slice(allChunks, func(i, j int) bool { return allChunks[i].offset < allChunks[j].offset })
+	videoIdx, audioIdx := 0, 0
+	mdatPayload = make([]byte, 0)
+	for _, chunk := range allChunks {
+		if chunk.offset != mdatStart+int64(len(mdatPayload)) {
+			return nil, fmt.Errorf("chunk offset %d does not match mdat payload position %d", chunk.offset, mdatStart+int64(len(mdatPayload)))
+		}
+		if chunk.video {
+			for range chunk.samples {
+				mdatPayload = append(mdatPayload, video.Samples[videoIdx].Data...)
+				videoIdx++
+			}
+		} else {
+			for range chunk.samples {
+				mdatPayload = append(mdatPayload, audio.Samples[audioIdx].Data...)
+				audioIdx++
+			}
 		}
 	}
 	out = append(out, mp4Box("mdat", mdatPayload)...)
