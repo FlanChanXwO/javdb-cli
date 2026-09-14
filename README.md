@@ -271,8 +271,10 @@ Magnet commands work anonymously and use the saved token when available.
 TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
 local state and should be used deliberately. `javdb assets download` writes
-selected media assets to explicit new local paths; it is a
-alias. It never downloads a full movie or magnet target and never replaces an
+selected media assets to explicit new local paths and outputs only the final
+path per line. `javdb assets list --json/--ndjson` exposes optional
+width/height/duration metadata via a best-effort probe (plain pipe mode never
+probes). They never download a full movie or magnet target and never replace an
 existing file.
 
 ## Documentation

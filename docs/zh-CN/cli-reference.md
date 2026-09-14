@@ -105,13 +105,21 @@ javdb assets download [-d DIR] [-o PATH]
 会给出有效范围。缺省 selector 表示列出该类型的全部资产。
 
 TTY 下输出带人类描述的编号表格；管道输出为每行一条 `TYPE<TAB>URL` 记录；`--json` 输出单个
-JSON 数组、`--ndjson` 每行一个 JSON 对象——机器输出严格只含 `type` 与 `url`。编号只是当前
+JSON 数组、`--ndjson` 每行一个 JSON 对象。机器输出含 `type` 与 `url`，以及可选的
+`width`/`height`/`duration` 元信息：TTY、`--json` 与 `--ndjson` 会对选中的资产执行
+best-effort metadata probe；普通 pipe 模式完全不 probe，常规下载链路不增加额外请求。
+`duration` 是预览时长（秒，来自 HLS `#EXTINF`）；`width`/`height` 来自真实媒体
+（图片前缀头 / H.264 SPS）——`720p.m3u8` 等 rendition 文件名绝不用于推断分辨率。
+无法获取的元信息直接省略，不使用 `0` 冒充。probe 行为可在 `[assets.probe]` 配置
+（`enabled`、`concurrency`、`image_max_bytes`、`playlist_max_bytes`、
+`video_segment_max_bytes`、`timeout`）；整表可选，缺失字段保持默认值。编号只是当前
 列表的位置，不是长期资产 ID。
 
-`assets download` 从 stdin 消费 `assets list` 输出的 `TYPE<TAB>URL` 记录。`-d DIR`（默认
+`assets download` 从 stdin 消费 `assets list` 输出的 `TYPE<TAB>URL` 记录，逐条流式处理，
+不缓存全部输入。`-d DIR`（默认
 `.`）承接自动命名文件（`image-001.jpg`——扩展名来自图片魔数检测——与 `video-001.mp4`）；
 `-o PATH` 将恰好一个资产写入精确路径，多于一个输入会失败。绝不覆盖已有文件；失败的下载
-不留输出。`.mp4` 输出为 Fast Start MP4（ftyp → moov → mdat），由 H.264/AAC 预览流经纯 Go
+不留输出。stdout 每行只输出最终写入路径，无装饰文本。`.mp4` 输出为 Fast Start MP4（ftyp → moov → mdat），由 H.264/AAC 预览流经纯 Go
 remux 生成——无 ffmpeg、无转码；`.ts` 保留解密后的 MPEG-TS。不支持的编码（HEVC、AC-3 等）
 明确失败。仅接受已结束的单媒体 HLS playlist；master playlist、byte-range 媒体、fragmented MP4
 媒体，以及未结束/直播 playlist 都会明确失败。两个命令都不会下载完整影片或磁力目标。
@@ -153,6 +161,26 @@ header 值只支持静态文本加 `${ENV:NAME}` 引用；缺失变量只按名�
 `~/.javdb-cli/reverse-search-cache`（`0600`，键为 source + 原图 SHA-256，TTL 30 天）；
 缓存不保存原图、鉴权 header 或 JavDB 详情。`javdb cache reverse-search --clear [--source NAME]`
 只清理反搜缓存。
+
+assets metadata probe 位于 `config.toml` 的 `[assets.probe]` 表：
+
+```toml
+[assets.probe]
+enabled = true
+concurrency = 4
+image_max_bytes = 65536
+playlist_max_bytes = 262144
+video_segment_max_bytes = 262144
+timeout = "10s"
+```
+
+以上是缺省值；整表可选，用户现有 `config.toml` 无需增加任何字段。只配置部分字段时，
+其余字段继续使用默认值：`enabled=false` 完全关闭 probe；`concurrency` 是 probe 最大并发
+（不影响下载/remux）；`*_max_bytes` 是单个 probe 请求的读取预算；`timeout` 是单个
+probe 请求超时（正数 duration）。`config get/set/unset` 支持键
+`assets.probe.enabled`、`assets.probe.concurrency`、`assets.probe.image_max_bytes`、
+`assets.probe.playlist_max_bytes`、`assets.probe.video_segment_max_bytes` 与
+`assets.probe.timeout`。
 
 隐私：反搜会把你的图片上传到已配置的 provider（默认内置 AVScan）。图片 URL 允许指向私网；
 SDK 嵌入方必须自行施加网络边界。

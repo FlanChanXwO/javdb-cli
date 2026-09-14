@@ -118,10 +118,12 @@ actors := result.Named("actors")
 `MovieComments(ctx, movieID, page, limit)` 只请求一页，绝不会遍历后续页。非正值会使用第 `1` 页、
 每页 `20` 条，与 CLI 的单页默认语义一致。
 
-`MovieAssets(ctx, movieID)` 以固定的顺序返回影片媒体资产的最小 `MovieAsset{Type, URL}` 序列：
-thumbnail、cover（详情提供时）、全部预览图（优先 `large_url`，回退 `thumb_url`）、预览视频。
-缺失项直接跳过，因此序列长度随影片而变。`Type` 只有 `"image"` 与 `"video"`；该模型刻意不携带
-id/index/role 等元数据。
+`MovieAssets(ctx, movieID)` 以固定的顺序返回影片媒体资产的最小
+`MovieAsset{Type, URL, Width, Height, Duration}` 序列：thumbnail、cover（详情提供时）、
+全部预览图（优先 `large_url`，回退 `thumb_url`）、预览视频。缺失项直接跳过，因此序列长度
+随影片而变。`Type` 只有 `"image"` 与 `"video"`。`Width`/`Height` 是可选的像素宽高，
+`Duration` 是可选的预览时长（秒，绝不是 Go `time.Duration`）；API 无法提供的字段保持零值，
+JSON 输出直接省略，不使用 `0` 冒充。该模型刻意不携带 id/index/role 等元数据。
 
 `DownloadMovieAsset(ctx, asset, target)` 把单个资产下载到精确路径并返回写入字节数。图片会先校验
 （CDN 混淆时 XOR 解包，再魔数校验）并原子发布，不做任何格式转换。视频由 target 后缀决定输出格式：

@@ -93,6 +93,10 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
   segment 获取、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与原子发布，
   通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
   javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。
+- `appapi/media` 的 metadata probe（`probe.go`）：assets list 对选中资产的 best-effort
+  元信息探测（图片前缀头 / HLS `#EXTINF` / H.264 SPS），按 `[assets.probe]` 配置预算
+  （并发、读取上限、超时），同次调用内按 URL 去重，无持久缓存。probe 只属于
+  TTY/JSON/NDJSON 输出；普通 pipe 模式完全跳过。
 
 详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责写入、解密并合并；
 该能力不包含完整影片或磁力目标下载。

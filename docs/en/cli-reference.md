@@ -132,14 +132,26 @@ range. Without a selector every asset of the requested type is listed.
 
 On a TTY the output is a numbered table with human-only descriptions; piped
 output is exactly one `TYPE<TAB>URL` record per line; `--json` prints one JSON
-array and `--ndjson` prints one JSON object per line — machine output contains
-only `type` and `url`. The numbers are positional, not persistent asset IDs.
+array and `--ndjson` prints one JSON object per line. Machine output contains
+`type` and `url` plus optional `width`/`height`/`duration` metadata:
+TTY, `--json` and `--ndjson` run a best-effort metadata probe on the selected
+assets; plain pipe mode never probes, so the common download chain adds no
+extra requests. `duration` is the preview length in seconds (from HLS
+`#EXTINF`), `width`/`height` come from the real media (image prefix headers /
+H.264 SPS) — the `720p.m3u8` rendition name is never used to infer resolution.
+Metadata that cannot be obtained is omitted, never faked with `0`. Probe
+behavior is configurable under `[assets.probe]` (`enabled`, `concurrency`,
+`image_max_bytes`, `playlist_max_bytes`, `video_segment_max_bytes`, `timeout`);
+the whole table is optional and missing fields keep the defaults. The numbers
+are positional, not persistent asset IDs.
 
-`assets download` consumes `TYPE<TAB>URL` records from `assets list` on stdin.
-`-d DIR` (default `.`) places auto-named files (`image-001.jpg` — the extension
+`assets download` consumes `TYPE<TAB>URL` records from `assets list` on stdin
+and streams them one by one without buffering the whole input. `-d DIR`
+(default `.`) places auto-named files (`image-001.jpg` — the extension
 comes from the detected image magic — and `video-001.mp4`); `-o PATH` writes
 exactly one asset to an exact path and fails with more than one input. Existing
-files are never overwritten; failed downloads leave no output behind. `.mp4`
+files are never overwritten; failed downloads leave no output behind. Output is
+the final written path per line — no decoration. `.mp4`
 output is a fast-start MP4 (ftyp → moov → mdat) remuxed in pure Go from the
 H.264/AAC preview stream — no ffmpeg, no transcoding; `.ts` keeps the decrypted
 MPEG-TS. Unsupported codecs (HEVC, AC-3, ...) fail explicitly. Completed
@@ -190,6 +202,28 @@ Responses are cached under `~/.javdb-cli/reverse-search-cache` (mode `0600`,
 keyed by source + image SHA-256, 30-day TTL); the cache never stores the
 original image, auth headers, or JavDB details. `javdb cache reverse-search
 --clear [--source NAME]` removes only reverse-search cache entries.
+
+Assets metadata probe lives in `config.toml` under `[assets.probe]`:
+
+```toml
+[assets.probe]
+enabled = true
+concurrency = 4
+image_max_bytes = 65536
+playlist_max_bytes = 262144
+video_segment_max_bytes = 262144
+timeout = "10s"
+```
+
+These are the defaults; the whole table is optional and existing `config.toml`
+files need no changes. Only configured fields override the defaults:
+`enabled=false` turns the probe off entirely, `concurrency` caps the probe's
+parallel requests (it does not affect downloads), the `*_max_bytes` values are
+per-request read budgets, and `timeout` is a single probe request timeout
+(positive duration). `config get/set/unset` accept the keys
+`assets.probe.enabled`, `assets.probe.concurrency`, `assets.probe.image_max_bytes`,
+`assets.probe.playlist_max_bytes`, `assets.probe.video_segment_max_bytes`, and
+`assets.probe.timeout`.
 
 Privacy: reverse search uploads your image to the configured provider (built-in
 AVScan by default). Image URLs may point to private networks; embedded SDK users
