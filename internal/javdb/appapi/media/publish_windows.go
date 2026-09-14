@@ -4,7 +4,6 @@ package media
 
 import (
 	"fmt"
-	"os"
 
 	"golang.org/x/sys/windows"
 )
