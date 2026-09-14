@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -35,7 +36,9 @@ func newMP4Spooler(path string) (*mp4Spooler, error) {
 }
 
 // addSegment 解析单个 segment 并把样本追加进 spool。
-// 每段都做 codec 检查;参数集只取首次出现(HLS 在关键帧段重复携带)。
+// 每段都做 codec 检查;首个 segment 建立 codec configuration(H.264 SPS/PPS、
+// AAC ASC、宽高、采样率、通道),后续 segment 再次出现配置时必须与首段一致;
+// 检测到 change 直接拒绝 remux(计划 #17)。
 func (s *mp4Spooler) addSegment(data []byte) error {
 	if err := validateSegmentCodecs(data); err != nil {
 		return err
@@ -62,6 +65,12 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					Height:    height,
 					ParamSets: track.ParamSets,
 				}
+			} else if len(track.ParamSets) > 0 {
+				// 跨 segment codec configuration 校验(计划 #17):
+				// 后续 segment 的 SPS/PPS 必须与首段一致。
+				if err := s.checkVideoConfig(track); err != nil {
+					return err
+				}
 			}
 			for _, sample := range track.Samples {
 				if _, err := s.file.Write(sample.Data); err != nil {
@@ -86,6 +95,12 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					Channels:   track.Channels,
 					SampleRate: track.SampleRate,
 				}
+			} else {
+				// 跨 segment codec configuration 校验(计划 #17):
+				// 后续 segment 的 AAC ASC/采样率/通道必须与首段一致。
+				if err := s.checkAudioConfig(track); err != nil {
+					return err
+				}
 			}
 			for _, sample := range track.Samples {
 				if _, err := s.file.Write(sample.Data); err != nil {
@@ -98,6 +113,44 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 				s.noteTimeline(sample.PTS, sample.PTS)
 			}
 		}
+	}
+	return nil
+}
+
+// checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致(计划 #17)。
+func (s *mp4Spooler) checkVideoConfig(track *h264Track) error {
+	for _, ps := range track.ParamSets {
+		if ps[0]&0x1F != 7 {
+			continue
+		}
+		firstSPS := ""
+		for _, first := range s.video.ParamSets {
+			if first[0]&0x1F == 7 {
+				firstSPS = string(first)
+				break
+			}
+		}
+		if firstSPS != "" && string(ps) != firstSPS {
+			w, h, err := parseSPSDimensions(ps)
+			if err != nil {
+				return fmt.Errorf("parse SPS in later segment: %w", err)
+			}
+			return fmt.Errorf("resolution change detected: SPS differs between segments (first %dx%d, later %dx%d)", s.video.Width, s.video.Height, w, h)
+		}
+	}
+	return nil
+}
+
+// checkAudioConfig 校验后续 segment 的 AAC ASC/采样率/通道与首段一致(计划 #17)。
+func (s *mp4Spooler) checkAudioConfig(track *aacTrack) error {
+	if !bytes.Equal(track.Config, s.audio.ASC) {
+		return fmt.Errorf("AAC ASC change detected between segments")
+	}
+	if track.SampleRate != s.audio.SampleRate {
+		return fmt.Errorf("audio sample rate change detected: first %d, later %d", s.audio.SampleRate, track.SampleRate)
+	}
+	if track.Channels != s.audio.Channels {
+		return fmt.Errorf("audio channel config change detected: first %d, later %d", s.audio.Channels, track.Channels)
 	}
 	return nil
 }

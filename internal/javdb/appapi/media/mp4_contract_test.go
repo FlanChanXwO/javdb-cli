@@ -458,3 +458,44 @@ func avccFrame(nalType, payload byte) []byte {
 	copy(out[4:], nal)
 	return out
 }
+
+// ---- #17:校验跨 segment codec configuration ----
+
+// 后续 segment 出现不同 SPS 必须拒绝 remux。
+func TestSpoolerRejectsCrossSegmentSPSChange(t *testing.T) {
+	spool, err := newMP4Spooler(t.TempDir() + "/spool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(spool.file.Name())
+	defer spool.file.Close()
+	if err := spool.addSegment(validTSSegmentAt(0)); err != nil {
+		t.Fatalf("first segment: %v", err)
+	}
+	// 第二个 segment 携带不同 SPS(不同分辨率)。
+	spool2, _ := newMP4Spooler(t.TempDir() + "/spool2")
+	defer os.RemoveAll(spool2.file.Name())
+	defer spool2.file.Close()
+	_ = spool2
+	// 构造不同 SPS 的 segment:640x480 → 320x240。
+	altSegment := validTSSegmentWithSPS(t, []byte{0x67, 0x42, 0x00, 0x1E, 0xF8, 0x14, 0x07, 0xB2})
+	err = spool.addSegment(altSegment)
+	if err == nil || !strings.Contains(err.Error(), "SPS") {
+		t.Fatalf("error = %v, want SPS change rejection", err)
+	}
+}
+
+// validTSSegmentWithSPS 构造携带指定 SPS 的合法 segment。
+func validTSSegmentWithSPS(t *testing.T, sps []byte) []byte {
+	t.Helper()
+	pps := h264Frame(8, []byte{0xCC, 0xDD})
+	frame0 := append(append(append([]byte{}, append([]byte{0x00, 0x00, 0x00, 0x01}, sps...)...), pps...), h264Frame(5, []byte{0x01, 0x02})...)
+	frame1 := h264Frame(1, []byte{0x03, 0x04})
+	var data []byte
+	data = append(data, tsPacket(patPID, true, 0, patSection())...)
+	data = append(data, tsPacket(pmtPID, true, 0, pmtSection())...)
+	data = append(data, tsPacket(videoPID, true, 1, pesBytes(0xE0, 90000, 90000, true, frame0))...)
+	data = append(data, tsPacket(videoPID, true, 2, pesBytes(0xE0, 93600, 93600, true, frame1))...)
+	data = append(data, tsPacket(audioPID, true, 3, pesBytes(0xC0, 90000, 0, false, adtsFrame()))...)
+	return data
+}
