@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"sync"
 	"testing"
 )
 
@@ -183,18 +183,25 @@ func TestProbeAssetsConcurrentDeduplicatesURLs(t *testing.T) {
 
 // 并发上界:concurrency=2 时同时最多 2 个在飞请求(计划 #6)。
 func TestProbeAssetsConcurrentRespectsLimit(t *testing.T) {
-	var mu strings.Builder
+	var mu sync.Mutex
+	var exceeded int
 	inFlight := 0
 	maxInFlight := 0
 	fetch := func(_ context.Context, uri string) ([]byte, error) {
+		mu.Lock()
 		inFlight++
 		if inFlight > maxInFlight {
 			maxInFlight = inFlight
 		}
 		if inFlight > 2 {
-			mu.WriteString("x") // 标记超限
+			exceeded++
 		}
-		defer func() { inFlight-- }()
+		mu.Unlock()
+		defer func() {
+			mu.Lock()
+			inFlight--
+			mu.Unlock()
+		}()
 		return testJPEG640x404(), nil
 	}
 	urls := make([]string, 10)
@@ -206,9 +213,11 @@ func TestProbeAssetsConcurrentRespectsLimit(t *testing.T) {
 	limits := probeTestLimits()
 	limits.Concurrency = 2
 	ProbeAssetsConcurrent(context.Background(), fetch, types, urls, limits)
-	if mu.Len() > 0 {
-		t.Fatalf("concurrency limit exceeded: %s", mu.String())
+	if exceeded > 0 {
+		t.Fatalf("concurrency limit exceeded %d times", exceeded)
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if maxInFlight > 2 {
 		t.Fatalf("max in flight = %d, want <= 2", maxInFlight)
 	}

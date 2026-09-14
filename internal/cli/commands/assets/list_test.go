@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
@@ -36,7 +37,11 @@ func newListServerWithProbedURLs(t *testing.T, probed map[string]bool, probeCall
 		count = probeCalls[0]
 	}
 	serverURL := ""
+	var mu sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// probe 并发请求与主 goroutine 的 map/count 访问需要互斥。
+		mu.Lock()
+		defer mu.Unlock()
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
 		case request.URL.Path == "/api/v2/search":
