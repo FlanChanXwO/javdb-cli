@@ -38,6 +38,15 @@ var aacFrequencies = [13]int{
 	16000, 12000, 11025, 8000, 7350,
 }
 
+// aacFrequency 把 sampling_frequency_index 转成 Hz;
+// index 13..15 是保留值,不查表,避免越界 panic(计划 #14)。
+func aacFrequency(freqIdx byte) (int, error) {
+	if int(freqIdx) >= len(aacFrequencies) {
+		return 0, fmt.Errorf("reserved ADTS sampling_frequency_index %d", freqIdx)
+	}
+	return aacFrequencies[freqIdx], nil
+}
+
 // parseH264Track 把 H.264 PES 帧序列转成 AVCC 样本。
 // HLS 惯例是每个 PES 承载一个 access unit,SPS/PPS 在帧前内联,剥离进参数集。
 func parseH264Track(stream demuxedStream) (*h264Track, error) {
@@ -123,9 +132,16 @@ func parseAACTrack(stream demuxedStream) (*aacTrack, error) {
 				return nil, err
 			}
 			if track.Config == nil {
+				sampleRate, err := aacFrequency(freqIdx)
+				if err != nil {
+					return nil, err
+				}
+				if int(channels) > 2 {
+					return nil, fmt.Errorf("unsupported ADTS channel configuration %d: only mono/stereo can be remuxed", channels)
+				}
 				// AudioSpecificConfig:AOT=2(AAC-LC)+ 频率索引 + 通道配置。
 				track.Config = []byte{byte(2)<<3 | freqIdx>>1, freqIdx<<7 | channels<<3}
-				track.SampleRate = aacFrequencies[freqIdx]
+				track.SampleRate = sampleRate
 				track.Channels = int(channels)
 			}
 			track.Samples = append(track.Samples, aacSample{Data: append([]byte(nil), payload...), PTS: pts})
@@ -148,7 +164,12 @@ func parseADTS(data []byte) (payload []byte, freqIdx byte, channels byte, consum
 		return nil, 0, 0, 0, fmt.Errorf("ADTS CRC frames are not supported")
 	}
 	freqIdx = (data[2] >> 2) & 0x0F
-	channels = (data[2]&0x01)<<1 | data[3]>>6
+	if int(freqIdx) >= len(aacFrequencies) {
+		return nil, 0, 0, 0, fmt.Errorf("reserved ADTS sampling_frequency_index %d", freqIdx)
+	}
+	// channel_configuration:byte2 最低 1 bit 是高位,byte3 最高 2 bit 是低位。
+	// 旧实现把高位左移 1 位,channel >= 4 会被错误解析(计划 #14)。
+	channels = (data[2]&0x01)<<2 | data[3]>>6
 	length := int(data[3]&0x03)<<11 | int(data[4])<<3 | int(data[5])>>5
 	if length < 7 || length > len(data) {
 		return nil, 0, 0, 0, fmt.Errorf("ADTS frame length %d out of bounds", length)

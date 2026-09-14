@@ -127,13 +127,24 @@ func parsePMTTypes(payload []byte) (map[uint16]byte, error) {
 		return nil, fmt.Errorf("section length %d out of bounds", length)
 	}
 	types := map[uint16]byte{}
-	// body 前 9 字节:program_number(2)+version(1)+序号(2)+PCR_PID(2)+info_length(2);
-	// info_length 指向的 program 描述符区必须跳过(真实流常非零)。
+	// body 前 9 字节:program_number(2)+version(1)+序号(2)+PCR_PID(2)+info_length(2)。
+	// 访问 section[10]/[11] 前必须证明 section 足够长(计划 #15)。
+	if len(section) < 12 {
+		return nil, fmt.Errorf("PMT header truncated")
+	}
 	infoLen := (int(section[10]&0x0F) << 8) | int(section[11])
-	for pos := 3 + 9 + infoLen; pos+5 <= end; {
+	start := 3 + 9 + infoLen
+	if start > end {
+		return nil, fmt.Errorf("PMT program_info_length %d out of bounds", infoLen)
+	}
+	for pos := start; pos+5 <= end; {
 		entryPID := (uint16(section[pos+1]&0x1F) << 8) | uint16(section[pos+2])
 		types[entryPID] = section[pos]
 		esLen := (int(section[pos+3]&0x0F) << 8) | int(section[pos+4])
+		// ES_info_length 跳出 section 末尾是 malformed TS,显式拒绝(计划 #15)。
+		if pos+5+esLen > end {
+			return nil, fmt.Errorf("PMT ES_info_length %d out of bounds", esLen)
+		}
 		pos += 5 + esLen
 	}
 	return types, nil
@@ -153,6 +164,11 @@ func parsePESFrame(pes []byte) (demuxedFrame, error) {
 	if len(pes) < 9+headerLen {
 		return demuxedFrame{}, fmt.Errorf("PES header truncated")
 	}
+	// PES_packet_length 声称的包体长度大于实际重组长度时,说明流被截断:
+	// 继续解析会把 0xFF stuffing 或下一包内容当成 ES,必须显式拒绝(计划 #13)。
+	if pesLen := int(pes[4])<<8 | int(pes[5]); pesLen > 0 && 6+pesLen > len(pes) {
+		return demuxedFrame{}, fmt.Errorf("PES packet truncated: header claims %d bytes, got %d", pesLen, len(pes)-6)
+	}
 	frame := demuxedFrame{ES: pes[9+headerLen:]}
 	pos := 9
 	if flags&0x80 != 0 {
@@ -160,18 +176,19 @@ func parsePESFrame(pes []byte) (demuxedFrame, error) {
 			return demuxedFrame{}, fmt.Errorf("PES PTS truncated")
 		}
 		frame.PTS = parsePESMarker(pes[pos:])
-		frame.HasDTS = true
 		pos += 5
 	}
+	// 只有显式包含 DTS(flags=11xx)时才设置 HasDTS;PTS-only 时
+	// DTS 复用 PTS 便于下游计算,但 HasDTS 保持 false(计划 #13)。
 	if flags&0xC0 == 0xC0 {
 		if pos+5 > len(pes) {
 			return demuxedFrame{}, fmt.Errorf("PES DTS truncated")
 		}
 		frame.DTS = parsePESMarker(pes[pos:])
+		frame.HasDTS = true
 	}
 	if !frame.HasDTS {
 		frame.DTS = frame.PTS
-		frame.HasDTS = frame.PTS != 0
 	}
 	return frame, nil
 }

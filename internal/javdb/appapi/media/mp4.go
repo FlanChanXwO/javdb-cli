@@ -397,18 +397,27 @@ func parseSPSDimensions(sps []byte) (uint16, uint16, error) {
 		if err := r.skipBits(1); err != nil { // qpprime_y_zero_transform_bypass
 			return 0, 0, err
 		}
-		seqScaling, err := r.readUE()
+		// seq_scaling_matrix_present_flag 是 1 bit,不是 Exp-Golomb(计划 #16);
+		// 每一个 seq_scaling_list_present_flag 同样是 1 bit,只有 flag=1
+		// 时才进入对应 scaling list parser。
+		scalingPresent, err := r.readBit()
 		if err != nil {
 			return 0, 0, err
 		}
-		if seqScaling != 0 {
+		if scalingPresent == 1 {
 			count := 8
 			if chromaFormatIDC == 3 {
 				count = 12
 			}
 			for i := 0; i < count; i++ {
-				if err := skipScalingList(r, i < 6); err != nil {
+				listPresent, err := r.readBit()
+				if err != nil {
 					return 0, 0, err
+				}
+				if listPresent == 1 {
+					if err := skipScalingList(r, i < 6); err != nil {
+						return 0, 0, err
+					}
 				}
 			}
 		}

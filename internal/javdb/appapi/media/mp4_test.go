@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -304,5 +306,81 @@ func hlsFetchFrom(base string) FetchContext {
 			}
 		}
 		return buf, nil
+	}
+}
+
+// ---- 计划 #16:High Profile SPS scaling matrix 是 1-bit flag ----
+
+// seq_scaling_matrix_present_flag 是 1 bit(readBit),不是 Exp-Golomb;
+// 每一个 seq_scaling_list_present_flag 同样是 1 bit。
+// 构造 High Profile(100)SPS:chroma=1、bit_depth 8/8、qpprime=0、
+// scaling_matrix_present=1 后跟 8 个 list_present_flag=0,
+// 之后正常字段 → 尺寸 640x480。
+func TestParseSPSHighProfileScalingMatrixFlags(t *testing.T) {
+	// bit 流(从 profile_idc 开始):profile=100, constraint=0, level=40,
+	// sps_id=ue(0), chroma_format=ue(1), bit_depth=ue(0)x2, qpprime=1bit 0,
+	// scaling_matrix_present=1bit 1, 8x list_present=1bit 0,
+	// log2_max_frame_num=ue(0), pic_order=ue(0), max_ref=ue(1), gaps=1bit 0,
+	// width_mbs=ue(39), height_map=ue(29), frame_only=1bit 1, direct8x8=0, crop=0
+	bits := ""
+	w := func(bitstr string) { bits += bitstr }
+	ue := func(v uint64) string {
+		// Exp-Golomb
+		n := v + 1
+		length := 0
+		for tmp := n; tmp > 1; tmp >>= 1 {
+			length++
+		}
+		return strings.Repeat("0", length) + strconv.FormatUint(n, 2)
+	}
+	w("01100100") // profile_idc = 100
+	w("00000000") // constraint flags
+	w("00101000") // level_idc = 40
+	w(ue(0))      // sps_id
+	w(ue(1))      // chroma_format_idc = 1
+	w(ue(0))      // bit_depth_luma_minus8
+	w(ue(0))      // bit_depth_chroma_minus8
+	w("0")        // qpprime_y_zero_transform_bypass
+	w("1")        // seq_scaling_matrix_present_flag(1 bit!)
+	for i := 0; i < 8; i++ {
+		w("0") // seq_scaling_list_present_flag × 8(each 1 bit)
+	}
+	w(ue(0))  // log2_max_frame_num_minus4
+	w(ue(0))  // pic_order_cnt_type
+	w(ue(0))  // log2_max_pic_order_cnt_lsb_minus4(pic_order=0 的必读字段)
+	w(ue(1))  // max_num_ref_frames
+	w("0")    // gaps_in_frame_num
+	w(ue(39)) // pic_width_in_mbs_minus8 → (39+1)*16=640
+	w(ue(29)) // pic_height_in_map_units_minus8 → (29+1)*16=480
+	w("1")    // frame_mbs_only_flag
+	w("0")    // direct_8x8_inference
+	w("0")    // frame_cropping
+
+	// 组字节
+	nal := []byte{0x67}
+	var current byte
+	var count uint
+	flush := func() {
+		if count > 0 {
+			nal = append(nal, current<<(8-count))
+			current = 0
+			count = 0
+		}
+	}
+	for _, c := range bits {
+		current = current<<1 | byte(c-'0')
+		count++
+		if count == 8 {
+			flush()
+		}
+	}
+	flush()
+
+	width, height, err := parseSPSDimensions(nal)
+	if err != nil {
+		t.Fatalf("parseSPSDimensions: %v", err)
+	}
+	if width != 640 || height != 480 {
+		t.Fatalf("dimensions = %dx%d, want 640x480", width, height)
 	}
 }

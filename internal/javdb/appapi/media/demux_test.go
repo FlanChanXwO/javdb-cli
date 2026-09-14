@@ -50,9 +50,9 @@ func h264Frame(nalType byte, payload []byte) []byte {
 }
 
 // adtsFrame 构造一个 AAC-LC 44.1kHz 双通道 ADTS 帧(7 字节头 + 3 字节 raw),
-// frame_length = 10。
+// frame_length = 10。freqIdx=4(44100);channel config: byte2 低位 0 + byte3 高 2 位 10 = 2。
 func adtsFrame() []byte {
-	header := []byte{0xFF, 0xF1, 0x51, 0x00, 0x01, 0x40, 0x00}
+	header := []byte{0xFF, 0xF1, 0x50, 0x80, 0x01, 0x40, 0x00}
 	return append(header, 0x21, 0x10, 0x30)
 }
 
@@ -183,5 +183,84 @@ func TestLayerBRejectsTimestampRegression(t *testing.T) {
 	err := validateMediaStream(segment)
 	if err == nil || !strings.Contains(err.Error(), "timestamp") {
 		t.Fatalf("error = %v, want timestamp regression", err)
+	}
+}
+
+// ---- 计划 #13:PES 时间戳与长度修正 ----
+
+// PTS-only PES 不能设置 HasDTS;DTS=PTS 但 HasDTS=false。
+func TestParsePESPTSOnlyHasNoDTSFlag(t *testing.T) {
+	frame, err := parsePESFrame(pesBytes(0xE0, 90000, 0, false, []byte{0x01, 0x02}))
+	if err != nil {
+		t.Fatalf("parsePESFrame: %v", err)
+	}
+	if frame.HasDTS {
+		t.Fatal("PTS-only PES must not set HasDTS")
+	}
+	if frame.DTS != frame.PTS {
+		t.Fatalf("DTS = %d, want PTS %d", frame.DTS, frame.PTS)
+	}
+}
+
+// 显式 DTS 的 PES 才有 HasDTS=true。
+func TestParsePESWithDTSKeepsFlag(t *testing.T) {
+	frame, err := parsePESFrame(pesBytes(0xE0, 93600, 90000, true, []byte{0x01}))
+	if err != nil {
+		t.Fatalf("parsePESFrame: %v", err)
+	}
+	if !frame.HasDTS {
+		t.Fatal("explicit DTS must set HasDTS")
+	}
+	if frame.DTS != 90000 || frame.PTS != 93600 {
+		t.Fatalf("PTS/DTS = %d/%d", frame.PTS, frame.DTS)
+	}
+}
+
+// PES_packet_length 大于实际重组长度必须报 truncated,不能继续解析。
+func TestParsePESRejectsTruncatedPacketLength(t *testing.T) {
+	// 构造 PES_packet_length 声称 1000 字节,实际远少。
+	pes := []byte{0x00, 0x00, 0x01, 0xE0, 0x03, 0xE8, 0x80, 0x80, 0x05, 0x21, 0x00, 0x05, 0xBF, 0x21}
+	_, err := parsePESFrame(pes)
+	if err == nil || !strings.Contains(err.Error(), "truncat") {
+		t.Fatalf("error = %v, want truncated PES", err)
+	}
+}
+
+// ---- 计划 #14:ADTS 解析修正 ----
+
+// freqIdx=13..15 是保留值,必须拒绝而非越界 panic。
+func TestParseADTSRejectsReservedFrequencyIndex(t *testing.T) {
+	for _, idx := range []byte{13, 14, 15} {
+		// data[2]: freqIdx 占高 4 bit 高段(bit6-2);freqIdx<<2。
+		data := []byte{0xFF, 0xF1, byte(idx << 2), 0x00, 0x01, 0x40, 0x00, 0x21, 0x10, 0x30}
+		_, _, _, _, err := parseADTS(data)
+		if err == nil || !strings.Contains(err.Error(), "sampling") {
+			t.Fatalf("freqIdx %d: error = %v, want reserved sampling frequency error", idx, err)
+		}
+	}
+}
+
+// channel configuration 拼接:byte2 最低位是高 1 bit,byte3 高 2 位是低 2 bit。
+// channel=4:high=1(byte2&1), low=0(byte3>>6=0)。
+func TestParseADTSChannelConfiguration(t *testing.T) {
+	// channel config 4:byte2&1=1,byte3>>6=00。
+	data := []byte{0xFF, 0xF1, 0x53, 0x00, 0x01, 0x40, 0x00, 0x21, 0x10, 0x30}
+	_, _, channels, _, err := parseADTS(data)
+	if err != nil {
+		t.Fatalf("parseADTS: %v", err)
+	}
+	if channels != 4 {
+		t.Fatalf("channels = %d, want 4 (byte2 low bit=1, byte3 top=00)", channels)
+	}
+}
+
+// muxer 只明确支持 mono/stereo:channel configuration > 2 必须拒绝,
+// 不能产生错误的 MP4。
+func TestParseAACTrackRejectsMoreThanStereo(t *testing.T) {
+	// channel config 4(byte2&1=1,byte3>>6=0)。
+	data := []byte{0xFF, 0xF1, 0x53, 0x00, 0x01, 0x40, 0x00, 0x21, 0x10, 0x30}
+	_, err := parseAACTrack(demuxedStream{streamType: streamTypeAAC, frames: []demuxedFrame{{ES: data, PTS: 90000}}})
+	if err == nil || !strings.Contains(err.Error(), "channel") {
+		t.Fatalf("error = %v, want channel configuration rejection", err)
 	}
 }

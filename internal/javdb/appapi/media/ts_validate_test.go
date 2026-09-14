@@ -271,3 +271,55 @@ func TestDownloadHLSRejectsUnsupportedCodecAtFinalValidation(t *testing.T) {
 		t.Fatalf("rejected media left output: %v", statErr)
 	}
 }
+
+// ---- 计划 #15:PSI/PMT 边界检查与 stream "seen" 语义 ----
+
+// PMT program_info_length 声称的描述符区越过 section 末尾必须报错,不能越界访问。
+func TestParsePSIMapRejectsHugeProgramInfoLength(t *testing.T) {
+	// 构造 PMT,info_length = 0x0FFF(远超 payload)。
+	body := []byte{
+		0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x01, 0xFF, 0xFF,
+		0x1B, 0xE1, 0x01, 0xF0, 0x00,
+	}
+	_, err := parsePSIMap(psiSection(0x02, body), 0x02)
+	if err == nil || !strings.Contains(err.Error(), "bound") {
+		t.Fatalf("error = %v, want out of bounds", err)
+	}
+}
+
+// ES_info_length 跳出 section 末尾必须报错。
+func TestParsePSIMapRejectsHugeESInfoLength(t *testing.T) {
+	body := []byte{
+		0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x01, 0xF0, 0x00,
+		0x1B, 0xE1, 0x01, 0xFF, 0xFF, // ES_info_length = 0x0FFF
+	}
+	_, err := parsePSIMap(psiSection(0x02, body), 0x02)
+	if err == nil || !strings.Contains(err.Error(), "bound") {
+		t.Fatalf("error = %v, want out of bounds", err)
+	}
+}
+
+// PAT 的 program_info_length(实际 PAT 无此字段,此处构造 section 过短)
+// 只 seen continuation payload(无 PUSI + PES prefix)的流不能算"存在"。
+func TestValidateTSSegmentContinuationOnlyStreamRejected(t *testing.T) {
+	// 构造:合法 PAT/PMT + 仅 continuation payload(PUSI=0)的流。
+	var data []byte
+	data = append(data, tsPacket(patPID, true, 0, patSection())...)
+	data = append(data, tsPacket(pmtPID, true, 0, pmtSection())...)
+	// continuation-only:videoPID 带 PUSI 但 payload 无 PES prefix;
+	// audioPID 完全无载荷。两条声明流都不能算"存在"。
+	data = append(data, tsPacket(videoPID, true, 1, []byte{0xDE, 0xAD, 0xBE, 0xEF})...)
+	err := validateTSSegment(data)
+	if err == nil || !strings.Contains(err.Error(), "PES") {
+		t.Fatalf("error = %v, want PES prefix rejection", err)
+	}
+	// 纯 continuation payload(PUSI=0):不被视为 seen,报 no payload。
+	data2 := []byte{}
+	data2 = append(data2, tsPacket(patPID, true, 0, patSection())...)
+	data2 = append(data2, tsPacket(pmtPID, true, 0, pmtSection())...)
+	data2 = append(data2, tsPacket(videoPID, false, 1, []byte{0xDE, 0xAD, 0xBE, 0xEF})...)
+	err = validateTSSegment(data2)
+	if err == nil || !strings.Contains(err.Error(), "no payload") {
+		t.Fatalf("error = %v, want no payload for continuation-only stream", err)
+	}
+}
