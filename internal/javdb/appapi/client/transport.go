@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -132,6 +133,14 @@ func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 // FetchMedia 获取未经过 App envelope 包装的媒体资源,供 media 包通过 callback 使用。
 // ctx 贯穿媒体请求(计划 #44):取消时立即中断网络读取。
 func (c *Client) FetchMedia(ctx context.Context, rawURL string) ([]byte, error) {
+	return c.FetchMediaBounded(ctx, rawURL, 0)
+}
+
+// FetchMediaBounded 用有界读取获取媒体资源(计划 #11):
+// 下载路径的内部安全边界 —— 读取模式是 io.LimitReader(limit+1),
+// 超过 limit 的部分不读入内存,下载层在 size 检查时明确报错。
+// limit <= 0 表示不设边界(非媒体下载调用方),行为与 FetchMedia 一致。
+func (c *Client) FetchMediaBounded(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("invalid media URL")
@@ -149,11 +158,13 @@ func (c *Client) FetchMedia(ctx context.Context, rawURL string) ([]byte, error) 
 		}
 		return nil, fmt.Errorf("media request returned HTTP %d", resp.StatusCode)
 	}
-	body, err := httpx.ReadAll(resp)
-	if err != nil {
-		return nil, fmt.Errorf("read media: %w", err)
+	defer resp.Body.Close()
+	if limit > 0 {
+		// io.LimitReader(limit+1):超过 limit 的部分不读入内存;
+		// 读满 limit+1 说明超出预算,明确报错(计划 #11)。
+		return io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	}
-	return body, nil
+	return io.ReadAll(resp.Body)
 }
 
 func (c *Client) headers(ts int64) http.Header {

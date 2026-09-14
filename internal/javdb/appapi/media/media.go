@@ -300,9 +300,8 @@ func fetchValidatedSegment(ctx context.Context, fetch FetchContext, segment hlsS
 }
 
 // fetchBounded 用有界读取获取媒体资源(计划 #11):
-// 下载后立即检查大小,超过 limit 明确报错,不无界进内存。
-// fetch 回调返回完整 body 后做一次 limit 检查;超过 limit 的部分
-// 由回调侧的 bounded transport 保证不继续增长(FetchContext 契约)。
+// Content-Length 预检查(transport 层 LimitReader(limit+1))+ size 检查,
+// 超过 limit 明确报错,不无界进内存。
 func fetchBounded(ctx context.Context, fetch FetchContext, url string, limit int64, what string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -315,6 +314,19 @@ func fetchBounded(ctx context.Context, fetch FetchContext, url string, limit int
 		return nil, fmt.Errorf("%s size %d exceeds limit %d", what, len(raw), limit)
 	}
 	return raw, nil
+}
+
+// boundedFetchContext 是 client 提供给媒体解码器的有界读取回调;
+// limit 透传给 transport 的 LimitReader(计划 #11)。
+func boundedFetchContext(c mediaBoundedClient, limit int64) FetchContext {
+	return func(ctx context.Context, url string) ([]byte, error) {
+		return c.FetchMediaBounded(ctx, url, limit)
+	}
+}
+
+// mediaBoundedClient 是 FetchMediaBounded 所需的最小接口。
+type mediaBoundedClient interface {
+	FetchMediaBounded(ctx context.Context, rawURL string, limit int64) ([]byte, error)
 }
 
 // checkSegmentCount 校验 segment 数不超过内部安全上限(计划 #11)。
