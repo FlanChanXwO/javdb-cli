@@ -106,6 +106,9 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 真实 API 抽查会使用本机账号且可能改变 token、写入 tag cache 或访问远程状态；它不是默认回归。
 仅在用户明确授权、凭据来源清楚且不会输出 secret 时再运行。
 
+assets 域的真实 E2E(probe、TS/MP4 remux、资源占用)见
+[PR #47 E2E 实测报告](e2e-pr47.md);番号以 `NUMBER` 占位,不落具体影片。
+
 ## Release-note 工具
 
 `scripts/releasenotes` 的入口保留 `validate`、`audit`、`render` 和 `sync-history` 四个子命令；
