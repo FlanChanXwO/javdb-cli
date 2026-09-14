@@ -316,7 +316,8 @@ func TestDownloadOutputsOnlyFinalPath(t *testing.T) {
 	if strings.Contains(stdout, "saved") || strings.Contains(stdout, "bytes") {
 		t.Fatalf("stdout must be path-only, got %q", stdout)
 	}
-	if !strings.HasPrefix(lines[0], dir+"/") {
+	// Windows 路径分隔符与 Unix 不同:用 filepath.Separator 构造前缀断言。
+	if !strings.HasPrefix(lines[0], dir+string(filepath.Separator)) {
 		t.Fatalf("stdout = %q, want final path under %s", lines[0], dir)
 	}
 }
