@@ -50,6 +50,12 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if err != nil {
 				return err
 			}
+			if err := validateZone(zone); err != nil {
+				return err
+			}
+			if err := validateSearchType(typ); err != nil {
+				return err
+			}
 			if magnets < 0 {
 				return fmt.Errorf("--magnets must be >= 0")
 			}
@@ -132,6 +138,24 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	cmd.Flags().BoolVar(&hd, "hd", false, "Only HD magnets (requires --magnets)")
 	cmd.Flags().StringVar(&minSize, "min-size", "", "Min magnet size e.g. 2000, 4GB, 500MB (requires --magnets)")
 	return cmd
+}
+
+func validateZone(zone string) error {
+	switch zone {
+	case "censored", "uncensored", "western", "fc2", "all":
+		return nil
+	default:
+		return fmt.Errorf("zone must be one of censored|uncensored|western|fc2|all (got %q)", zone)
+	}
+}
+
+func validateSearchType(value string) error {
+	switch value {
+	case "", "movie", "code", "series", "actor", "maker", "director", "list":
+		return nil
+	default:
+		return fmt.Errorf("type must be one of movie|code|series|actor|maker|director|list (got %q)", value)
+	}
 }
 
 // classifySearchInput 一次性分类输入：返回图片模式标志与批处理输入。
