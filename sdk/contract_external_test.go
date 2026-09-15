@@ -47,12 +47,13 @@ var (
 	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions, maxPages int) ([]map[string]any, error)  = (*javdb.Client).AllEntityMovies
 	_ func(c *javdb.Client, ctx context.Context, opt javdb.BrowseOptions) (javdb.SearchResult, error)                                           = (*javdb.Client).Browse
 	_ func(c *javdb.Client, ctx context.Context, kind string) ([]map[string]any, error)                                                         = (*javdb.Client).Collected
-	_ func(c *javdb.Client, ctx context.Context, movieID string, opt javdb.MovieAssetDownloadOptions) (javdb.MovieAssetDownloadResult, error)   = (*javdb.Client).DownloadMovieAssets
+	_ func(c *javdb.Client, ctx context.Context, asset javdb.MovieAsset, target string) (int64, error)                                          = (*javdb.Client).DownloadMovieAsset
 	_ func(c *javdb.Client, ctx context.Context, kind, id string) (map[string]any, error)                                                       = (*javdb.Client).EntityDetail
 	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions) (javdb.SearchResult, error)              = (*javdb.Client).EntityMovies
 	_ func(c *javdb.Client, ctx context.Context, listID string) (map[string]any, error)                                                         = (*javdb.Client).ListInfo
 	_ func(c *javdb.Client, ctx context.Context, username, password string) (string, error)                                                     = (*javdb.Client).Login
 	_ func(c *javdb.Client, ctx context.Context, movieID, status string, score int, content string) (map[string]any, error)                     = (*javdb.Client).Mark
+	_ func(c *javdb.Client, ctx context.Context, movieID string) ([]javdb.MovieAsset, error)                                                    = (*javdb.Client).MovieAssets
 	_ func(c *javdb.Client, ctx context.Context, movieID string, page, limit int) ([]map[string]any, error)                                     = (*javdb.Client).MovieComments
 	_ func(c *javdb.Client, ctx context.Context, movieID string) (map[string]any, error)                                                        = (*javdb.Client).MovieDetail
 	_ func(c *javdb.Client, ctx context.Context, movieID string) ([]map[string]any, error)                                                      = (*javdb.Client).MovieMagnets
@@ -87,8 +88,7 @@ var (
 	_ javdb.EntityMoviesOptions                               = javdb.EntityMoviesOptions{}
 	_ javdb.SearchOptions                                     = javdb.SearchOptions{}
 	_ javdb.Option                                            = javdb.WithHost("mirror")
-	_ javdb.MovieAssetDownloadOptions                         = javdb.MovieAssetDownloadOptions{}
-	_ javdb.MovieAssetDownloadResult                          = javdb.MovieAssetDownloadResult{}
+	_ javdb.MovieAsset                                        = javdb.MovieAsset{}
 )
 
 func TestExternalConstantsMatchLogicalHostNames(t *testing.T) {

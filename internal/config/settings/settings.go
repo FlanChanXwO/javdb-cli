@@ -37,11 +37,12 @@ type Settings struct {
 
 // Defaults returns baseline settings.
 func Defaults() Settings {
-	return Settings{
+	s := Settings{
 		Host:        HostAuto,
 		AutoRelogin: false,
 		Lang:        "en",
 	}
+	return s
 }
 
 // LoadFile reads config.toml; missing file returns Defaults().

@@ -94,18 +94,28 @@ javdb browse [--zone ZONE] [--tag REF]... [--main FLAG]... [--year YYYY] \
 ## 本地影片资源
 
 ```bash
-javdb assets NUMBER [--id] [--thumbnail PATH] [--preview-image PATH] [--preview-video PATH]
+javdb assets list NUMBER [SELECTOR...] [--type image|video] [--json|--ndjson]
+javdb assets download [-d DIR] [-o PATH]
 ```
 
-`download` 是规范 `assets` 命令的兼容别名。本命令只写入选定的本地缩略图和预览资源，
-不会下载完整影片或磁力目标。至少设置一个输出 flag。`--thumbnail` 写入详情缩略图；
-`--preview-image` 只写入 `preview_images[0]`（首张预览图），不会枚举或自动改取后续预览图。
-`--preview-video` 将完整 HLS 预览流写入指定路径，playlist 使用 AES-128 时会解密。当前预览流
-是 transport stream，建议目标路径使用 `.ts` 后缀。
+`assets list` 发现影片附带的媒体资产——缩略图、封面、预览图与预览视频——顺序固定。处理
+严格为：获取全部资产 → 按 `--type`（`image` 或 `video`）过滤 → 为剩余资产生成 `1..N` 编号 →
+应用 selector。selector 是过滤后列表中的 1 基位置（`1`、`1-4`、`1,3-5`，或多个 token 如
+`1 3 5`）；重叠编号去重并保持列表顺序；`0`、`4-1`、`1-` 与非数字 token 明确失败，越界编号
+会给出有效范围。缺省 selector 表示列出该类型的全部资产。
 
-命令只创建新文件：目标已存在会明确失败，也不会创建缺失的父目录。它接受已结束的单媒体 HLS
-playlist；master playlist、byte-range 媒体、fragmented MP4 媒体，以及未结束/直播 playlist 都会
-明确失败，不会写出不完整文件。
+TTY 下输出带人类描述的编号表格；管道输出为每行一条 `TYPE<TAB>URL` 记录；`--json` 输出单个
+JSON 数组、`--ndjson` 每行一个 JSON 对象。机器输出严格只含 `type` 与 `url`，列出资产不会
+读取媒体内容。编号只是当前列表的位置，不是长期资产 ID。
+
+`assets download` 从 stdin 消费 `assets list` 输出的 `TYPE<TAB>URL` 记录，逐条流式处理，
+不缓存全部输入。`-d DIR`（默认
+`.`）承接自动命名文件（`image-001.jpg`——扩展名来自图片魔数检测——与 `video-001.mp4`）；
+`-o PATH` 将恰好一个资产写入精确路径，多于一个输入会失败。绝不覆盖已有文件；失败的下载
+不留输出。stdout 每行只输出最终写入路径，无装饰文本。`.mp4` 输出为 Fast Start MP4（ftyp → moov → mdat），由 H.264/AAC 预览流经纯 Go
+remux 生成——无 ffmpeg、无转码；`.ts` 保留解密后的 MPEG-TS。不支持的编码（HEVC、AC-3 等）
+明确失败。仅接受已结束的单媒体 HLS playlist；master playlist、byte-range 媒体、fragmented MP4
+媒体，以及未结束/直播 playlist 都会明确失败。两个命令都不会下载完整影片或磁力目标。
 
 ## 以图搜番
 
@@ -251,7 +261,7 @@ host，因为它不会访问 App API。
 1. 用 `search --json` 或 `detail --json` 获取影片或图关系 ID。
 2. 下一条命令仅传入返回 ID 或用户明确选定的文本，并用 `--help` 核验 flag。
 3. 使用 `magnets --best --json` 前，确认磁力 URI 的用途在用户授权范围内。
-4. `assets`（或其 `download` 兼容别名）会写入本地资源文件：先取得明确输出路径，且不要替换已有文件。
+4. `javdb assets download` 会写入本地资源文件：先取得明确输出路径，且不要替换已有文件。
 5. 登录、刷新标签、改配置、选账号、`mark`/`unmark` 都是状态变更，执行前确认。
 
 coding agent 的确认、凭据与错误处理规则见

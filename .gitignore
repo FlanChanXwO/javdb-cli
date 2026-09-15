@@ -5,4 +5,7 @@
 /build/
 /dist/
 /tmp/
-/goal-*/
+
+# goal-*/ 是 goal-mode 的工作记录(input/plan/tasks),随 PR 提交供审查;
+# 内容已脱敏(番号以 NUMBER 占位)。
+!/goal-*/

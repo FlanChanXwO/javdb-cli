@@ -49,7 +49,7 @@ internal/cli/client/                    # 配置解析、SDK client、required/o
 internal/cli/authstore/                 # 默认认证文件路径/目录/store 打开
 internal/cli/result/                    # 纯结果投影与过滤（movie/magnet/named 分文件）
 internal/cli/entity/                    # 六实体查询用例 Execute
-internal/common/{jsonx,scalar}/         # 纯 JSON 与标量转换（根目录无包）
+internal/common/{jsonx,scalar,atomicfile}/ # 转换与原子 no-replace 文件原语（根目录无包）
 internal/cli/commands/{auth,config}/    # 认证与配置命令域
 internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 影片目录命令域
 internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
@@ -105,6 +105,9 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 
 真实 API 抽查会使用本机账号且可能改变 token、写入 tag cache 或访问远程状态；它不是默认回归。
 仅在用户明确授权、凭据来源清楚且不会输出 secret 时再运行。
+
+assets 域的真实 E2E（list、TS/MP4 remux、资源占用）见
+[PR #47 E2E 实测报告](e2e-pr47.md);番号以 `NUMBER` 占位,不落具体影片。
 
 ## Release-note 工具
 

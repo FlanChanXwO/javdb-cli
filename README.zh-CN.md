@@ -144,9 +144,9 @@ javdb comments SSIS-589 --page 1 --limit 20 --json
 javdb browse --tag 巨乳 --main m --limit 20 --json
 javdb magnets SSIS-589 --cnsub --hd --json
 
-# 保存选定的本地资源；--preview-image 只写入首张预览图。
-javdb assets SSIS-589 --thumbnail ./thumb.jpg --preview-image ./preview-0.jpg --preview-video ./preview.ts
-# `download` 仍是 `assets` 的兼容别名。
+# 先发现影片媒体资产，再精确下载所需内容。
+javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./images
+javdb assets list SSIS-589 --type video | javdb assets download -o ./preview.mp4
 ```
 
 运行 `javdb --help`，或阅读[完整命令参考](docs/zh-CN/cli-reference.md)，查看所有命令、flag、
@@ -238,8 +238,9 @@ javdb config set auto_relogin true
 
 磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
 需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
-`assets` 会将选定的缩略图和预览资源写入明确指定的新本地路径；`download` 是兼容别名。
-它不会下载完整影片或磁力目标，也绝不会替换已有文件。
+`javdb assets download` 会将选定的媒体资源写入明确指定的新本地路径，stdout 每行只输出最终路径。
+`javdb assets list --json/--ndjson` 只输出 `type` 与 `url`，列出资产不会下载或 probe 媒体内容。
+它们不会下载完整影片或磁力目标，也绝不会替换已有文件。
 
 ## 文档
 

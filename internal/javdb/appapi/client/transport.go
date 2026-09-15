@@ -4,7 +4,9 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -129,8 +131,10 @@ func (c *Client) SetLanguage(lang string) { c.lang = lang }
 // CloseIdleConnections 释放短生命周期 client 的空闲连接。
 func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 
-// FetchMedia 获取未经过 App envelope 包装的媒体资源，供 media 包通过 callback 使用。
-func (c *Client) FetchMedia(rawURL string) ([]byte, error) {
+// FetchMedia 获取未经过 App envelope 包装的媒体资源,供 media 包通过 callback 使用。
+// ctx 贯穿媒体请求(计划 #44):取消时立即中断网络读取。成功时由调用方负责关闭返回的 body;
+// transport 不把媒体响应一次性读入内存,由上层按用途流式消费。
+func (c *Client) FetchMedia(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("invalid media URL")
@@ -138,21 +142,18 @@ func (c *Client) FetchMedia(rawURL string) ([]byte, error) {
 	if u.Scheme != "https" && u.Scheme != "http" {
 		return nil, fmt.Errorf("unsupported media URL scheme %q", u.Scheme)
 	}
-	resp, err := c.http.Get(rawURL, map[string]string{"user-agent": UserAgent})
+	resp, err := c.http.GetWithContext(ctx, rawURL, map[string]string{"user-agent": UserAgent})
 	if err != nil {
 		return nil, fmt.Errorf("request media: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		statusErr := fmt.Errorf("media request returned HTTP %d", resp.StatusCode)
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			return nil, fmt.Errorf("close media response after HTTP %d: %w", resp.StatusCode, closeErr)
+			return nil, errors.Join(statusErr, fmt.Errorf("close media response after HTTP %d: %w", resp.StatusCode, closeErr))
 		}
-		return nil, fmt.Errorf("media request returned HTTP %d", resp.StatusCode)
+		return nil, statusErr
 	}
-	body, err := httpx.ReadAll(resp)
-	if err != nil {
-		return nil, fmt.Errorf("read media: %w", err)
-	}
-	return body, nil
+	return resp.Body, nil
 }
 
 func (c *Client) headers(ts int64) http.Header {
