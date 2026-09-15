@@ -3,7 +3,7 @@
 本页保留 PR #47 媒体链路的真实 JavDB E2E 记录。番号统一以 `NUMBER` 占位，
 不记录具体影片；媒体 URL 域名属于公开 CDN/镜像地址。
 
-实测环境：macOS darwin-arm64、Go `go1.26.3`，当前实现 commit `a277d97`；
+实测环境：macOS darwin-arm64、Go `go1.26.3`，本次 E2E 验证代码 commit `699505d`；
 `ffprobe`/`ffmpeg` `8.1.1`，仅用于独立验证，不是运行时依赖。当前契约的资产机器
 输出严格只有 `type` 与 `url`，不会在 list 阶段读取媒体内容。
 
