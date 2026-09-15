@@ -292,7 +292,10 @@ func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	if len(durations) != len(meta.Samples) {
 		return nil, fmt.Errorf("video sample duration count %d != sample count %d", len(durations), len(meta.Samples))
 	}
-	stts, ctts, stss := buildVideoTimingBoxesWithDeltas(meta.Samples, durations)
+	stts, ctts, stss, err := buildVideoTimingBoxesWithDeltas(meta.Samples, durations)
+	if err != nil {
+		return nil, err
+	}
 	boxes := [][]byte{stsd, stts, stss}
 	if ctts != nil {
 		boxes = append(boxes, ctts)
@@ -344,8 +347,8 @@ func buildVideoTimingBoxes(samples []mp4SampleMeta) (stts, ctts, stss []byte, er
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	stts, ctts, stss = buildVideoTimingBoxesWithDeltas(samples, deltas)
-	return stts, ctts, stss, nil
+	stts, ctts, stss, err = buildVideoTimingBoxesWithDeltas(samples, deltas)
+	return stts, ctts, stss, err
 }
 
 // videoSampleDurations 计算视频样本的 stts delta，并返回与之相同来源的 mdhd duration。
@@ -383,7 +386,7 @@ func videoSampleDurations(samples []mp4SampleMeta) ([]uint32, uint64, error) {
 }
 
 // buildVideoTimingBoxesWithDeltas 使用已经校验并保存的 delta，确保 stts 与 mdhd 不再各算一遍。
-func buildVideoTimingBoxesWithDeltas(samples []mp4SampleMeta, deltas []uint32) (stts, ctts, stss []byte) {
+func buildVideoTimingBoxesWithDeltas(samples []mp4SampleMeta, deltas []uint32) (stts, ctts, stss []byte, err error) {
 	stts = buildRLE32(deltas)
 
 	// ctts:offset = PTS - DTS(RLE);存在负 offset 时使用 version 1 signed。
@@ -391,7 +394,10 @@ func buildVideoTimingBoxesWithDeltas(samples []mp4SampleMeta, deltas []uint32) (
 	hasNegative := false
 	offsets := make([]int64, len(samples))
 	for i, s := range samples {
-		offsets[i] = int64(s.PTS) - int64(s.DTS)
+		offsets[i], err = compositionOffset(s.PTS, s.DTS)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("sample %d: %w", i, err)
+		}
 		if offsets[i] != 0 {
 			hasNonZero = true
 		}
@@ -400,7 +406,10 @@ func buildVideoTimingBoxesWithDeltas(samples []mp4SampleMeta, deltas []uint32) (
 		}
 	}
 	if hasNonZero {
-		ctts = buildRLE32Signed(offsets, hasNegative)
+		ctts, err = buildRLE32Signed(offsets, hasNegative)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	syncs := make([][]byte, 0, 8)
@@ -414,7 +423,25 @@ func buildVideoTimingBoxesWithDeltas(samples []mp4SampleMeta, deltas []uint32) (
 	if len(syncs) > 0 && len(syncs) != len(samples) {
 		stss = mp4FullBox("stss", 0, 0, mp4U32(uint32(len(syncs))), flatten(syncs))
 	}
-	return stts, ctts, stss
+	return stts, ctts, stss, nil
+}
+
+func compositionOffset(pts, dts uint64) (int64, error) {
+	if pts >= dts {
+		delta := pts - dts
+		if delta > uint64(^uint64(0)>>1) {
+			return 0, fmt.Errorf("composition timestamp difference cannot be represented")
+		}
+		return int64(delta), nil
+	}
+	delta := dts - pts
+	if delta > uint64(1)<<63 {
+		return 0, fmt.Errorf("composition timestamp difference cannot be represented")
+	}
+	if delta == uint64(1)<<63 {
+		return -1 << 63, nil
+	}
+	return -int64(delta), nil
 }
 
 // buildRLE32 把 uint32 序列 RLE 成 {sample_count, value} entry。
@@ -446,13 +473,20 @@ func buildRLE32Constant(sampleCount, value uint32) []byte {
 
 // buildRLE32Signed 把 int64 序列 RLE 成 {sample_count, offset} entry;
 // 存在负 offset 时使用 version 1 的 signed 32-bit 字段。
-func buildRLE32Signed(values []int64, signed bool) []byte {
+func buildRLE32Signed(values []int64, signed bool) ([]byte, error) {
 	type entry struct {
 		count uint32
 		value int64
 	}
 	entries := make([]entry, 0, 8)
-	for _, v := range values {
+	for i, v := range values {
+		if signed {
+			if v < -1<<31 || v > 1<<31-1 {
+				return nil, fmt.Errorf("composition offset %d at sample %d exceeds ctts version 1 range", v, i)
+			}
+		} else if v < 0 || uint64(v) > uint64(^uint32(0)) {
+			return nil, fmt.Errorf("composition offset %d at sample %d exceeds ctts version 0 range", v, i)
+		}
 		if len(entries) > 0 && entries[len(entries)-1].value == v {
 			entries[len(entries)-1].count++
 			continue
@@ -473,7 +507,7 @@ func buildRLE32Signed(values []int64, signed bool) []byte {
 	if signed {
 		version = 1
 	}
-	return mp4FullBox("ctts", version, 0, mp4U32(uint32(len(entries))), flatten(payload))
+	return mp4FullBox("ctts", version, 0, mp4U32(uint32(len(entries))), flatten(payload)), nil
 }
 
 func buildSTSC(samples []mp4SampleMeta) []byte {

@@ -1,7 +1,11 @@
 package media
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 )
 
 // H.264/AAC track 化与 Layer B 媒体完整性(input.md 计划 #24/#26/#34/#39)。
@@ -195,7 +199,16 @@ var codecNames = map[uint16]string{
 // validateMediaStream 是 Layer B 入口:拆流、分类 codec、校验媒体模型。
 // 任一检查失败即拒绝进入 MP4 finalize(input.md 计划 #29/#34)。
 func validateMediaStream(data []byte) error {
-	streams, err := parseTSStreams(data)
+	if len(data)%tsPacketSize != 0 {
+		return fmt.Errorf("TS segment size %d is not %d-byte aligned", len(data), tsPacketSize)
+	}
+	return validateMediaStreamReader(bytes.NewReader(data))
+}
+
+// validateMediaStreamReader 对可回退的 TS reader 执行 Layer B 校验,避免文件模式先
+// os.ReadFile 再解析而产生完整媒体 segment 的内存副本。
+func validateMediaStreamReader(reader io.ReadSeeker) error {
+	streams, err := parseTSStreamsReader(reader)
 	if err != nil {
 		return err
 	}
@@ -277,7 +290,26 @@ func isAudioStreamType(t byte) bool {
 // validateSegmentCodecs 是单 segment 的 codec 分类检查(.ts 模式逐段执行):
 // 不支持的 codec 明确拒绝;timed ID3 丢弃;参数集等文件级检查不在此处。
 func validateSegmentCodecs(data []byte) error {
-	streams, err := parseTSStreams(data)
+	if len(data)%tsPacketSize != 0 {
+		return fmt.Errorf("TS segment size %d is not %d-byte aligned", len(data), tsPacketSize)
+	}
+	return validateSegmentCodecsReader(bytes.NewReader(data))
+}
+
+// validateSegmentCodecsFile 是单 segment 文件模式的 codec gate,只保留当前 PES 数据
+// 与 demux 元数据,不把完整文件读入内存。
+func validateSegmentCodecsFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	validateErr := validateSegmentCodecsReader(file)
+	closeErr := file.Close()
+	return errors.Join(validateErr, closeErr)
+}
+
+func validateSegmentCodecsReader(reader io.ReadSeeker) error {
+	streams, err := parseTSStreamsReader(reader)
 	if err != nil {
 		return err
 	}

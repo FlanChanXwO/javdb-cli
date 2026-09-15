@@ -132,8 +132,9 @@ func (c *Client) SetLanguage(lang string) { c.lang = lang }
 func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 
 // FetchMedia 获取未经过 App envelope 包装的媒体资源,供 media 包通过 callback 使用。
-// ctx 贯穿媒体请求(计划 #44):取消时立即中断网络读取。
-func (c *Client) FetchMedia(ctx context.Context, rawURL string) ([]byte, error) {
+// ctx 贯穿媒体请求(计划 #44):取消时立即中断网络读取。成功时由调用方负责关闭返回的 body;
+// transport 不把媒体响应一次性读入内存,由上层按用途流式消费。
+func (c *Client) FetchMedia(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("invalid media URL")
@@ -152,18 +153,7 @@ func (c *Client) FetchMedia(ctx context.Context, rawURL string) ([]byte, error) 
 		}
 		return nil, statusErr
 	}
-	body, readErr := io.ReadAll(resp.Body)
-	closeErr := resp.Body.Close()
-	if readErr != nil {
-		if closeErr != nil {
-			return nil, errors.Join(readErr, fmt.Errorf("close media response: %w", closeErr))
-		}
-		return nil, readErr
-	}
-	if closeErr != nil {
-		return nil, fmt.Errorf("close media response: %w", closeErr)
-	}
-	return body, nil
+	return resp.Body, nil
 }
 
 func (c *Client) headers(ts int64) http.Header {

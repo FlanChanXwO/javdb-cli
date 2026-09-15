@@ -1,7 +1,9 @@
 package media
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 )
 
 // PMT stream_type 常量(仅本工具关心的子集)。
@@ -28,22 +30,30 @@ type demuxedStream struct {
 // parseTSStreams 把已通过 Layer A 校验的 TS segment 拆成 elementary streams。
 // PES 重组按 PUSI 分界(HLS 每帧一个 PES 的约定),时间戳从 PES header 提取。
 func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
+	if len(data)%tsPacketSize != 0 {
+		return nil, fmt.Errorf("TS segment size %d is not %d-byte aligned", len(data), tsPacketSize)
+	}
+	return parseTSStreamsReader(bytes.NewReader(data))
+}
+
+// parseTSStreamsReader 从可回退的 reader 逐包拆流。segment 保存在临时文件时只把当前
+// PES 累积到内存,不会再把完整 TS 一次性读入 []byte。
+func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, error) {
 	pmtPIDs := map[uint16]bool{}
 	streamTypes := map[uint16]byte{}
-	for off := 0; off < len(data); off += tsPacketSize {
-		packet := data[off : off+tsPacketSize]
-		if packet[0] != 0x47 {
-			return nil, fmt.Errorf("TS packet at offset %d has invalid sync byte", off)
-		}
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind TS segment: %w", err)
+	}
+	_, err := forEachTSPacket(reader, func(_ int, packet []byte) error {
 		pid, pusi, payload, ok := tsPacketPayload(packet)
 		if !ok || !pusi {
-			continue
+			return nil
 		}
 		switch {
 		case pid == 0:
 			pids, err := parsePSIMap(payload, 0x00)
 			if err != nil {
-				return nil, fmt.Errorf("PAT not parseable: %w", err)
+				return fmt.Errorf("PAT not parseable: %w", err)
 			}
 			for pmtPID := range pids {
 				pmtPIDs[pmtPID] = true
@@ -51,12 +61,16 @@ func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
 		case pmtPIDs[pid]:
 			types, err := parsePMTTypes(payload)
 			if err != nil {
-				return nil, fmt.Errorf("PMT not parseable: %w", err)
+				return fmt.Errorf("PMT not parseable: %w", err)
 			}
 			for streamPID, streamType := range types {
 				streamTypes[streamPID] = streamType
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	streams := map[uint16]*demuxedStream{}
@@ -82,23 +96,29 @@ func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
 		stream.frames = append(stream.frames, frame)
 		return nil
 	}
-	for off := 0; off < len(data); off += tsPacketSize {
-		packet := data[off : off+tsPacketSize]
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind TS segment: %w", err)
+	}
+	_, err = forEachTSPacket(reader, func(_ int, packet []byte) error {
 		pid, pusi, payload, ok := tsPacketPayload(packet)
 		if !ok {
-			continue
+			return nil
 		}
 		if _, known := streams[pid]; !known {
-			continue
+			return nil
 		}
 		if pusi {
 			if err := flush(pid); err != nil {
-				return nil, err
+				return err
 			}
 			pending[pid] = append([]byte(nil), payload...)
-			continue
+			return nil
 		}
 		pending[pid] = append(pending[pid], payload...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	for pid := range streams {
 		if err := flush(pid); err != nil {

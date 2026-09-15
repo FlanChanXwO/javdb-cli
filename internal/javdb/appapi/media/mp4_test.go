@@ -157,6 +157,22 @@ func TestDownloadHLSToMP4ProducesFastStartFile(t *testing.T) {
 	}
 }
 
+func TestDownloadMP4IgnoresStaleFixedSpool(t *testing.T) {
+	server := hlsMP4Server(t)
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "preview.mp4")
+	staleSpool := target + ".spool"
+	if err := os.WriteFile(staleSpool, []byte("stale spool"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DownloadHLS(context.Background(), hlsFetchFrom(server.URL), server.URL+"/video.m3u8", target); err != nil {
+		t.Fatalf("download HLS with stale spool: %v", err)
+	}
+	if _, err := os.Stat(staleSpool); err != nil {
+		t.Fatalf("stale spool must remain unrelated to new download: %v", err)
+	}
+}
+
 // ---- ctx 贯穿(input.md #44):取消立即停止工作且不落盘 ----
 
 func TestDownloadMovieAssetContextCancelled(t *testing.T) {
@@ -283,7 +299,7 @@ func overwriteUint32(data []byte, off int, value uint32) {
 
 // hlsFetchFrom 把服务器根地址包装成 FetchContext。
 func hlsFetchFrom(base string) FetchContext {
-	return func(ctx context.Context, uri string) ([]byte, error) {
+	return byteFetch(func(ctx context.Context, uri string) ([]byte, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
 		if err != nil {
 			return nil, err
@@ -306,7 +322,7 @@ func hlsFetchFrom(base string) FetchContext {
 			}
 		}
 		return buf, nil
-	}
+	})
 }
 
 // ---- 计划 #16:High Profile SPS scaling matrix 是 1-bit flag ----

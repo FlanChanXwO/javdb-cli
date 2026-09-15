@@ -392,6 +392,83 @@ func TestMP4CTTSRLEPositiveOffsets(t *testing.T) {
 	_ = stss
 }
 
+func TestBuildMP4RejectsCompositionOffsetOutsideCTTSRange(t *testing.T) {
+	validParamSets := [][]byte{
+		{0x67, 0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2},
+		{0x68, 0xCC, 0xDD},
+	}
+	cases := []struct {
+		name      string
+		firstPTS  uint64
+		firstDTS  uint64
+		secondPTS uint64
+		secondDTS uint64
+		wantInErr string
+	}{
+		{
+			name:      "version 0 positive overflow",
+			secondPTS: uint64(^uint32(0)) + 3601,
+			secondDTS: 3600,
+			wantInErr: "ctts version 0 range",
+		},
+		{
+			name:      "version 1 negative overflow",
+			firstDTS:  uint64(1<<31) + 1,
+			secondDTS: uint64(1<<31) + 3601,
+			wantInErr: "ctts version 1 range",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			video := &h264Track{
+				ParamSets: validParamSets,
+				Samples: []h264Sample{
+					{Data: avccFrame(0x65, 0x01), PTS: tc.firstPTS, DTS: tc.firstDTS, Sync: true},
+					{Data: avccFrame(0x41, 0x02), PTS: tc.secondPTS, DTS: tc.secondDTS},
+				},
+			}
+			_, err := buildMP4(video, nil)
+			if err == nil || !strings.Contains(err.Error(), tc.wantInErr) {
+				t.Fatalf("buildMP4 error = %v, want %q", err, tc.wantInErr)
+			}
+		})
+	}
+}
+
+func TestLayerCRejectsCTTSSampleCountMismatch(t *testing.T) {
+	video, audio := buildTestTracks(t)
+	video.Samples[1].PTS += 3600
+	mp4, err := buildMP4(video, audio)
+	if err != nil {
+		t.Fatalf("buildMP4: %v", err)
+	}
+	var ctts boxWalker
+	found := false
+	if err := walkBoxes(mp4, 0, int64(len(mp4)), func(ref boxWalker) error {
+		if ref.kind == "ctts" && !found {
+			ctts = ref
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk ctts: %v", err)
+	}
+	if !found {
+		t.Fatal("ctts box not found")
+	}
+	corrupt := append([]byte(nil), mp4...)
+	// ctts entry_count 改为只保留第一个 entry，累计 sample_count 应与 stsz 不一致。
+	overwriteUint32(corrupt, int(ctts.off)+12, 1)
+	overwriteUint32(corrupt, int(ctts.off)+16, 1)
+	path := filepath.Join(t.TempDir(), "ctts-count-mismatch.mp4")
+	if err := os.WriteFile(path, corrupt, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateMP4File(path); err == nil || !strings.Contains(err.Error(), "ctts sample count") {
+		t.Fatalf("validate mismatch error = %v, want ctts sample-count rejection", err)
+	}
+}
+
 // ---- #23:完全没有 sync sample 时必须拒绝生成 MP4 ----
 
 func TestPlanVideoTrackRejectsNoSyncSamples(t *testing.T) {
@@ -634,7 +711,7 @@ func avccFrame(nalType, payload byte) []byte {
 
 // 后续 segment 出现不同 SPS 必须拒绝 remux。
 func TestSpoolerRejectsCrossSegmentSPSChange(t *testing.T) {
-	spool, err := newMP4Spooler(t.TempDir() + "/spool")
+	spool, err := newMP4Spooler(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,7 +730,7 @@ func TestSpoolerRejectsCrossSegmentSPSChange(t *testing.T) {
 }
 
 func TestSpoolerRejectsCrossSegmentDTSRegression(t *testing.T) {
-	spool, err := newMP4Spooler(t.TempDir() + "/spool")
+	spool, err := newMP4Spooler(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +745,7 @@ func TestSpoolerRejectsCrossSegmentDTSRegression(t *testing.T) {
 }
 
 func TestSpoolerRejectsCrossSegmentPPSChange(t *testing.T) {
-	spool, err := newMP4Spooler(t.TempDir() + "/spool")
+	spool, err := newMP4Spooler(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

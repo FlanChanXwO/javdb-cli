@@ -66,8 +66,12 @@ func TestFetchMediaNeverSendsAuthHeaders(t *testing.T) {
 		t.Fatalf("new app API client: %v", err)
 	}
 	apiClient.SetToken("secret-bearer-token")
-	if _, err := apiClient.FetchMedia(context.Background(), server.URL+"/img"); err != nil {
+	body, err := apiClient.FetchMedia(context.Background(), server.URL+"/img")
+	if err != nil {
 		t.Fatalf("fetch media: %v", err)
+	}
+	if err := body.Close(); err != nil {
+		t.Fatalf("close media body: %v", err)
 	}
 	for _, name := range []string{"Authorization", "Jdsignature"} {
 		if gotHeader.Get(name) != "" {
@@ -87,13 +91,13 @@ func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 		"https://media.example.test/previews/first.ts":  encryptHLSTestPayload(t, first, key, hlsSequenceIV(7)),
 		"https://media.example.test/previews/second.ts": encryptHLSTestPayload(t, second, key, hlsSequenceIV(8)),
 	}
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		body, ok := resources[uri]
 		if !ok {
 			return nil, fmt.Errorf("unexpected media URI %q", uri)
 		}
 		return body, nil
-	}
+	})
 
 	target := filepath.Join(t.TempDir(), "preview.ts")
 	n, err := downloadTS(context.Background(), fetch, playlistURL, target)
@@ -116,9 +120,9 @@ func TestDownloadHLSDecryptsVODWithSequenceIV(t *testing.T) {
 func TestDownloadHLSRejectsUnfinishedPlaylistWithoutCreatingFile(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	target := filepath.Join(t.TempDir(), "preview.ts")
-	_, err := downloadTS(context.Background(), func(_ context.Context, _ string) ([]byte, error) {
+	_, err := downloadTS(context.Background(), byteFetch(func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("#EXTM3U\n#EXTINF:1.0,\nsegment.ts\n"), nil
-	}, playlistURL, target)
+	}), playlistURL, target)
 	if err == nil {
 		t.Fatal("unfinished HLS playlist unexpectedly succeeded")
 	}
@@ -144,13 +148,13 @@ func TestDownloadHLSRejectsInvalidPKCS7PaddingWithoutOutput(t *testing.T) {
 		"https://media.example.test/previews/key.bin":    key,
 		"https://media.example.test/previews/segment.ts": encryptHLSRawPayload(t, invalidPlaintext, key, hlsSequenceIV(0)),
 	}
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		body, ok := resources[uri]
 		if !ok {
 			return nil, fmt.Errorf("unexpected media URI %q", uri)
 		}
 		return body, nil
-	}
+	})
 
 	target := filepath.Join(t.TempDir(), "preview.ts")
 	_, err := downloadTS(context.Background(), fetch, playlistURL, target)

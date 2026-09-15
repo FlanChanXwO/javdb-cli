@@ -1,7 +1,11 @@
 package media
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 )
 
 // Layer A 的 segment 结构校验(input.md 计划 #29-#32):
@@ -11,6 +15,32 @@ import (
 // 合法重置,过严的 cc 检查会误报损坏(计划 #31)。
 
 const tsPacketSize = 188
+
+// forEachTSPacket 以固定大小的 packet buffer 顺序读取 TS。回调不得保留 packet 切片;
+// 需要跨包数据的调用方应自行复制 payload。读取到半个 packet 时显式报告对齐错误。
+func forEachTSPacket(reader io.Reader, visit func(offset int, packet []byte) error) (int, error) {
+	var packet [tsPacketSize]byte
+	count := 0
+	for {
+		n, err := io.ReadFull(reader, packet[:])
+		if errors.Is(err, io.EOF) && n == 0 {
+			return count, nil
+		}
+		if err != nil {
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				return count, fmt.Errorf("TS segment size is not %d-byte aligned at offset %d", tsPacketSize, count*tsPacketSize)
+			}
+			return count, err
+		}
+		if packet[0] != 0x47 {
+			return count, fmt.Errorf("TS packet at offset %d has invalid sync byte 0x%02X", count*tsPacketSize, packet[0])
+		}
+		if err := visit(count*tsPacketSize, packet[:]); err != nil {
+			return count, err
+		}
+		count++
+	}
+}
 
 // validateTSSegment 校验解密后的 segment 是结构合法的 MPEG-TS。
 // 两遍扫描:先收集 PSI(PAT/PMT),再校验各 elementary stream 的 PES 载荷,
@@ -22,21 +52,41 @@ func validateTSSegment(data []byte) error {
 	if len(data)%tsPacketSize != 0 {
 		return fmt.Errorf("TS segment size %d is not %d-byte aligned", len(data), tsPacketSize)
 	}
-	packets := make([][]byte, 0, len(data)/tsPacketSize)
-	for off := 0; off < len(data); off += tsPacketSize {
-		packet := data[off : off+tsPacketSize]
-		if packet[0] != 0x47 {
-			return fmt.Errorf("TS packet at offset %d has invalid sync byte 0x%02X", off, packet[0])
-		}
-		packets = append(packets, packet)
-	}
+	return validateTSSegmentReader(bytes.NewReader(data))
+}
 
+// validateTSSegmentFile 对临时文件做与内存 wrapper 相同的 Layer A 校验,但不读取整段到内存。
+func validateTSSegmentFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	info, statErr := file.Stat()
+	if statErr != nil {
+		return errors.Join(statErr, file.Close())
+	}
+	if info.Size() == 0 {
+		return errors.Join(fmt.Errorf("empty TS segment"), file.Close())
+	}
+	if info.Size()%tsPacketSize != 0 {
+		return errors.Join(fmt.Errorf("TS segment size %d is not %d-byte aligned", info.Size(), tsPacketSize), file.Close())
+	}
+	validateErr := validateTSSegmentReader(file)
+	closeErr := file.Close()
+	return errors.Join(validateErr, closeErr)
+}
+
+// validateTSSegmentReader 逐包完成 Layer A 两遍扫描。
+func validateTSSegmentReader(reader io.ReadSeeker) error {
 	pmtPIDs := map[uint16]bool{}
 	streamPIDs := map[uint16]bool{}
-	for _, packet := range packets {
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind TS segment: %w", err)
+	}
+	packetCount, err := forEachTSPacket(reader, func(_ int, packet []byte) error {
 		pid, pusi, payload, ok := tsPacketPayload(packet)
 		if !ok || !pusi {
-			continue
+			return nil
 		}
 		switch {
 		case pid == 0:
@@ -56,7 +106,15 @@ func validateTSSegment(data []byte) error {
 				streamPIDs[streamPID] = true
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
+	if packetCount == 0 {
+		return fmt.Errorf("empty TS segment")
+	}
+
 	if len(pmtPIDs) == 0 {
 		return fmt.Errorf("TS segment has no parseable PAT")
 	}
@@ -65,10 +123,13 @@ func validateTSSegment(data []byte) error {
 	}
 
 	seen := map[uint16]bool{}
-	for _, packet := range packets {
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind TS segment: %w", err)
+	}
+	_, err = forEachTSPacket(reader, func(_ int, packet []byte) error {
 		pid, pusi, payload, ok := tsPacketPayload(packet)
 		if !ok || !streamPIDs[pid] {
-			continue
+			return nil
 		}
 		if pusi {
 			// "seen" 表示至少观察到 PUSI + 合法 PES prefix;
@@ -78,6 +139,10 @@ func validateTSSegment(data []byte) error {
 			}
 			seen[pid] = true
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	for pid := range streamPIDs {
 		if !seen[pid] {

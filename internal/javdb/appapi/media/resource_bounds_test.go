@@ -24,12 +24,12 @@ func TestDownloadHLSPreservesPlaylistBeyondFormerLimit(t *testing.T) {
 	b.WriteString(strings.Repeat("# padding\n", 250000))
 	b.WriteString("#EXTINF:1.0,\nseg.ts\n")
 	b.WriteString("#EXT-X-ENDLIST\n")
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		if strings.HasSuffix(uri, ".m3u8") {
 			return []byte(b.String()), nil
 		}
 		return validTSSegmentAt(0), nil
-	}
+	})
 	written, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
 	if err != nil {
 		t.Fatalf("download oversized playlist: %v", err)
@@ -47,12 +47,12 @@ func TestDownloadHLSPreservesMoreThanFormerSegmentLimit(t *testing.T) {
 		b.WriteString("seg.ts\n")
 	}
 	b.WriteString("#EXT-X-ENDLIST\n")
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		if strings.HasSuffix(uri, ".m3u8") {
 			return []byte(b.String()), nil
 		}
 		return validTSSegmentAt(0), nil
-	}
+	})
 	written, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
 	if err != nil {
 		t.Fatalf("download more than former segment limit: %v", err)
@@ -141,11 +141,41 @@ func TestPublishMediaFileLeavesNoCollisionProneTemp(t *testing.T) {
 func TestDownloadImagePropagatesContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		return nil, ctx.Err()
-	}
+	})
 	_, err := DownloadImage(ctx, fetch, "https://img.example.test/a.jpg", filepath.Join(t.TempDir(), "a.jpg"))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
+type countingReader struct {
+	data  []byte
+	read  int
+	reads int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	r.reads++
+	if r.read == len(r.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.read:])
+	r.read += n
+	return n, nil
+}
+
+func TestReadMediaBodyBoundedStopsAfterOneProbeByte(t *testing.T) {
+	reader := &countingReader{data: []byte(strings.Repeat("x", 1024))}
+	_, err := readMediaBodyBounded(reader, 16)
+	if err == nil || !strings.Contains(err.Error(), "exceeds fixed bound of 16 bytes") {
+		t.Fatalf("bounded read error = %v, want fixed-bound error", err)
+	}
+	if reader.read != 17 {
+		t.Fatalf("bounded reader consumed %d bytes, want exactly 17", reader.read)
+	}
+	if reader.reads != 1 {
+		t.Fatalf("bounded reader performed %d reads, want 1", reader.reads)
 	}
 }

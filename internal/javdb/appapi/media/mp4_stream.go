@@ -25,9 +25,10 @@ type mp4Spooler struct {
 	fileOffset int64
 }
 
-func newMP4Spooler(path string) (*mp4Spooler, error) {
-	// O_RDWR:Phase2 需要从 spool 读回样本写入 mdat。
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
+func newMP4Spooler(dir string) (*mp4Spooler, error) {
+	// O_RDWR:Phase2 需要从 spool 读回样本写入 mdat。CreateTemp 避免 stale
+	// spool 或同一 target 的并发下载在固定文件名处永久冲突。
+	file, err := os.CreateTemp(dir, ".javdb-mp4-spool-*")
 	if err != nil {
 		return nil, fmt.Errorf("create spool file: %w", err)
 	}
@@ -39,10 +40,26 @@ func newMP4Spooler(path string) (*mp4Spooler, error) {
 // AAC ASC、宽高、采样率、通道),后续 segment 再次出现配置时必须与首段一致;
 // 检测到 change 直接拒绝 remux(计划 #17)。
 func (s *mp4Spooler) addSegment(data []byte) error {
-	if err := validateSegmentCodecs(data); err != nil {
+	return s.addSegmentReader(bytes.NewReader(data))
+}
+
+// addSegmentFile 从 segment 临时文件逐包解析;文件关闭由本方法负责,调用方只需在
+// 成功或失败后删除文件。样本 payload 仍按帧写入 spool,不会保留完整 segment。
+func (s *mp4Spooler) addSegmentFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
 		return err
 	}
-	streams, err := parseTSStreams(data)
+	addErr := s.addSegmentReader(file)
+	closeErr := file.Close()
+	return errors.Join(addErr, closeErr)
+}
+
+func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
+	if err := validateSegmentCodecsReader(reader); err != nil {
+		return err
+	}
+	streams, err := parseTSStreamsReader(reader)
 	if err != nil {
 		return err
 	}
@@ -393,8 +410,8 @@ func validateMP4File(path string) (err error) {
 		return err
 	}
 	defer func() {
-		if closeErr := file.Close(); err == nil && closeErr != nil {
-			err = fmt.Errorf("close MP4 validation file: %w", closeErr)
+		if closeErr := file.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close MP4 validation file: %w", closeErr))
 		}
 	}()
 	info, err := file.Stat()
@@ -452,6 +469,8 @@ func validateMP4File(path string) (err error) {
 		sttsSeen        bool
 		sttsSampleCount uint64
 		sttsDuration    uint64
+		cttsSeen        bool
+		cttsSampleCount uint64
 		stszSeen        bool
 		stszOff         int64
 		stszCnt         int64
@@ -536,6 +555,40 @@ func validateMP4File(path string) (err error) {
 			current.sttsSeen = true
 			current.sttsSampleCount = sampleCount
 			current.sttsDuration = timingDuration
+		case "ctts":
+			if current == nil {
+				return fmt.Errorf("ctts is outside a track")
+			}
+			// ctts:[size kind][version/flags][entry_count][entries(count,offset)]。
+			cttsBoxSize := int64(beU32(moov[ref.off : ref.off+4]))
+			if cttsBoxSize < 16 || ref.off+cttsBoxSize > int64(len(moov)) {
+				return fmt.Errorf("ctts box is truncated")
+			}
+			version := moov[ref.off+8]
+			if version != 0 && version != 1 {
+				return fmt.Errorf("track %d has unsupported ctts version %d", current.trackID, version)
+			}
+			if current.cttsSeen {
+				return fmt.Errorf("track %d has duplicate ctts tables", current.trackID)
+			}
+			entryCount := uint64(beU32(moov[ref.off+12 : ref.off+16]))
+			if entryCount > uint64((cttsBoxSize-16)/8) {
+				return fmt.Errorf("track %d ctts entries (%d) exceed box bounds", current.trackID, entryCount)
+			}
+			entryEnd := ref.off + 16 + int64(entryCount)*8
+			if entryEnd > ref.off+cttsBoxSize {
+				return fmt.Errorf("track %d ctts entries (%d) exceed box bounds", current.trackID, entryCount)
+			}
+			var sampleCount uint64
+			for pos := ref.off + 16; pos < entryEnd; pos += 8 {
+				count := uint64(beU32(moov[pos : pos+4]))
+				if ^uint64(0)-sampleCount < count {
+					return fmt.Errorf("track %d ctts sample count overflows", current.trackID)
+				}
+				sampleCount += count
+			}
+			current.cttsSeen = true
+			current.cttsSampleCount = sampleCount
 		case "stsd":
 			// stsd:[size kind][ver/flags][entry_count][sample entry(size+kind+...)]:
 			// entry 的 kind 字段在 box 起始 +20。
@@ -587,6 +640,9 @@ func validateMP4File(path string) (err error) {
 		}
 		if table.sttsDuration != table.mdhdDuration {
 			return fmt.Errorf("track %d stts duration %d != mdhd duration %d", table.trackID, table.sttsDuration, table.mdhdDuration)
+		}
+		if table.cttsSeen && table.cttsSampleCount != uint64(table.stszCnt) {
+			return fmt.Errorf("track %d ctts sample count %d != stsz sample count %d", table.trackID, table.cttsSampleCount, table.stszCnt)
 		}
 		if !table.stcoSeen {
 			return fmt.Errorf("track %d missing stco chunk table", table.trackID)
@@ -715,8 +771,8 @@ func validateTSFileStream(path string) (err error) {
 		return err
 	}
 	defer func() {
-		if closeErr := file.Close(); err == nil && closeErr != nil {
-			err = fmt.Errorf("close TS validation file: %w", closeErr)
+		if closeErr := file.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close TS validation file: %w", closeErr))
 		}
 	}()
 	info, err := file.Stat()

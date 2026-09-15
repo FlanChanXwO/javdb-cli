@@ -136,20 +136,20 @@ func TestValidateTSSegment(t *testing.T) {
 // ---- DownloadHLS 的 Layer A 集成:per-segment 校验 + bounded retry + 原子发布 ----
 
 func hlsFetch(resources map[string][]byte) FetchContext {
-	return func(_ context.Context, uri string) ([]byte, error) {
+	return byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		body, ok := resources[uri]
 		if !ok {
 			return nil, errors.New("unexpected media URI " + uri)
 		}
 		return body, nil
-	}
+	})
 }
 
 func TestDownloadHLSRetriesInvalidSegmentThenSucceeds(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	good := validTSSegment()
 	attempts := 0
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		switch uri {
 		case playlistURL:
 			return []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\ns1.ts\n#EXT-X-ENDLIST\n"), nil
@@ -162,7 +162,7 @@ func TestDownloadHLSRetriesInvalidSegmentThenSucceeds(t *testing.T) {
 		default:
 			return nil, errors.New("unexpected URI")
 		}
-	}
+	})
 	target := t.TempDir() + "/preview.ts"
 	written, err := downloadTS(context.Background(), fetch, playlistURL, target)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestDownloadHLSRetriesInvalidSegmentThenSucceeds(t *testing.T) {
 
 func TestDownloadHLSFailsAfterExhaustedSegmentRetries(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
+	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		switch uri {
 		case playlistURL:
 			return []byte("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:17\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\ns1.ts\n#EXT-X-ENDLIST\n"), nil
@@ -184,7 +184,7 @@ func TestDownloadHLSFailsAfterExhaustedSegmentRetries(t *testing.T) {
 		default:
 			return nil, errors.New("unexpected URI")
 		}
-	}
+	})
 	target := t.TempDir() + "/preview.ts"
 	_, err := downloadTS(context.Background(), fetch, playlistURL, target)
 	if err == nil || !strings.Contains(err.Error(), "segment 17 remained invalid after 3 attempts") {
@@ -201,12 +201,12 @@ func TestDownloadHLSFailsAfterExhaustedSegmentRetries(t *testing.T) {
 func TestDownloadHLSRejectsDiscontinuityPlaylist(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	target := t.TempDir() + "/preview.ts"
-	_, err := downloadTS(context.Background(), func(_ context.Context, uri string) ([]byte, error) {
+	_, err := downloadTS(context.Background(), byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		if uri == playlistURL {
 			return []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\na.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:1.0,\nb.ts\n#EXT-X-ENDLIST\n"), nil
 		}
 		return nil, errors.New("segment must not be fetched")
-	}, playlistURL, target)
+	}), playlistURL, target)
 	if err == nil || !strings.Contains(err.Error(), "HLS discontinuity is not supported") {
 		t.Fatalf("download HLS error = %v, want discontinuity rejection", err)
 	}
