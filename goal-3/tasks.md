@@ -126,9 +126,9 @@ TDD:执行 task 一律测试先行(Red → Green → Refactor);每 task 收尾 `
 - 下一步:goal 完成,交付 PR 由维护者决定。
 
 ## PR #47 review follow-up [x]
-- 实际做:按修改建议移除 `MovieAsset` 元数据与 metadata probe/`[assets.probe]` 配置，删除无依据的媒体资源硬上限；以共享 `atomicfile.LinkNoReplace` 收敛图片、TS、MP4 的 no-replace 发布；修正 AAC `stts`、`mdhd`/`tkhd`/`mvhd` Version-0 布局与 Layer C sample-count 校验；补齐错误传播、双语文档和执行记录。
-- 证据:`git diff --check`、`go test ./...`、`go test -race ./...`、`go vet ./...`、`sh scripts/build.sh` 全部通过。真实只读 E2E 使用 `SSIS-001`：list 返回 13 个资产；图片 magic/`file` 通过；TS 16,705,680 bytes、88,860 个包；MP4 为 `ftyp → moov → mdat`，`ffprobe` 识别 H.264 560×316、AAC 44.1 kHz 双声道且时长约 132.5 s，`ffmpeg` 完整解码通过。
-- 剩余风险:无本轮阻塞项；真实媒体内容随远端资源变化，离线回归仍是默认门禁。
+- 实际做:在上一轮基础上补齐跨 segment 全局视频 DTS 非回退检查，明确拒绝 `#EXT-X-DISCONTINUITY`；SPS/PPS 均按参数集集合比较；视频 `stts` delta、`mdhd` duration 与 spool finalize 共用同一纯函数并保留溢出/单样本错误；Layer C 逐 track 校验 `sum(stts.count*delta)==mdhd.duration`；删除临时根目录 `plan.md`，并将 `goal-3/plan.md` 的旧 API 说明标为历史基线。
+- 证据:先加入回归测试确认六类缺口均红灯，再实现后 `go test ./internal/javdb/appapi/media`、`go test -race ./internal/javdb/appapi/media`、`go test ./...`、`go vet ./...`、`sh scripts/build.sh`、`git diff --check` 全部通过；实现提交为 `2aa1a50`。真实只读 E2E 使用 `SSIS-001`：JSON 13 个资产且对象严格只有 `type/url`；图片 magic/`file`/`sips` 通过、重复目标失败且 hash 不变；TS H.264 560×316 并完整解码；MP4 为 `ftyp → moov → mdat`，`ffprobe` 记录 H.264 560×316、AAC 44.1 kHz 双声道、总时长 132.539501 s，动态 10%/50%/90% seek 均成功。
+- 剩余风险:ffmpeg null muxer 对 B-frame DTS 输出 1 条诊断但完整解码退出码为 0；真实媒体内容随远端资源变化，离线回归仍是默认门禁。资源占用历史测量仍明确标注为 `e96202b`，本轮未重新测量该项。
 - 下一步:推送 `feat/assets-media-download` 并交由 PR #47 维护者复核。
 
 ---

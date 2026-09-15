@@ -3,15 +3,16 @@
 本页保留 PR #47 媒体链路的真实 JavDB E2E 记录。番号统一以 `NUMBER` 占位，
 不记录具体影片；媒体 URL 域名属于公开 CDN/镜像地址。
 
-实测环境：macOS darwin-arm64、Go 1.26，历史测量 commit `e96202b`；
-`ffprobe`/`ffmpeg` 仅用于独立验证，不是运行时依赖。当前契约的资产机器输出
-严格只有 `type` 与 `url`，不会在 list 阶段读取媒体内容。
+实测环境：macOS darwin-arm64、Go `go1.26.3`，当前实现 commit `2aa1a50`；
+`ffprobe`/`ffmpeg` `8.1.1`，仅用于独立验证，不是运行时依赖。当前契约的资产机器
+输出严格只有 `type` 与 `url`，不会在 list 阶段读取媒体内容。
 
 ## E2E #1/#2：`assets list NUMBER`
 
 - `javdb assets list NUMBER` 返回 13 个资产（thumbnail、cover、10 张 preview 图与 preview video），
-  管道输出为 `TYPE<TAB>URL`，无装饰。
-- `javdb assets list NUMBER --json` 返回 JSON 数组；每个对象严格只有 `type` 与 `url`。
+  管道输出为 `TYPE<TAB>URL`，无装饰；视频筛选结果为单行 `video<TAB>URL`。
+- `javdb assets list NUMBER --json` 返回 JSON 数组；逐项校验确认对象严格只有 `type` 与 `url`，
+  `type` 仅为 `image`/`video`，URL 为 HTTP(S)。
 
 ## E2E #3：pipe → download
 
@@ -20,26 +21,31 @@ javdb assets list NUMBER --type image 1-2 | javdb assets download -d DIR
 ```
 
 - stdout 只输出最终路径（`DIR/image-001.jpg`、`DIR/image-002.jpg`），无 `saved ...` 装饰。
-- `file` 确认产物为合法 JPEG；无残留临时文件，已有目标不会被覆盖。
+- `file` 与 macOS `sips` 确认产物可识别且可读取（本轮样本为 147×200 与 800×438 JPEG）；
+  无残留 `.part`/`.spool` 临时文件，已有目标重复下载会失败且 SHA-256 不变。
 
 ## E2E #4：video → TS
 
 - `javdb assets list NUMBER --type video | javdb assets download -o preview.ts`
-  生成 MPEG-TS；`ffprobe` 确认 h264 720×404 + aac，`ffmpeg -f null -` 完整
-  decode 无错误（exit 0）。
+  生成 MPEG-TS；`ffprobe` 确认 H.264 560×316，`ffmpeg -f null -` 完整 decode
+  退出码为 0。
 
 ## E2E #5：video → MP4（Fast Start remux）
 
 - `javdb assets list NUMBER --type video | javdb assets download -o preview.mp4`
   生成 ISO MP4。
 - **Fast Start**：`ftyp → moov → mdat` 顺序确认。
-- **独立验证**：`ffprobe` 确认 h264 720×404、aac 48000 Hz 立体声、时长与上游
-  preview 时间轴一致；`ffmpeg -v error -i preview.mp4 -f null -` 无错误输出。
-- 在 10s、60s、110s 随机点执行 seek 均成功。
+- **独立验证**：`ffprobe` 记录 format duration `132.539501s`；视频为 H.264
+  560×316、`30000/1001`、`132.465667s`；音频为 AAC、44100 Hz、双声道、
+  `132.539501s`。`ffmpeg -v error -i preview.mp4 -f null -` 完整解码退出码为 0；
+  null muxer 输出 1 条 B-frame DTS 诊断，但未导致解码失败。
+- 按探测到的总时长动态计算 10%、50%、90% 三个位置执行 seek，三处均成功；未使用
+  固定秒数。
 
 ## E2E #6：资源占用实测
 
-历史测量使用同一 segment 重复引用 120 次、输出约 569 MB：
+历史测量（非本轮重跑）使用同一 segment 重复引用 120 次、输出约 569 MB，基于
+`e96202b`：
 
 | 指标 | 1x（约 47.5 MB 输出） | 10x（约 569 MB 输出） |
 | --- | --- | --- |
