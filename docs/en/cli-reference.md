@@ -228,8 +228,9 @@ name-only envelope.
 The lists/collections fan-out NDJSON shape is an intentional
 `javdb.pipeline/v1` machine-contract migration. Consumers of the former
 aggregate `data.lists`/`data.items` shape must migrate to one `data.list` or
-`data.entity` per envelope; legacy human output and explicit aggregate
-`--json` remain compatible, and there is no legacy aggregate NDJSON mode.
+`data.entity` per envelope. Legacy human output and explicit aggregate
+`--json` retain their existing output shapes; list/entity records without a
+stable ID fail explicitly. There is no legacy aggregate NDJSON mode.
 
 ## Entity and list navigation
 

@@ -178,7 +178,8 @@ shape，多项输入输出信封数组。消费输入的命令对原始位置参
 
 列表与合集的 fan-out NDJSON shape 是有意的 `javdb.pipeline/v1` machine-contract 迁移。消费
 旧聚合 `data.lists`/`data.items` 的程序必须迁移为每个信封读取一个 `data.list` 或 `data.entity`；
-legacy 人类输出和显式聚合 `--json` 保持兼容，且没有旧的聚合 NDJSON 模式。
+legacy 人类输出和显式聚合 `--json` 保持既有输出 shape；list/entity 缺少稳定 ID 时显式失败，
+且没有旧的聚合 NDJSON 模式。
 
 ## 实体与合集导航
 

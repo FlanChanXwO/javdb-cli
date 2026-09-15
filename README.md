@@ -40,7 +40,8 @@ terms and the laws that apply to you.
   Every fan-out record requires a non-empty stable ID; missing IDs fail explicitly,
   while a missing display name falls back to the ID in `ref`.
   The lists/collections fan-out NDJSON shape is an intentional v1 machine-contract
-  migration; legacy human output and explicit aggregate `--json` remain compatible.
+  migration. Legacy human output and explicit aggregate `--json` retain their
+  existing output shapes; list/entity records without a stable ID fail explicitly.
 - **API client, not a scraper** — commands use the App JSON API with explicit
   host and proxy selection; failures remain visible rather than becoming
   fabricated empty results.

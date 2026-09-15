@@ -5,4 +5,5 @@
 
 - Machine contract 迁移：lists/collections 的 NDJSON 从聚合 payload 改为逐记录 envelope。
   旧字段为 `data.lists`、`data.items`；新记录分别使用 `data.list`、`data.entity`。
-  legacy 人类输出和显式聚合 `--json` 保持不变，list/entity 现在强制要求稳定 ID。
+  legacy 人类输出和显式聚合 `--json` 保持既有输出 shape。
+  list/entity 现在强制要求稳定 ID，缺少稳定 ID 时显式失败。

@@ -32,8 +32,9 @@
   列表与合集的 fan-out 结果使用稳定的 `id`/`ref`，原始值分别位于
   `data.list`/`data.entity`。
   每个 fan-out 信封都必须有非空稳定 ID；缺少 ID 时显式失败，显示名称缺失时 `ref` 回退到 ID。
-  列表与合集的 fan-out NDJSON 是有意的 v1 machine-contract 迁移；legacy 人类输出和显式
-  聚合 `--json` 保持兼容。
+  列表与合集的 fan-out NDJSON 是有意的 v1 machine-contract 迁移。
+  legacy 人类输出和显式聚合 `--json` 保持既有输出 shape；
+  list/entity 缺少稳定 ID 时显式失败。
 - **API 客户端而非爬虫**——命令通过 App JSON API 请求，并显式选择主机与代理；失败会原样
   显示，不会伪装成空结果。
 - **适合 Agent 导航**——`detail` 提供稳定图 ID，命令支持 JSON 输出，并随仓库提供

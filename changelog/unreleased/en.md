@@ -5,5 +5,5 @@
 
 - Machine-contract migration: lists/collections NDJSON moves from aggregate payloads to per-record
   envelopes. Old fields were `data.lists` and `data.items`; new records use `data.list` and
-  `data.entity`. Legacy human output and explicit aggregate `--json` are unchanged, and stable
-  list/entity IDs are now required.
+  `data.entity`. Legacy human output and explicit aggregate `--json` retain their existing
+  output shapes. Stable list/entity IDs are now required, and records without one fail explicitly.
