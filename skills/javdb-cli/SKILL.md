@@ -110,7 +110,7 @@ javdb unmark SSIS-589
 6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会独立解析 Release 代理并忽略 `--host`、`JAVDB_HOST` 与已配置 host，再按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
-9. 影片媒体资产:`javdb assets list NUMBER` 输出资产序列(TTY 带编号描述;管道为 `TYPE<TAB>URL`),`javdb assets download` 消费该记录流并验证落盘。TTY、`--json` 与 `--ndjson` 会对选中资产执行 best-effort metadata probe(JSON/NDJSON 暴露可选 width/height/duration;duration 来自 HLS EXTINF,宽高来自真实媒体 SPS,不从 720p 等名字推断);普通 pipe 模式完全不 probe。probe 行为可在 `~/.javdb-cli/config.toml` 的 `[assets.probe]` 表配置;不要求自己解析 preview_images JSON、手写 Referer、下载 HLS segment 或调用 ffmpeg。该命令域只写入本地 thumbnail/preview 资源,不支持完整影片或磁力目标。失败时如实报告,不能把已包装的图片字节或不完整视频当作成功结果。
+9. 影片媒体资产:`javdb assets list NUMBER` 输出资产序列(TTY 带编号描述;管道为 `TYPE<TAB>URL`),机器输出严格只有 `type` 与 `url`;`javdb assets download` 消费该记录流并验证落盘。下载链路不要求自己解析 preview_images JSON、手写 Referer、调用 ffmpeg，也不为 list 额外读取媒体内容。该命令域只写入本地 thumbnail/preview 资源,不支持完整影片或磁力目标。失败时如实报告,不能把已包装的图片字节或不完整视频当作成功结果。
 10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。
 
 ## 以图搜番与管道

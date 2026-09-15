@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -16,14 +17,25 @@ import (
 
 // parseTrackBoxes 在 moov 内定位全部 trak 的关键字段。
 type trackBoxes struct {
-	kind    string // vide / soun
-	tkhdDur uint64 // movie timescale
-	mdhdTS  uint32
-	mdhdDur uint32
-	sttsRaw []byte
-	cttsRaw []byte // nil 表示省略
-	stssRaw []byte // nil 表示省略
-	avcC    []byte
+	kind            string // vide / soun
+	tkhdSize        uint32
+	tkhdID          uint32
+	tkhdDur         uint64 // movie timescale
+	tkhdWidth       uint32
+	tkhdHeight      uint32
+	mdhdSize        uint32
+	mdhdTS          uint32
+	mdhdDur         uint32
+	mdhdLanguage    uint16
+	mdhdPredefined  uint16
+	stszSampleCount uint32
+	sttsEntryCount  uint32
+	sttsSampleCount uint64
+	sttsDelta       uint32
+	sttsRaw         []byte
+	cttsRaw         []byte // nil 表示省略
+	stssRaw         []byte // nil 表示省略
+	avcC            []byte
 }
 
 func parseMP4Tracks(t *testing.T, mp4 []byte) []trackBoxes {
@@ -39,12 +51,26 @@ func parseMP4Tracks(t *testing.T, mp4 []byte) []trackBoxes {
 			switch tref.kind {
 			case "tkhd":
 				// box头8 + ver/flags4 + ctime4 + mtime4 + track_ID4 + reserved4 → duration 在 +28
+				tb.tkhdSize = boxSize(trak, int(tref.off))
+				tb.tkhdID = beU32(trak[tref.off+20 : tref.off+24])
 				tb.tkhdDur = uint64(beU32(trak[tref.off+28 : tref.off+32]))
+				tb.tkhdWidth = beU32(trak[tref.off+84 : tref.off+88])
+				tb.tkhdHeight = beU32(trak[tref.off+88 : tref.off+92])
 			case "mdhd":
+				tb.mdhdSize = boxSize(trak, int(tref.off))
 				tb.mdhdTS = beU32(trak[tref.off+20 : tref.off+24])
 				tb.mdhdDur = beU32(trak[tref.off+24 : tref.off+28])
+				tb.mdhdLanguage = binary.BigEndian.Uint16(trak[tref.off+28 : tref.off+30])
+				tb.mdhdPredefined = binary.BigEndian.Uint16(trak[tref.off+30 : tref.off+32])
 			case "stts":
 				tb.sttsRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
+				tb.sttsEntryCount = beU32(tb.sttsRaw[12:16])
+				for off := 16; off+8 <= len(tb.sttsRaw); off += 8 {
+					tb.sttsSampleCount += uint64(beU32(tb.sttsRaw[off : off+4]))
+					if off == 16 {
+						tb.sttsDelta = beU32(tb.sttsRaw[off+4 : off+8])
+					}
+				}
 			case "ctts":
 				tb.cttsRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
 			case "stss":
@@ -53,6 +79,8 @@ func parseMP4Tracks(t *testing.T, mp4 []byte) []trackBoxes {
 				tb.avcC = append([]byte(nil), trak[tref.off+8:tref.off+int64(boxSize(trak, int(tref.off)))]...)
 			case "hdlr":
 				tb.kind = string(trak[tref.off+16 : tref.off+20])
+			case "stsz":
+				tb.stszSampleCount = beU32(trak[tref.off+16 : tref.off+20])
 			}
 			return nil
 		})
@@ -124,6 +152,45 @@ func TestMP4TrackIDsAndTimescales(t *testing.T) {
 	if tracks[1].mdhdTS != uint32(audio.SampleRate) {
 		t.Fatalf("audio mdhd timescale = %d, want %d", tracks[1].mdhdTS, audio.SampleRate)
 	}
+	var mvhd boxWalker
+	if err := walkBoxes(mp4, 0, int64(len(mp4)), func(ref boxWalker) error {
+		if ref.kind == "mvhd" {
+			mvhd = ref
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk mvhd: %v", err)
+	}
+	if mvhd.off == 0 || boxSize(mp4, int(mvhd.off)) != 108 {
+		t.Fatalf("mvhd size = %d, want 108", boxSize(mp4, int(mvhd.off)))
+	}
+	if got := beU32(mp4[mvhd.off+20 : mvhd.off+24]); got != mp4MovieTimescale {
+		t.Fatalf("mvhd timescale = %d, want %d", got, mp4MovieTimescale)
+	}
+	if got := beU32(mp4[mvhd.off+104 : mvhd.off+108]); got != mp4NextTrackID {
+		t.Fatalf("mvhd next_track_ID = %d, want %d", got, mp4NextTrackID)
+	}
+	wantWidth, wantHeight, err := parseSPSDimensions(video.ParamSets[0])
+	if err != nil {
+		t.Fatalf("parse test SPS: %v", err)
+	}
+	for i, track := range tracks {
+		if track.tkhdSize != 92 {
+			t.Errorf("track %d tkhd size = %d, want 92", i, track.tkhdSize)
+		}
+		if track.mdhdSize != 32 {
+			t.Errorf("track %d mdhd size = %d, want 32", i, track.mdhdSize)
+		}
+		if track.mdhdLanguage != 0x55C4 || track.mdhdPredefined != 0 {
+			t.Errorf("track %d mdhd language/pre_defined = 0x%04X/0x%04X, want 0x55C4/0", i, track.mdhdLanguage, track.mdhdPredefined)
+		}
+	}
+	if tracks[0].tkhdWidth != uint32(wantWidth)<<16 || tracks[0].tkhdHeight != uint32(wantHeight)<<16 {
+		t.Fatalf("video tkhd dimensions = 0x%08X×0x%08X, want %dx%d in 16.16", tracks[0].tkhdWidth, tracks[0].tkhdHeight, wantWidth, wantHeight)
+	}
+	if tracks[1].tkhdWidth != 0 || tracks[1].tkhdHeight != 0 {
+		t.Fatalf("audio tkhd dimensions = 0x%08X×0x%08X, want zero", tracks[1].tkhdWidth, tracks[1].tkhdHeight)
+	}
 	// tkhd duration 必须换算到 movie timescale,不能直接用 video 90k 时间。
 	if tracks[0].tkhdDur == 0 {
 		t.Fatal("tkhd duration is zero")
@@ -148,6 +215,10 @@ func tTrackIDs(t *testing.T, mp4 []byte) []uint32 {
 
 func TestMP4STTSHasSampleCountEntries(t *testing.T) {
 	video, audio := buildTestTracks(t)
+	audio.Samples = append(audio.Samples, aacSample{
+		Data: append([]byte(nil), audio.Samples[0].Data...),
+		PTS:  audio.Samples[0].PTS + uint64(1024*90000/audio.SampleRate),
+	})
 	mp4, err := buildMP4(video, audio)
 	if err != nil {
 		t.Fatalf("buildMP4: %v", err)
@@ -167,13 +238,56 @@ func TestMP4STTSHasSampleCountEntries(t *testing.T) {
 	if sampleCount != 2 || sampleDelta != 3600 {
 		t.Fatalf("stts entry = {%d, %d}, want {2, 3600}", sampleCount, sampleDelta)
 	}
+	if tracks[0].sttsSampleCount != uint64(tracks[0].stszSampleCount) {
+		t.Fatalf("video stts sample count = %d, stsz sample count = %d", tracks[0].sttsSampleCount, tracks[0].stszSampleCount)
+	}
 	// 音频 track 同理:N 个 1024 delta → 1 个 entry。
 	aStts := tracks[1].sttsRaw
 	entryCount = beU32(aStts[12:16])
 	sampleCount = beU32(aStts[16:20])
 	sampleDelta = beU32(aStts[20:24])
-	if entryCount != 1 || sampleCount != 1 || sampleDelta != 1024 {
-		t.Fatalf("audio stts entry = {%d, {%d, %d}}, want {1, {1, 1024}}", entryCount, sampleCount, sampleDelta)
+	if entryCount != 1 || sampleCount != 2 || sampleDelta != 1024 {
+		t.Fatalf("audio stts entry = {%d, {%d, %d}}, want {1, {2, 1024}}", entryCount, sampleCount, sampleDelta)
+	}
+	if tracks[1].sttsSampleCount != uint64(len(audio.Samples)) || tracks[1].sttsSampleCount != uint64(tracks[1].stszSampleCount) {
+		t.Fatalf("audio stts sample count = %d, stsz sample count = %d, want %d", tracks[1].sttsSampleCount, tracks[1].stszSampleCount, len(audio.Samples))
+	}
+	if tracks[1].mdhdDur != uint32(len(audio.Samples)*1024) {
+		t.Fatalf("audio mdhd duration = %d, want %d samples", tracks[1].mdhdDur, len(audio.Samples)*1024)
+	}
+}
+
+func TestLayerCRejectsSTTSSampleCountMismatch(t *testing.T) {
+	video, audio := buildTestTracks(t)
+	audio.Samples = append(audio.Samples, aacSample{
+		Data: append([]byte(nil), audio.Samples[0].Data...),
+		PTS:  audio.Samples[0].PTS + uint64(1024*90000/audio.SampleRate),
+	})
+	mp4, err := buildMP4(video, audio)
+	if err != nil {
+		t.Fatalf("buildMP4: %v", err)
+	}
+	var stts []boxWalker
+	if err := walkBoxes(mp4, 0, int64(len(mp4)), func(ref boxWalker) error {
+		if ref.kind == "stts" {
+			stts = append(stts, ref)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk stts: %v", err)
+	}
+	if len(stts) != 2 {
+		t.Fatalf("stts box count = %d, want 2", len(stts))
+	}
+	corrupt := append([]byte(nil), mp4...)
+	// 第二个 stts 属于音频轨，把其 sample_count 改成与 stsz 不一致的 1。
+	binary.BigEndian.PutUint32(corrupt[stts[1].off+16:stts[1].off+20], 1)
+	path := filepath.Join(t.TempDir(), "mismatch.mp4")
+	if err := os.WriteFile(path, corrupt, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateMP4File(path); err == nil || !strings.Contains(err.Error(), "stts") {
+		t.Fatalf("validate mismatch error = %v, want stts sample-count rejection", err)
 	}
 }
 

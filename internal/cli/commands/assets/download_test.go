@@ -2,14 +2,18 @@ package assets
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
 // assets download 契约(input.md 计划 #13/#14/#42/#43/#55):
@@ -154,6 +158,54 @@ func TestDownloadRefusesExistingAutoName(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "image-001.jpg")); err != nil || string(data) != "keep" {
 		t.Fatalf("existing file must stay untouched: %v %q", err, data)
+	}
+}
+
+func TestDownloadConcurrentAutoNamesPublishWithoutOverwrite(t *testing.T) {
+	server := downloadServer(t)
+	defer server.Close()
+	client, err := javdb.New(javdb.WithHost(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	const workers = 8
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			_, errs[index] = downloadAutoNamed(
+				context.Background(),
+				client,
+				assetRecord{Type: "image", URL: server.URL + "/image.jpg"},
+				dir,
+				1,
+			)
+		}(i)
+	}
+	wg.Wait()
+
+	successes := 0
+	for _, err := range errs {
+		if err == nil {
+			successes++
+			continue
+		}
+		if !errors.Is(err, os.ErrExist) {
+			t.Fatalf("concurrent download error = %v, want os.ErrExist for losers", err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful concurrent publishes = %d, want 1", successes)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "image-001.jpg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, testJPEG) {
+		t.Fatalf("published bytes = %x, want JPEG payload", data)
 	}
 }
 

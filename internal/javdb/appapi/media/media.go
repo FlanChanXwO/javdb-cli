@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -13,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/common/atomicfile"
 )
 
 // FetchContext 是 client 提供给媒体解码器的原始资源读取回调。
@@ -42,7 +45,7 @@ func (e *MediaEndpoint) DownloadHLS(ctx context.Context, playlistURL, target str
 
 // DownloadImage 下载并还原图片 CDN 返回的图片数据,再原子发布到 target。
 func DownloadImage(ctx context.Context, fetch FetchContext, sourceURL, target string) (int64, error) {
-	raw, err := fetchBounded(ctx, fetch, sourceURL, maxImageBytes, "image")
+	raw, err := fetch(ctx, sourceURL)
 	if err != nil {
 		return 0, err
 	}
@@ -155,23 +158,10 @@ type hlsMediaPlaylist struct {
 // 依据 input.md 计划 #32 的明文要求(损坏 segment 重试同一 segment,至多 3 次)。
 const maxSegmentAttempts = 3
 
-// 下载路径的内部安全上限(计划 #11)。这些是 downloader 的内部边界,
-// 不扩展成 CLI tuning flags。读取模式:Content-Length 预检查 +
-// io.LimitReader(limit+1) + 超过 limit 明确报错。
-const (
-	maxPlaylistBytes   = 2 << 20  // HLS playlist 2 MiB
-	maxSegmentBytes    = 32 << 20 // TS segment 32 MiB
-	maxImageBytes      = 64 << 20 // image 64 MiB
-	maxKeyBytes        = 17       // AES-128 key exactly 16 B,最多读 17 B
-	maxTotalVideoBytes = 512 << 20
-	maxSegmentCount    = 4096
-	maxSamplesPerTrack = 1_000_000
-)
-
 // downloadTS 产出保留 Transport Stream 的 .ts:每个 segment 通过 Layer A 与
 // codec 检查后写入 .part,最终做分块结构校验后原子发布(计划 #33)。
 func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
-	playlistBody, err := fetchBounded(ctx, fetch, playlistURL, maxPlaylistBytes, "HLS playlist")
+	playlistBody, err := fetch(ctx, playlistURL)
 	if err != nil {
 		return 0, fmt.Errorf("download HLS playlist: %w", err)
 	}
@@ -179,10 +169,6 @@ func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target str
 	if err != nil {
 		return 0, err
 	}
-	if err := checkSegmentCount(len(playlist.segments)); err != nil {
-		return 0, err
-	}
-
 	return publishMediaFile(target, func(w io.Writer) (int64, error) {
 		var total int64
 		keys := map[string][]byte{}
@@ -209,7 +195,7 @@ func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target str
 
 // downloadMP4 走 spool 管线产出 Fast Start MP4(计划 #35/#36)。
 func downloadMP4(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
-	playlistBody, err := fetchBounded(ctx, fetch, playlistURL, maxPlaylistBytes, "HLS playlist")
+	playlistBody, err := fetch(ctx, playlistURL)
 	if err != nil {
 		return 0, fmt.Errorf("download HLS playlist: %w", err)
 	}
@@ -217,19 +203,12 @@ func downloadMP4(ctx context.Context, fetch FetchContext, playlistURL, target st
 	if err != nil {
 		return 0, err
 	}
-	if err := checkSegmentCount(len(playlist.segments)); err != nil {
-		return 0, err
-	}
-
 	spoolPath := target + ".spool"
 	spool, err := newMP4Spooler(spoolPath)
 	if err != nil {
 		return 0, err
 	}
-	defer os.Remove(spoolPath)
-	defer spool.file.Close()
-
-	return publishMediaFile(target, func(w io.Writer) (int64, error) {
+	written, publishErr := publishMediaFile(target, func(w io.Writer) (int64, error) {
 		keys := map[string][]byte{}
 		for _, segment := range playlist.segments {
 			payload, err := fetchValidatedSegment(ctx, fetch, segment, keys)
@@ -243,6 +222,22 @@ func downloadMP4(ctx context.Context, fetch FetchContext, playlistURL, target st
 		spool.finalize()
 		return writeMP4Body(spool, w)
 	}, validateMP4File)
+	closeErr := spool.file.Close()
+	removeErr := os.Remove(spoolPath)
+	var closeCleanupErr, removeCleanupErr error
+	if closeErr != nil {
+		closeCleanupErr = fmt.Errorf("close MP4 spool: %w", closeErr)
+	}
+	if removeErr != nil {
+		removeCleanupErr = fmt.Errorf("remove MP4 spool: %w", removeErr)
+	}
+	if publishErr != nil {
+		return written, errors.Join(publishErr, closeCleanupErr, removeCleanupErr)
+	}
+	if closeCleanupErr != nil || removeCleanupErr != nil {
+		return written, errors.Join(closeCleanupErr, removeCleanupErr)
+	}
+	return written, nil
 }
 
 // fetchValidatedSegment 获取、解密并校验单个 segment(Layer A per-segment gate)。
@@ -256,7 +251,7 @@ func fetchValidatedSegment(ctx context.Context, fetch FetchContext, segment hlsS
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		raw, err := fetchBounded(ctx, fetch, segment.uri, maxSegmentBytes, "HLS segment")
+		raw, err := fetch(ctx, segment.uri)
 		if err != nil {
 			lastErr = fmt.Errorf("download HLS segment: %w", err)
 			continue
@@ -269,7 +264,7 @@ func fetchValidatedSegment(ctx context.Context, fetch FetchContext, segment hlsS
 		if segment.key != nil {
 			key, ok := keys[segment.key.uri]
 			if !ok {
-				key, err = fetchBounded(ctx, fetch, segment.key.uri, maxKeyBytes, "HLS key")
+				key, err = fetch(ctx, segment.key.uri)
 				if err != nil {
 					lastErr = fmt.Errorf("download HLS key: %w", err)
 					continue
@@ -297,44 +292,6 @@ func fetchValidatedSegment(ctx context.Context, fetch FetchContext, segment hlsS
 		return payload, nil
 	}
 	return nil, fmt.Errorf("segment %d remained invalid after %d attempts: %w", segment.sequence, maxSegmentAttempts, lastErr)
-}
-
-// fetchBounded 用有界读取获取媒体资源(计划 #11):
-// Content-Length 预检查(transport 层 LimitReader(limit+1))+ size 检查,
-// 超过 limit 明确报错,不无界进内存。
-func fetchBounded(ctx context.Context, fetch FetchContext, url string, limit int64, what string) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	raw, err := fetch(ctx, url)
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(raw)) > limit {
-		return nil, fmt.Errorf("%s size %d exceeds limit %d", what, len(raw), limit)
-	}
-	return raw, nil
-}
-
-// boundedFetchContext 是 client 提供给媒体解码器的有界读取回调;
-// limit 透传给 transport 的 LimitReader(计划 #11)。
-func boundedFetchContext(c mediaBoundedClient, limit int64) FetchContext {
-	return func(ctx context.Context, url string) ([]byte, error) {
-		return c.FetchMediaBounded(ctx, url, limit)
-	}
-}
-
-// mediaBoundedClient 是 FetchMediaBounded 所需的最小接口。
-type mediaBoundedClient interface {
-	FetchMediaBounded(ctx context.Context, rawURL string, limit int64) ([]byte, error)
-}
-
-// checkSegmentCount 校验 segment 数不超过内部安全上限(计划 #11)。
-func checkSegmentCount(count int) error {
-	if count > maxSegmentCount {
-		return fmt.Errorf("HLS playlist has %d segments, exceeds limit %d", count, maxSegmentCount)
-	}
-	return nil
 }
 
 func parseHLSMediaPlaylist(playlistURL string, raw []byte) (hlsMediaPlaylist, error) {
@@ -558,8 +515,8 @@ func removePKCS7Padding(data []byte) ([]byte, error) {
 	return data[:len(data)-padding], nil
 }
 
-// publishMediaFile 把媒体原子发布到 path:先写入 path+".part" 临时文件,
-// 全部写入并通过 validate 后 rename 到最终路径。
+// publishMediaFile 把媒体原子发布到 path:先写入同目录唯一临时文件,
+// 全部写入并通过 validate 后以 no-replace 硬链接发布。
 // 最终路径已存在时绝不覆盖(计划 #41/#42);失败时清理临时文件,不留半成品。
 func publishMediaFile(path string, write func(io.Writer) (int64, error), validate func(path string) error) (written int64, err error) {
 	if strings.TrimSpace(path) == "" {
@@ -573,12 +530,6 @@ func publishMediaFile(path string, write func(io.Writer) (int64, error), validat
 	if !info.IsDir() {
 		return 0, fmt.Errorf("output directory is not a directory")
 	}
-	if _, err := os.Lstat(path); err == nil {
-		return 0, fmt.Errorf("output file already exists: %s", path)
-	} else if !os.IsNotExist(err) {
-		return 0, fmt.Errorf("check output file %q: %w", path, err)
-	}
-
 	// 临时文件用 os.CreateTemp 保证唯一(计划 #27):并发或上次异常残留时
 	// 不会与固定 target.part 名冲突。CreateTemp 位于同一目录,保证同一文件
 	// 系统,支持原子发布。
@@ -588,38 +539,37 @@ func publishMediaFile(path string, write func(io.Writer) (int64, error), validat
 	}
 	tmp := tmpFile.Name()
 	closed := false
-	completed := false
-	defer func() {
-		if !closed {
-			_ = tmpFile.Close()
+	closeTemp := func() error {
+		if closed {
+			return nil
 		}
-		if !completed {
-			_ = os.Remove(tmp)
-		}
-	}()
+		closed = true
+		return tmpFile.Close()
+	}
+	removeTemp := func() error { return os.Remove(tmp) }
+	cleanupTemp := func() error {
+		return errors.Join(closeTemp(), removeTemp())
+	}
 
 	written, err = write(tmpFile)
 	if err != nil {
-		return 0, err
+		return written, errors.Join(err, cleanupTemp())
 	}
-	if err = tmpFile.Close(); err != nil {
-		return 0, fmt.Errorf("close media temp file: %w", err)
+	if closeErr := closeTemp(); closeErr != nil {
+		return written, errors.Join(fmt.Errorf("close media temp file: %w", closeErr), removeTemp())
 	}
-	closed = true
 	if validate != nil {
 		if err = validate(tmp); err != nil {
-			return 0, err
+			return written, errors.Join(err, removeTemp())
 		}
 	}
-	// 真 no-replace 发布(计划 #28):os.Link 在目标已存在时返回 EEXIST,
-	// 两个进程同时写相同 target 时一方成功另一方 ErrExist,
-	// 不依赖"先检查再 rename"(TOCTOU)。Windows 由 replace_windows.go 处理。
-	if err = linkNoReplace(tmp, path); err != nil {
-		return 0, fmt.Errorf("publish media file: %w", err)
+	// 真 no-replace 发布(计划 #28):LinkNoReplace 在目标已存在时由操作系统
+	// 原子返回 ErrExist，不依赖“先检查再 rename”(TOCTOU)。
+	if err = atomicfile.LinkNoReplace(tmp, path); err != nil {
+		return written, errors.Join(fmt.Errorf("publish media file: %w", err), removeTemp())
 	}
-	completed = true
 	// 链接成功后删除临时文件;删除失败不能静默吞掉(计划 #29)。
-	if err = os.Remove(tmp); err != nil {
+	if err = removeTemp(); err != nil {
 		return 0, fmt.Errorf("remove media temp file after publish: %w", err)
 	}
 	return written, nil

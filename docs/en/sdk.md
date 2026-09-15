@@ -133,15 +133,12 @@ walks subsequent pages. Non-positive values use page `1` and limit `20`, which
 matches the CLI's one-page default.
 
 `MovieAssets(ctx, movieID)` returns the movie's media assets as a minimal
-`MovieAsset{Type, URL, Width, Height, Duration}` sequence in a fixed order:
+`MovieAsset{Type, URL}` sequence in a fixed order:
 thumbnail, cover (when the detail provides one), every preview image
 (`large_url` preferred, falling back to `thumb_url`), then the preview video.
 Missing items are skipped, so the length varies per movie. `Type` is only
-`"image"` or `"video"`. `Width`/`Height` are optional pixel dimensions and
-`Duration` is the optional preview length in seconds (never a Go
-`time.Duration`); fields the API cannot provide stay zero and are omitted from
-JSON output, never faked with `0`. The model deliberately carries no
-id/index/role metadata.
+`"image"` or `"video"`. The model deliberately carries no metadata such as
+dimensions, duration, id, index, or role.
 
 `DownloadMovieAsset(ctx, asset, target)` downloads one asset to an exact path
 and returns the written byte count. Images are validated (XOR unwrap when the

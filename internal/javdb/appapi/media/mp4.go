@@ -202,17 +202,10 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	if movieDuration == 0 {
 		return nil, fmt.Errorf("mp4 duration is zero")
 	}
-	mvhd := mp4FullBox("mvhd", 0, 0,
-		mp4U32(0), mp4U32(0), mp4U32(mp4MovieTimescale),
-		mp4U32(uint32(movieDuration)),
-		mp4U32(0x00010000), mp4U16(0x0100), mp4U16(0),
-		mp4U32(0), mp4U32(0), // reserved
-		mp4U32(0x00010000), mp4U32(0), mp4U32(0), // matrix a/b/c
-		mp4U32(0), mp4U32(0x00010000), mp4U32(0), // matrix d/e/f
-		mp4U32(0), mp4U32(0), mp4U32(0x40000000), // matrix g/x/y
-		mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), // pre_defined
-		mp4U32(mp4NextTrackID),
-	)
+	if movieDuration > uint64(^uint32(0)) || video.Duration > uint64(^uint32(0)) || (audio != nil && audio.Duration > uint64(^uint32(0))) {
+		return nil, fmt.Errorf("MP4 version-0 duration exceeds 32-bit bounds")
+	}
+	mvhd := buildMovieHeader(uint32(movieDuration))
 	videoTrak, err := buildVideoTrak(video, mdatStart)
 	if err != nil {
 		return nil, err
@@ -226,6 +219,41 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 		traks = append(traks, audioTrak)
 	}
 	return mp4Box("moov", mvhd, flatten(traks)), nil
+}
+
+// buildMovieHeader 构造 ISO BMFF version-0 mvhd。
+// 每个字段显式对应规范布局，避免通过“多塞一个整数”掩盖偏移错误。
+func buildMovieHeader(duration uint32) []byte {
+	return mp4FullBox("mvhd", 0, 0,
+		mp4U32(0), mp4U32(0), mp4U32(mp4MovieTimescale), mp4U32(duration),
+		mp4U32(0x00010000), mp4U16(0x0100), mp4U16(0),
+		mp4U32(0), mp4U32(0),
+		mp4U32(0x00010000), mp4U32(0), mp4U32(0),
+		mp4U32(0), mp4U32(0x00010000), mp4U32(0),
+		mp4U32(0), mp4U32(0), mp4U32(0x40000000),
+		mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0), mp4U32(0),
+		mp4U32(mp4NextTrackID),
+	)
+}
+
+// buildMediaHeader 构造 ISO BMFF version-0 mdhd。
+func buildMediaHeader(timescale, duration uint32) []byte {
+	return mp4FullBox("mdhd", 0, 0,
+		mp4U32(0), mp4U32(0), mp4U32(timescale), mp4U32(duration),
+		mp4U16(0x55C4), mp4U16(0),
+	)
+}
+
+// buildTrackHeader 构造 ISO BMFF version-0 tkhd。
+// width/height 是规范要求的 16.16 定点字段，音频轨道传入零值。
+func buildTrackHeader(trackID, duration, width, height uint32, volume uint16) []byte {
+	return mp4FullBox("tkhd", 0, 3,
+		mp4U32(0), mp4U32(0),
+		mp4U32(trackID), mp4U32(0), mp4U32(duration),
+		mp4U32(0), mp4U32(0),
+		mp4U16(0), mp4U16(0), mp4U16(volume), mp4U16(0),
+		unitMatrix(), mp4U32(width), mp4U32(height),
+	)
 }
 
 // u64ScaleToMovieTimescale 把 media timescale 下的 duration 换算到 movie timescale。
@@ -264,18 +292,10 @@ func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	media := mp4Box("minf",
 		mp4FullBox("vmhd", 0, 1, mp4U16(0), mp4U16(0), mp4U16(0), mp4U16(0)),
 		buildDINF(), stbl)
-	mdhd := mp4FullBox("mdhd", 0, 0,
-		mp4U32(0), mp4U32(0), mp4U32(meta.Timescale), mp4U32(uint32(meta.Duration)),
-		mp4U32(0x55C40000), mp4U16(0), mp4U16(0))
+	mdhd := buildMediaHeader(meta.Timescale, uint32(meta.Duration))
 	hdlr := mp4FullBox("hdlr", 0, 0, mp4U32(0), []byte("vide"), mp4U32(0), mp4U32(0), mp4U32(0), append([]byte("VideoHandler"), 0))
 	md := mp4Box("mdia", mdhd, hdlr, media)
-	tkhd := mp4FullBox("tkhd", 0, 3,
-		mp4U32(0), mp4U32(0), // ctime/mtime
-		mp4U32(mp4VideoTrackID), mp4U32(0), // track_ID + reserved
-		mp4U32(uint32(duration)),
-		mp4U32(0), mp4U32(0), mp4U32(0), // reserved
-		mp4U16(0), mp4U16(0), mp4U16(0), // layer/alternate_group/volume
-		unitMatrix(), mp4U32(uint32(meta.Width)<<16), mp4U32(uint32(meta.Height)<<16))
+	tkhd := buildTrackHeader(mp4VideoTrackID, uint32(duration), uint32(meta.Width)<<16, uint32(meta.Height)<<16, 0)
 	return mp4Box("trak", tkhd, md), nil
 }
 
@@ -291,24 +311,16 @@ func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 		esds,
 	)
 	stsd := mp4FullBox("stsd", 0, 0, mp4U32(1), mp4a)
-	// 音频 sample duration 固定 1024(AAC AAC-LC frame):RLE 成单 entry。
-	stts := buildRLE32([]uint32{1024})
+	// 音频 sample duration 固定 1024(AAC-LC frame):所有样本 RLE 成单 entry。
+	stts := buildRLE32Constant(uint32(len(meta.Samples)), 1024)
 	stbl := mp4Box("stbl", stsd, stts, buildSTSC(meta.Samples), buildSTSZ(meta.Samples), buildSTCO(meta.Samples))
 	media := mp4Box("minf",
 		mp4FullBox("smhd", 0, 0, mp4U16(0), mp4U16(0)),
 		buildDINF(), stbl)
-	mdhd := mp4FullBox("mdhd", 0, 0,
-		mp4U32(0), mp4U32(0), mp4U32(meta.Timescale), mp4U32(uint32(meta.Duration)),
-		mp4U32(0x55C40000), mp4U16(0), mp4U16(0))
+	mdhd := buildMediaHeader(meta.Timescale, uint32(meta.Duration))
 	hdlr := mp4FullBox("hdlr", 0, 0, mp4U32(0), []byte("soun"), mp4U32(0), mp4U32(0), mp4U32(0), append([]byte("SoundHandler"), 0))
 	md := mp4Box("mdia", mdhd, hdlr, media)
-	tkhd := mp4FullBox("tkhd", 0, 3,
-		mp4U32(0), mp4U32(0),
-		mp4U32(mp4AudioTrackID), mp4U32(0),
-		mp4U32(uint32(duration)),
-		mp4U32(0), mp4U32(0), mp4U32(0),
-		mp4U16(0), mp4U16(0), mp4U16(0x0100),
-		unitMatrix(), mp4U32(0), mp4U32(0))
+	tkhd := buildTrackHeader(mp4AudioTrackID, uint32(duration), 0, 0, 0x0100)
 	return mp4Box("trak", tkhd, md), nil
 }
 
@@ -387,6 +399,12 @@ func buildRLE32(values []uint32) []byte {
 		payload = append(payload, mp4U32(e.count), mp4U32(e.value))
 	}
 	return mp4FullBox("stts", 0, 0, mp4U32(uint32(len(entries))), flatten(payload))
+}
+
+// buildRLE32Constant 直接构造只有一个连续值的 RLE 表，避免把 sample_count
+// 错当成待编码的样本值。
+func buildRLE32Constant(sampleCount, value uint32) []byte {
+	return mp4FullBox("stts", 0, 0, mp4U32(1), mp4U32(sampleCount), mp4U32(value))
 }
 
 // buildRLE32Signed 把 int64 序列 RLE 成 {sample_count, offset} entry;

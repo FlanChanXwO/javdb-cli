@@ -3,6 +3,7 @@ package assets
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/client"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
+	"github.com/FlanChanXwO/javdb-cli/internal/common/atomicfile"
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
@@ -150,23 +152,30 @@ func downloadAutoNamed(ctx context.Context, c *javdb.Client, record assetRecord,
 		if err != nil {
 			return "", err
 		}
-		defer os.RemoveAll(tmpDir)
+		cleanupDir := func(primary error) error {
+			cleanupErr := os.RemoveAll(tmpDir)
+			if primary != nil {
+				return errors.Join(primary, cleanupErr)
+			}
+			return cleanupErr
+		}
 		tmp := filepath.Join(tmpDir, "image.raw")
 		if _, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: record.Type, URL: record.URL}, tmp); err != nil {
-			return "", err
+			return "", cleanupDir(err)
 		}
 		format, ok := javdb.ImageAssetFormat(tmp)
 		if !ok {
-			return "", fmt.Errorf("assets download: downloaded image is not a recognized format")
+			return "", cleanupDir(fmt.Errorf("assets download: downloaded image is not a recognized format"))
 		}
 		target := filepath.Join(dir, fmt.Sprintf("image-%03d.%s", pos, format))
-		if _, err := os.Lstat(target); err == nil {
-			return "", fmt.Errorf("assets download: target already exists: %s", target)
-		} else if !os.IsNotExist(err) {
-			return "", fmt.Errorf("assets download: check target %q: %w", target, err)
+		if err := atomicfile.LinkNoReplace(tmp, target); err != nil {
+			return "", cleanupDir(fmt.Errorf("assets download: publish %q: %w", target, err))
 		}
-		if err := os.Rename(tmp, target); err != nil {
-			return "", fmt.Errorf("assets download: publish %q: %w", target, err)
+		if err := os.Remove(tmp); err != nil {
+			return "", cleanupDir(fmt.Errorf("assets download: remove image temp file after publish: %w", err))
+		}
+		if err := os.Remove(tmpDir); err != nil {
+			return "", fmt.Errorf("assets download: remove image temp directory: %w", err)
 		}
 		return target, nil
 	default:

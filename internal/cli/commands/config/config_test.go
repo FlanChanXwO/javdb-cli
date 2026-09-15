@@ -107,6 +107,13 @@ func TestConfigGetUnknownKeyErrorsWithoutCreating(t *testing.T) {
 	}
 }
 
+func TestConfigRejectsRemovedAssetsProbeKey(t *testing.T) {
+	isolateHome(t)
+	if _, _, err := executeConfig(t, "get", "assets.probe.enabled"); err == nil || !strings.Contains(err.Error(), "unknown key") {
+		t.Fatalf("get removed assets.probe key error = %v, want unknown key", err)
+	}
+}
+
 func TestConfigSetUnknownKeyErrorsWithoutCreating(t *testing.T) {
 	home := isolateHome(t)
 	if _, _, err := executeConfig(t, "set", "bogus", "x"); err == nil || !strings.Contains(err.Error(), "unknown key") {

@@ -11,64 +11,35 @@ import (
 	"testing"
 )
 
-// 资源边界契约(计划 #11/#27/#28/#29):
-// 下载读取有明确上限(playlist/key/segment/image/总 payload/segment 数);
+// 资源处理契约(计划 #27/#28/#29):
+// 媒体逐 segment 处理但不添加无依据的总大小、单段或数量上限;
 // 临时文件唯一;最终发布原子 no-replace;close/cleanup 错误不静默吞。
 
-// ---- #11:bounded read ----
+// ---- 无固定资源上限 ----
 
-// oversized playlist:超过 2 MiB 上限明确报错,不无界进内存。
-func TestDownloadHLSRejectsOversizedPlaylist(t *testing.T) {
-	// 生成 3 MiB 的 playlist(超过 2 MiB 上限)。
+func TestDownloadHLSPreservesPlaylistBeyondFormerLimit(t *testing.T) {
+	// 该 playlist 超过历史 2 MiB 限制,但仍是合法的已结束媒体列表。
 	var b strings.Builder
 	b.WriteString("#EXTM3U\n")
-	for i := 0; i < 400000; i++ {
-		b.WriteString("#EXTINF:1.0,\nseg-long-comment-padding-padding-padding.ts\n")
-	}
+	b.WriteString(strings.Repeat("# padding\n", 250000))
+	b.WriteString("#EXTINF:1.0,\nseg.ts\n")
 	b.WriteString("#EXT-X-ENDLIST\n")
 	fetch := func(_ context.Context, uri string) ([]byte, error) {
 		if strings.HasSuffix(uri, ".m3u8") {
 			return []byte(b.String()), nil
 		}
-		return nil, errors.New("unexpected " + uri)
+		return validTSSegmentAt(0), nil
 	}
-	_, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
-	if err == nil || !strings.Contains(err.Error(), "playlist") || !strings.Contains(err.Error(), "limit") {
-		t.Fatalf("error = %v, want playlist size limit", err)
+	written, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
+	if err != nil {
+		t.Fatalf("download oversized playlist: %v", err)
 	}
-}
-
-// oversized image:超过 64 MiB 上限明确报错。
-func TestDownloadImageRejectsOversizedPayload(t *testing.T) {
-	// 65 MiB + 1 的伪 payload(XOR 前缀 + JPEG 头)。
-	raw := make([]byte, 65*1024*1024+2)
-	raw[0] = 0x97
-	raw[1], raw[2], raw[3] = 0xFF, 0xD8, 0xFF
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
-		return raw, nil
-	}
-	_, err := DownloadImage(context.Background(), fetch, "https://img.example.test/a.jpg", filepath.Join(t.TempDir(), "a.jpg"))
-	if err == nil || !strings.Contains(err.Error(), "limit") {
-		t.Fatalf("error = %v, want image size limit", err)
+	if written != int64(len(validTSSegmentAt(0))) {
+		t.Fatalf("written = %d, want one segment (%d)", written, len(validTSSegmentAt(0)))
 	}
 }
 
-// oversized image:server 忽略 Content-Length / 慢速注入时,bounded reader
-// 在上限后停止读取(计划 #11)。
-func TestFetchBoundedReaderStopsAtLimit(t *testing.T) {
-	// 无限数据源:超过上限后 reader 必须停止。
-	data := make([]byte, 70*1024*1024)
-	fetch := func(_ context.Context, uri string) ([]byte, error) {
-		return data, nil
-	}
-	_, err := DownloadImage(context.Background(), fetch, "https://img.example.test/a.jpg", filepath.Join(t.TempDir(), "a.jpg"))
-	if err == nil || !strings.Contains(err.Error(), "limit") {
-		t.Fatalf("error = %v, want size limit", err)
-	}
-}
-
-// too many segments:超过 4096 明确报错。
-func TestDownloadHLSRejectsTooManySegments(t *testing.T) {
+func TestDownloadHLSPreservesMoreThanFormerSegmentLimit(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("#EXTM3U\n")
 	for i := 0; i < 4200; i++ {
@@ -82,9 +53,13 @@ func TestDownloadHLSRejectsTooManySegments(t *testing.T) {
 		}
 		return validTSSegmentAt(0), nil
 	}
-	_, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
-	if err == nil || !strings.Contains(err.Error(), "segments") {
-		t.Fatalf("error = %v, want segment count limit", err)
+	written, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
+	if err != nil {
+		t.Fatalf("download more than former segment limit: %v", err)
+	}
+	want := int64(4200 * len(validTSSegmentAt(0)))
+	if written != want {
+		t.Fatalf("written = %d, want %d", written, want)
 	}
 }
 

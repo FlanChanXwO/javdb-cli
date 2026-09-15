@@ -89,14 +89,10 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
 - `appapi/endpoint/{auth,browse,entity,lists,magnets,movie,rankings,route,search,user}`：有状态 capability service；`endpoint/magnets` 保持纯 helper，`endpoint/route` 是自动选线 capability（startup 域名解密、并发探测与确定性选择），经根 Client 组合。
 - `appapi/codec`：App JSON、JWT、用户 ID 和响应数组解析。
 - `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理、三层完整性
-  （Layer A segment 校验、Layer B 媒体模型校验、Layer C MP4 容器校验）、bounded retry 的
-  segment 获取、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与原子发布，
+  （Layer A segment 校验、Layer B 媒体模型校验、Layer C MP4 容器校验）、按协议要求的
+  segment 重试、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与 no-replace 发布，
   通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
   javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。
-- `appapi/media` 的 metadata probe（`probe.go`）：assets list 对选中资产的 best-effort
-  元信息探测（图片前缀头 / HLS `#EXTINF` / H.264 SPS），按 `[assets.probe]` 配置预算
-  （并发、读取上限、超时），同次调用内按 URL 去重，无持久缓存。probe 只属于
-  TTY/JSON/NDJSON 输出；普通 pipe 模式完全跳过。
 
 详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责写入、解密并合并；
 该能力不包含完整影片或磁力目标下载。
@@ -116,14 +112,16 @@ App API 不解析终端参数，也不格式化面向用户的输出。
 `config/settings` 负责 TOML schema、默认值（`host` 缺省为 `auto`）、环境变量和运行时
 合并。调用方直接依赖两个子包。配置优先级必须维持为命令行 flag > 环境变量 > 文件 > 默认值。
 
-### `internal/common/jsonx` 与 `internal/common/scalar`
+### `internal/common/{jsonx,scalar,atomicfile}`
 
-纯底层转换，根目录不建立 package：`jsonx` 提供 `ObjectArray`/`ObjectSlice`/
+纯底层转换与文件原语，根目录不建立 package：`jsonx` 提供 `ObjectArray`/`ObjectSlice`/
 `RawString`/`MarshalLine`（`MarshalLine` 保证 SetEscapeHTML(false) 且恰好一个尾随
-换行），`scalar` 提供 `String`/`Int64`。两个包不接收 `io.Writer`、不写输出、不含 CLI
+换行），`scalar` 提供 `String`/`Int64`。这些包不接收 `io.Writer`、不写输出、不含 CLI
 文案、不吞编码错误，也不反向依赖 CLI/SDK/App API/config/update。CLI 浮点截断、
 App API 前缀数字解析、各领域 truthy 规则、CLI 文案、密码输入、HLS、分页和错误降级
 必须留在对应领域，不在此目录继续堆叠通用 helper。
+`atomicfile.LinkNoReplace` 只提供同文件系统内的原子 no-replace 硬链接，供 CLI
+图片自动命名与 media 的 TS/MP4 发布共享；它不负责目录创建、临时文件清理或输出文案。
 
 ### `internal/storage/auth`、`internal/storage/tags` 与 `internal/storage/route`
 

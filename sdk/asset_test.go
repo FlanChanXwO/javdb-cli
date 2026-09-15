@@ -13,6 +13,25 @@ import (
 	"testing"
 )
 
+func TestMovieAssetShapeContainsOnlyTypeAndURL(t *testing.T) {
+	typeOfAsset := reflect.TypeOf(MovieAsset{})
+	if typeOfAsset.NumField() != 2 {
+		t.Fatalf("MovieAsset has %d fields, want exactly 2", typeOfAsset.NumField())
+	}
+	for i, want := range []struct {
+		name string
+		tag  string
+	}{{"Type", `json:"type"`}, {"URL", `json:"url"`}} {
+		field := typeOfAsset.Field(i)
+		if field.Name != want.name || field.Type.Kind() != reflect.String {
+			t.Fatalf("MovieAsset field %d = %s %s, want %s string", i, field.Name, field.Type, want.name)
+		}
+		if got := string(field.Tag); got != want.tag {
+			t.Fatalf("MovieAsset field %s tag = %q, want %q", field.Name, got, want.tag)
+		}
+	}
+}
+
 // 资产契约:MovieAsset 只有 Type("image"/"video")与 URL 两个字段;
 // 序列顺序固定 thumbnail → cover(若详情提供)→ preview_images[](large_url 优先)→ preview video;
 // 详情中缺失的项直接跳过(input.md 计划 #2/#4/#5)。

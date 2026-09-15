@@ -27,26 +27,23 @@
 | 17 | 跨段 codec configuration 校验 | mp4_stream.go |
 | 30 | validator 独立检查 stts/ctts/stsc/stco/track ID/interleave | mp4_stream.go |
 
-## 批次 C:资源边界
+## 批次 C:资源处理与原子发布
 
 | # | 内容 | 文件 |
 |---|------|------|
-| 11 | bounded read(Content-Length 预检 + LimitReader(limit+1));playlist 2 MiB / key 17 B / segment 32 MiB / image 64 MiB / 总 512 MiB / 4096 segments / 1M samples | media.go, mp4_stream.go |
+| 11 | 删除无依据的 playlist/segment/image/总 payload/segment 数/sample 数固定上限;保留协议/格式边界与逐 segment 处理 | media.go, mp4_stream.go, client/transport.go |
 | 12 | 保持并发 1;segment payload 及时释放;一次拆流复用 | 现状检查 |
 | 27 | os.CreateTemp 唯一临时文件 | media.go, mp4_stream.go |
-| 28 | publish 用 link/rename-to-existing 探测实现真 no-replace | media.go |
+| 28 | 以共享 `internal/common/atomicfile.LinkNoReplace` 实现图片、TS、MP4 真 no-replace 发布 | media.go, download.go, internal/common/atomicfile |
 | 29 | cleanup 错误不静默吞 | media.go, download.go |
 
-## 批次 D:probe 与资产元信息
+## 批次 D:资产契约收敛
 
 | # | 内容 | 文件 |
 |---|------|------|
-| 1 | MovieAsset + Width/Height/Duration(秒);JSON 省略空值 | sdk/asset.go |
-| 4 | 图片 probe:单次 bounded Range(64 KiB),JPEG/PNG/GIF/WebP/AVIF/HEIC 前缀;XOR 复用 | internal/javdb/appapi/media/probe.go(新) |
-| 5 | 视频 probe:EXTINF 求和 duration;首 segment→SPS→宽高 | 同上 |
-| 6 | probe 并发 4、URL 去重、无持久缓存 | 同上 |
-| 2/3 | assets list:filter→selector→probe(仅 TTY/JSON/NDJSON);pipe 跳过 | internal/cli/commands/assets/list.go |
-| 3 | config `[assets.probe]` 六键 + set/get/unset 白名单 | internal/config/settings/assets.go(新), config.go |
+| 1 | MovieAsset 严格只保留 Type/URL;删除 Width/Height/Duration 与所有 metadata probe | sdk/asset.go, internal/javdb/appapi/media/probe.go |
+| 2/3 | assets list:filter→selector;TTY 仅渲染描述,JSON/NDJSON 与 pipe 严格只输出 type/url | internal/cli/commands/assets/list.go |
+| 4/6 | 删除 `[assets.probe]` 配置 schema、config 白名单、transport bounded probe 与 probe 测试 | internal/config/settings, config.go, client/transport.go |
 
 ## 批次 E:assets download 改造
 

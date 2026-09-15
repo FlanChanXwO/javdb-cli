@@ -125,12 +125,6 @@ func New(opts Options) (*Client, error) {
 	}, nil
 }
 
-// ProbeMedia 获取未经过 App envelope 包装的媒体资源,供 assets list 的
-// metadata probe 使用(计划 #2)。
-func (c *Client) ProbeMedia(ctx context.Context, url string) ([]byte, error) {
-	return c.transportClient.FetchMedia(ctx, url)
-}
-
 // AllPages 对分页回调聚合并按 id 去重。
 func AllPages(fetch func(page int) ([]map[string]any, error), maxPages int) ([]map[string]any, error) {
 	return user.AllPages(fetch, maxPages)

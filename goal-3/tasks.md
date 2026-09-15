@@ -21,13 +21,13 @@ TDD:执行 task 一律测试先行(Red → Green → Refactor);每 task 收尾 `
 - 剩余风险:cover_url 真实 API 是否返回待 E2E(T12)确认,缺失即跳过不影响。
 - 下一步:T03。
 
-## T03 [ ] feat(sdk)+chore(cli): DownloadMovieAsset 与旧 API 移除
+## T03 [x] feat(sdk)+chore(cli): DownloadMovieAsset 与旧 API 移除
 - 目标:实现 `Client.DownloadMovieAsset(ctx, asset MovieAsset, target string) (int64, error)`(视频 target 仅 .ts/.mp4,否则 `unsupported video output format ".mkv"`;图片走 media 验证链)。删除 `MovieMediaDownloadOptions/Result/DownloadMovieMedia` 与旧顶层 `javdb download` 命令(`internal/cli/commands/download/` + root.go 注册),同步更新 sdk/contract_external_test.go、sdk/facade_test.go 及相关测试。旧命令删除先于新 assets 命令(invariant 1)。
 - 验收:`go build ./...` + `go test ./...` 全绿;全仓库无 MovieMediaDownloadOptions 残留引用;无顶层 download 命令。
-- 实际做:待填
-- 证据:待填
-- 剩余风险:待填
-- 下一步:待填
+- 实际做:删除旧的 path-per-type SDK/CLI 下载 API 与顶层 `download` 命令，新增 `MovieAsset`、`MovieAssets`、`DownloadMovieAsset` 及 `assets` 子命令域。
+- 证据:CHECK1 已确认全仓无旧 API/命令残留；相关 `go test ./...`、`go vet ./...` 与构建均通过。
+- 剩余风险:无；后续 T04-T14 已在本分支完成并对新资产契约收敛。
+- 下一步:CHECK1。
 
 ## CHECK1 [x] 集中检查(每 3 task)
 - 检查:需求未偏离 input.md;无死代码/调试残留;`go vet`、`go test ./...`、`sh scripts/build.sh`;文档边界是否被破坏(此时应无文档承诺);安全(旧 API 删除无残留、无凭证泄漏);回滚方案是否需调整。
@@ -125,21 +125,11 @@ TDD:执行 task 一律测试先行(Red → Green → Refactor);每 task 收尾 `
 - 剩余风险(低):真实流的 null-muxer DTS 警告为 ffmpeg 展示性行为;cover_url 依赖真实 API 返回(缺失自动跳过)。
 - 下一步:goal 完成,交付 PR 由维护者决定。
 
-## T13 旧条目(已被上方取代)
-- 目标:README.md/README.zh-CN.md(用户主路径 #70)、docs/en/cli-reference.md 与 docs/zh-CN/cli-reference.md(assets 命令域)、docs/en/sdk.md 与 docs/zh-CN/sdk.md(MovieAssets/DownloadMovieAsset/MovieAsset)、docs/maintainers/architecture.md(assets 命令域 + media 分层 + 零依赖决策)。
-- 验收:两 locale 内容一致;示例与真实行为一致;移除旧 download 命令的文档残留。
-- 实际做:待填
-- 证据:待填
-- 剩余风险:待填
-- 下一步:待填
-
-## T14 [ ] docs(skill)+ 终审
-- 目标:更新 skills/javdb-cli/SKILL.md 与 references/*(agent 工作流:先 assets list → 选择 → pipe 到 assets download,#70/#71);终审=最大范围总复查:从 input.md #86 的 23 条 invariant 逐条对照、代码质量、安全、错误处理、测试覆盖、构建产物、文档一致性、回滚说明;发现问题当场修复或追加修复 task;最后汇报 goal 完成状态(含阻塞项清单,如有)。
-- 验收:终审清单逐条记录于本文件;全量验证绿;goal 状态明确(完成/存在阻塞项)。
-- 实际做:待填
-- 证据:待填
-- 剩余风险:待填
-- 下一步:待填
+## PR #47 review follow-up [x]
+- 实际做:按修改建议移除 `MovieAsset` 元数据与 metadata probe/`[assets.probe]` 配置，删除无依据的媒体资源硬上限；以共享 `atomicfile.LinkNoReplace` 收敛图片、TS、MP4 的 no-replace 发布；修正 AAC `stts`、`mdhd`/`tkhd`/`mvhd` Version-0 布局与 Layer C sample-count 校验；补齐错误传播、双语文档和执行记录。
+- 证据:`git diff --check`、`go test ./...`、`go test -race ./...`、`go vet ./...`、`sh scripts/build.sh` 全部通过。真实只读 E2E 使用 `SSIS-001`：list 返回 13 个资产；图片 magic/`file` 通过；TS 16,705,680 bytes、88,860 个包；MP4 为 `ftyp → moov → mdat`，`ffprobe` 识别 H.264 560×316、AAC 44.1 kHz 双声道且时长约 132.5 s，`ffmpeg` 完整解码通过。
+- 剩余风险:无本轮阻塞项；真实媒体内容随远端资源变化，离线回归仍是默认门禁。
+- 下一步:推送 `feat/assets-media-download` 并交由 PR #47 维护者复核。
 
 ---
 

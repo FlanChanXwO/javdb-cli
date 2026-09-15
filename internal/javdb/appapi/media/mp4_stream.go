@@ -2,6 +2,7 @@ package media
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -73,8 +74,12 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 				}
 			}
 			for _, sample := range track.Samples {
-				if _, err := s.file.Write(sample.Data); err != nil {
+				n, err := s.file.Write(sample.Data)
+				if err != nil {
 					return err
+				}
+				if n != len(sample.Data) {
+					return io.ErrShortWrite
 				}
 				s.video.Samples = append(s.video.Samples, mp4SampleMeta{
 					SpoolOffset: s.fileOffset, Size: uint32(len(sample.Data)),
@@ -103,8 +108,12 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 				}
 			}
 			for _, sample := range track.Samples {
-				if _, err := s.file.Write(sample.Data); err != nil {
+				n, err := s.file.Write(sample.Data)
+				if err != nil {
 					return err
+				}
+				if n != len(sample.Data) {
+					return io.ErrShortWrite
 				}
 				s.audio.Samples = append(s.audio.Samples, mp4SampleMeta{
 					SpoolOffset: s.fileOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
@@ -224,6 +233,9 @@ func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 		if err != nil {
 			return written, err
 		}
+		if n != len(chunk) {
+			return written, io.ErrShortWrite
+		}
 	}
 	// mdat 数据区按交错顺序写出：先写 videoChunks 与 audioChunks 合并后
 	// 按 Offset 排序的顺序，保证 stco 偏移与物理位置一致。
@@ -340,6 +352,9 @@ func copySamplesFromSpool(spool *mp4Spooler, samples []mp4SampleMeta, out io.Wri
 		if err != nil {
 			return written, err
 		}
+		if n != len(data) {
+			return written, io.ErrShortWrite
+		}
 	}
 	return written, nil
 }
@@ -349,12 +364,16 @@ func copySamplesFromSpool(spool *mp4Spooler, samples []mp4SampleMeta, out io.Wri
 // validateMP4File 重新打开最终文件解析 box 树:
 // ftyp → moov → mdat 顺序、avc1/mp4a 轨、duration>0、样本>0、
 // stco/stss 越界、stsz 总和与 mdat 一致。通过才允许发布(计划 #40)。
-func validateMP4File(path string) error {
+func validateMP4File(path string) (err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("close MP4 validation file: %w", closeErr)
+		}
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return err
@@ -404,19 +423,31 @@ func validateMP4File(path string) error {
 
 	videoOK, audioOK := false, false
 	type sampleTable struct {
-		stszOff int64
-		stszCnt int64
-		stcoOff int64
-		stcoCnt int64
+		trackID         uint32
+		sttsSeen        bool
+		sttsSampleCount uint64
+		stszSeen        bool
+		stszOff         int64
+		stszCnt         int64
+		stszSampleSize  uint32
+		stcoSeen        bool
+		stcoOff         int64
+		stcoCnt         int64
 	}
-	var tables []sampleTable
+	var tables []*sampleTable
+	var current *sampleTable
 	seenTrackIDs := map[uint32]bool{}
-	sttsOK := false
 	durationOK := false
 	sampleEntryKinds := map[string]bool{}
 	if err := walkBoxes(moov, 8, int64(len(moov)), func(ref boxWalker) error {
 		switch ref.kind {
+		case "trak":
+			current = &sampleTable{}
+			tables = append(tables, current)
 		case "tkhd":
+			if current == nil || ref.off+24 > int64(len(moov)) {
+				return fmt.Errorf("tkhd is outside a track or truncated")
+			}
 			// track_ID 唯一(计划 #30):禁止音视频共用 track ID。
 			trackID := beU32(moov[ref.off+20 : ref.off+24])
 			if trackID == 0 {
@@ -426,7 +457,11 @@ func validateMP4File(path string) error {
 				return fmt.Errorf("duplicate track ID %d", trackID)
 			}
 			seenTrackIDs[trackID] = true
+			current.trackID = trackID
 		case "mdhd":
+			if ref.off+28 > int64(len(moov)) {
+				return fmt.Errorf("mdhd is truncated")
+			}
 			timescale := beU32(moov[ref.off+20 : ref.off+24])
 			duration := beU32(moov[ref.off+24 : ref.off+28])
 			if timescale == 0 || duration == 0 {
@@ -434,15 +469,37 @@ func validateMP4File(path string) error {
 			}
 			durationOK = true
 		case "stts":
+			if current == nil {
+				return fmt.Errorf("stts is outside a track")
+			}
 			// stts:[size kind][ver/flags][entry_count][entries(count,delta)]:
 			// entries 越出 box 是损坏容器,显式拒绝(计划 #30)。
 			// entryCount 可能是损坏的超大值,乘法前先证明上限,避免 int64 溢出。
 			tsBoxSize := int64(beU32(moov[ref.off : ref.off+4]))
-			tsEntryCount := int64(beU32(moov[ref.off+12 : ref.off+16]))
-			if tsEntryCount > tsBoxSize/8 || ref.off+16+tsEntryCount*8 > int64(len(moov)) {
+			if tsBoxSize < 16 || ref.off+tsBoxSize > int64(len(moov)) {
+				return fmt.Errorf("stts box is truncated")
+			}
+			tsEntryCount := uint64(beU32(moov[ref.off+12 : ref.off+16]))
+			if tsEntryCount > uint64((tsBoxSize-16)/8) {
 				return fmt.Errorf("stts entries (%d) exceed box bounds", tsEntryCount)
 			}
-			sttsOK = true
+			entryEnd := ref.off + 16 + int64(tsEntryCount)*8
+			if entryEnd > ref.off+tsBoxSize {
+				return fmt.Errorf("stts entries (%d) exceed box bounds", tsEntryCount)
+			}
+			if current.sttsSeen {
+				return fmt.Errorf("track %d has duplicate stts tables", current.trackID)
+			}
+			var sampleCount uint64
+			for pos := ref.off + 16; pos < entryEnd; pos += 8 {
+				count := uint64(beU32(moov[pos : pos+4]))
+				if ^uint64(0)-sampleCount < count {
+					return fmt.Errorf("track %d stts sample count overflows", current.trackID)
+				}
+				sampleCount += count
+			}
+			current.sttsSeen = true
+			current.sttsSampleCount = sampleCount
 		case "stsd":
 			// stsd:[size kind][ver/flags][entry_count][sample entry(size+kind+...)]:
 			// entry 的 kind 字段在 box 起始 +20。
@@ -450,20 +507,27 @@ func validateMP4File(path string) error {
 				sampleEntryKinds[string(moov[ref.off+20:ref.off+24])] = true
 			}
 		case "stsz":
-			tables = append(tables, sampleTable{
-				stszOff: ref.off,
-				stszCnt: int64(beU32(moov[ref.off+16 : ref.off+20])),
-			})
-		case "stco":
-			// stco:[size kind][ver/flags][entry_count(+12)][entries(+16)]。
-			// 每个 trak 一个 stco:挂到最近一个未配对的 stsz 表上。
-			for i := range tables {
-				if tables[i].stcoOff == 0 {
-					tables[i].stcoOff = ref.off
-					tables[i].stcoCnt = int64(beU32(moov[ref.off+12 : ref.off+16]))
-					break
-				}
+			if current == nil || ref.off+20 > int64(len(moov)) {
+				return fmt.Errorf("stsz is outside a track or truncated")
 			}
+			if current.stszSeen {
+				return fmt.Errorf("track %d has duplicate stsz tables", current.trackID)
+			}
+			current.stszSeen = true
+			current.stszOff = ref.off
+			current.stszSampleSize = beU32(moov[ref.off+12 : ref.off+16])
+			current.stszCnt = int64(beU32(moov[ref.off+16 : ref.off+20]))
+		case "stco":
+			if current == nil || ref.off+16 > int64(len(moov)) {
+				return fmt.Errorf("stco is outside a track or truncated")
+			}
+			if current.stcoSeen {
+				return fmt.Errorf("track %d has duplicate stco tables", current.trackID)
+			}
+			// stco:[size kind][ver/flags][entry_count(+12)][entries(+16)]。
+			current.stcoSeen = true
+			current.stcoOff = ref.off
+			current.stcoCnt = int64(beU32(moov[ref.off+12 : ref.off+16]))
 		}
 		return nil
 	}); err != nil {
@@ -472,21 +536,44 @@ func validateMP4File(path string) error {
 	if !durationOK {
 		return fmt.Errorf("moov has no positive mdhd duration")
 	}
-	if !sttsOK {
-		return fmt.Errorf("moov missing stts timing table")
+	if len(tables) == 0 {
+		return fmt.Errorf("moov has no tracks")
+	}
+	for _, table := range tables {
+		if !table.sttsSeen {
+			return fmt.Errorf("track %d missing stts timing table", table.trackID)
+		}
+		if !table.stszSeen {
+			return fmt.Errorf("track %d missing stsz sample table", table.trackID)
+		}
+		if table.sttsSampleCount != uint64(table.stszCnt) {
+			return fmt.Errorf("track %d stts sample count %d != stsz sample count %d", table.trackID, table.sttsSampleCount, table.stszCnt)
+		}
+		if !table.stcoSeen {
+			return fmt.Errorf("track %d missing stco chunk table", table.trackID)
+		}
 	}
 	videoOK = sampleEntryKinds["avc1"]
 	audioOK = sampleEntryKinds["mp4a"]
 	if !videoOK {
 		return fmt.Errorf("moov missing avc1 video track")
 	}
-	if !audioOK && !hasOnlyOneTrak(moov) {
+	onlyOneTrack, err := hasOnlyOneTrak(moov)
+	if err != nil {
+		return err
+	}
+	if !audioOK && !onlyOneTrack {
 		return fmt.Errorf("moov missing mp4a audio track")
 	}
 
 	// 全部 track 的 stsz 总和必须与 mdat 数据区一致;stco 全部落入边界。
 	var totalSamples, totalSize int64
 	for _, table := range tables {
+		if table.stszSampleSize != 0 {
+			totalSize += int64(table.stszSampleSize) * table.stszCnt
+			totalSamples += table.stszCnt
+			continue
+		}
 		for i := int64(0); i < table.stszCnt; i++ {
 			pos := table.stszOff + 20 + i*4
 			if pos+4 > int64(len(moov)) {
@@ -549,15 +636,17 @@ func walkBoxes(data []byte, start, end int64, fn func(boxWalker) error) error {
 }
 
 // hasOnlyOneTrak 判断 moov 是否只有一个 trak(video-only 合法,计划 #24)。
-func hasOnlyOneTrak(moov []byte) bool {
+func hasOnlyOneTrak(moov []byte) (bool, error) {
 	count := 0
-	_ = walkBoxes(moov, 8, int64(len(moov)), func(ref boxWalker) error {
+	if err := walkBoxes(moov, 8, int64(len(moov)), func(ref boxWalker) error {
 		if ref.kind == "trak" {
 			count++
 		}
 		return nil
-	})
-	return count == 1
+	}); err != nil {
+		return false, err
+	}
+	return count == 1, nil
 }
 
 func boxKinds(boxes []struct {
@@ -581,12 +670,16 @@ func beU32(b []byte) uint32 {
 // tsStreamChunkSize 是最终 .ts 校验的分块大小(188 的整数倍)。
 const tsStreamChunkSize = 188 * 21845 // ≈ 4 MB
 
-func validateTSFileStream(path string) error {
+func validateTSFileStream(path string) (err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("close TS validation file: %w", closeErr)
+		}
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return err
@@ -606,7 +699,10 @@ func validateTSFileStream(path string) error {
 			}
 		}
 		if err != nil {
-			break
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("read final TS at offset %d: %w", off, err)
 		}
 		off += int64(n)
 	}

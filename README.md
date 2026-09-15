@@ -273,9 +273,9 @@ TOP250 and user-list commands need the default authenticated account.
 local state and should be used deliberately. `javdb assets download` writes
 selected media assets to explicit new local paths and outputs only the final
 path per line. `javdb assets list --json/--ndjson` exposes optional
-width/height/duration metadata via a best-effort probe (plain pipe mode never
-probes). They never download a full movie or magnet target and never replace an
-existing file.
+`type` and `url` only; listing does not download or probe the media payloads.
+They never download a full movie or magnet target and never replace an existing
+file.
 
 ## Documentation
 
