@@ -151,23 +151,30 @@ func TestDownloadImagePropagatesContextCancellation(t *testing.T) {
 }
 
 type countingReader struct {
-	data  []byte
-	read  int
-	reads int
+	remaining int
+	read      int
+	reads     int
 }
 
 func (r *countingReader) Read(p []byte) (int, error) {
 	r.reads++
-	if r.read == len(r.data) {
+	if r.remaining == 0 {
 		return 0, io.EOF
 	}
-	n := copy(p, r.data[r.read:])
+	n := len(p)
+	if n > r.remaining {
+		n = r.remaining
+	}
+	for i := 0; i < n; i++ {
+		p[i] = 'x'
+	}
+	r.remaining -= n
 	r.read += n
 	return n, nil
 }
 
 func TestReadMediaBodyBoundedStopsAfterOneProbeByte(t *testing.T) {
-	reader := &countingReader{data: []byte(strings.Repeat("x", 1024))}
+	reader := &countingReader{remaining: 1024}
 	_, err := readMediaBodyBounded(reader, 16)
 	if err == nil || !strings.Contains(err.Error(), "exceeds fixed bound of 16 bytes") {
 		t.Fatalf("bounded read error = %v, want fixed-bound error", err)
