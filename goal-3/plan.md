@@ -6,7 +6,10 @@
 - 本 plan 只负责:现状映射(真实代码位置)、计划与现实的差异假设、执行编排、风险与回滚。
 - 执行采用 superpowers 方法的 TDD 原则(Red → Green → Refactor,每 task 测试先行),受 goal-mode 无人值守节奏约束(一轮一个 task,不能提问,假设必须落盘)。
 
-## 1. 现状分析(2026-09-13 探索结论,file:line)
+## 1. 历史基线(2026-09-13 探索结论,file:line;已完成)
+
+> 本节记录 T01 探索时的旧状态，仅用于解释任务起点，不是当前 API 或 CLI 契约。
+> 当前实现与验收证据以 `goal-3/tasks.md` 的完成记录、仓库源码及 PR #47 最新提交为准。
 
 ### CLI(internal/cli)
 - 根命令 `internal/cli/root.go:46` `New(stdin, stdout, stderr)`;子命令注册于 root.go:69-94。
@@ -37,23 +40,23 @@
 
 ## 2. 计划与现实的差异及默认假设(无人值守,不可再问)
 
-- **A1 符号名(T01 修正)**:PR #45(1ad3011)已合入最新 main:旧 `MovieMedia*` 已更名为 `MovieAssetDownloadOptions/MovieAssetDownloadResult/DownloadMovieAssets`(sdk/movie.go),CLI 已有单体 `assets NUMBER` 命令(alias `download`,internal/cli/commands/download/,path-per-type flags --thumbnail/--preview-image/--preview-video)。input.md #45 所指的旧 API 即这套。迁移 = 删除该 path-per-type API 与单体 assets 命令,新增 `MovieAsset{Type,URL}` + `MovieAssets` + `DownloadMovieAsset`(新的 `javdb assets list|download` 子命令域)。
+- **A1 符号名(T01 修正,历史)**:PR #45(1ad3011)合入时的基线仍是 `MovieAssetDownloadOptions/MovieAssetDownloadResult/DownloadMovieAssets` 与单体 `assets NUMBER` 命令(alias `download`)。该基线已在 T03 完成迁移；当前公开契约是 `MovieAsset{Type,URL}`、`MovieAssets`、`DownloadMovieAsset`，CLI 是 `javdb assets list|download`。
 - **A2 cover_url**:JavDB 详情 map 中从未出现。资产读取顺序按 input.md #4:thumbnail(`thumb_url`)→ cover(`cover_url`,map 存在才纳入)→ `preview_images[]`(large_url 回退 thumb_url)→ `preview_video_url`;缺失项直接跳过。真实字段形态以 E2E 输出为准。
 - **A3 防盗链 header**:现状仅 UA 已能拉取部分媒体。MediaFetcher 统一内部管理 image/playlist/segment/key 请求 header(input.md #21),实际 header 组合在真实 E2E 阶段按结果确定;不预先暴露 `--media-header`。
-- **A4 旧 `javdb download` 与单体 assets 命令**:input.md invariant 1/2 要求下载只存在于 `javdb assets download` 子命令。PR #45 的单体 `assets NUMBER`(alias `download`,目录 internal/cli/commands/download/)与 path-per-type SDK 在 T03 一并删除,保持每 task 结束时编译+测试全绿。
+- **A4 旧 `javdb download` 与单体 assets 命令(历史)**:input.md invariant 1/2 要求下载只存在于 `javdb assets download` 子命令。PR #45 的单体 `assets NUMBER`(alias `download`)与 path-per-type SDK 已在 T03 一并删除；当前命令域以 `internal/cli/commands/assets/` 为准。
 - **A5 依赖策略(input.md #27/#28)**:默认**零新依赖**,TS demux/PES/NALU/ADTS/MP4 mux 用标准库自研(encoding/binary + 已有 crypto/aes)。spike task 仍完成候选库(go-astits、go-mp4 等)调研并写 `goal-3/spike-remux.md` 供维护者审阅;若自研被证不可行,后续 task 标阻塞,不擅自引依赖。
 - **A6 分支与隔离**:已检测主 repo(main,GIT_DIR==GIT_COMMON,非 submodule),无原生 worktree 工具 → git worktree fallback:`.worktrees/feat/assets-media-download`(分支 `feat/assets-media-download`,基于最新 main)。不合并、不 rebase 旧分支(input.md #72/#73)。
 - **A7 E2E 凭证**:若本机无有效 JavDB 认证,E2E task 标阻塞并记录所需输入,fixture 测试先行覆盖核心契约,不阻塞其他 task。
 - **A8 commit 规范**:遵循 input.md #74 的英文 conventional commit 序列;test 与实现紧耦合时可合并为逻辑 commit(#75)。
 
-## 3. 执行方案
+## 3. 执行方案(历史编排，已完成)
 
 - 隔离:using-git-worktrees 流程(检测结果见 A6;`.worktrees` 已被 gitignore,无需追加)。
 - 每轮只做 tasks.md 第一个未完成 task;每 3 个执行 task 后接一个集中检查 task(CHECK)。
 - 实现 locus:CLI 于 `internal/cli/commands/assets/`(assets.go/list.go/download.go/selector.go);media 于 `internal/javdb/appapi/media/`(TS/PES/NALU/ADTS/MP4 不出该包,input.md #51);SDK 于 `sdk/movie.go`(或新 `sdk/asset.go`)。
 - PR #45 的单体 assets 命令(目录 `internal/cli/commands/download/`)在 T03 删除;新 `assets` 命令域(list/download 子命令)T04/T05 新建于 `internal/cli/commands/assets/`。envelope/protocol 基础设施不动(input.md #12)。
 
-## 4. 验证方式
+## 4. 验证方式(仍适用于当前实现)
 
 - 每 task 收尾:`go test ./...`(仓库 AGENTS.md 默认离线验证)+ 受影响包 `go vet`;构建 `sh scripts/build.sh`。全量门禁留给 CHECK/终审轮,避免 fail-fast 重复跑。
 - MP4 契约校验用自研 Go 校验器(Layer C,input.md #61:测试 correctness 不依赖 ffprobe);若环境存在 ffprobe 仅做可选 smoke。

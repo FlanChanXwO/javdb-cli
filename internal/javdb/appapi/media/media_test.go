@@ -127,6 +127,13 @@ func TestDownloadHLSRejectsUnfinishedPlaylistWithoutCreatingFile(t *testing.T) {
 	}
 }
 
+func TestParseHLSMediaPlaylistRejectsDiscontinuity(t *testing.T) {
+	_, err := parseHLSMediaPlaylist("https://media.example.test/previews/index.m3u8", []byte("#EXTM3U\n#EXT-X-DISCONTINUITY\n#EXTINF:1.0,\nsegment.ts\n#EXT-X-ENDLIST\n"))
+	if err == nil || !strings.Contains(err.Error(), "HLS discontinuity is not supported") {
+		t.Fatalf("parse discontinuity error = %v, want unsupported discontinuity rejection", err)
+	}
+}
+
 func TestDownloadHLSRejectsInvalidPKCS7PaddingWithoutOutput(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	key := []byte("0123456789abcdef")

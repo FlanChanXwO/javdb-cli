@@ -219,7 +219,9 @@ func downloadMP4(ctx context.Context, fetch FetchContext, playlistURL, target st
 				return 0, err
 			}
 		}
-		spool.finalize()
+		if err := spool.finalize(); err != nil {
+			return 0, err
+		}
 		return writeMP4Body(spool, w)
 	}, validateMP4File)
 	closeErr := spool.file.Close()
@@ -314,6 +316,8 @@ func parseHLSMediaPlaylist(playlistURL string, raw []byte) (hlsMediaPlaylist, er
 		switch {
 		case line == "#EXT-X-ENDLIST":
 			endList = true
+		case line == "#EXT-X-DISCONTINUITY":
+			return hlsMediaPlaylist{}, fmt.Errorf("HLS discontinuity is not supported")
 		case strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"):
 			parsed, err := strconv.ParseUint(strings.TrimSpace(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:")), 10, 64)
 			if err != nil {

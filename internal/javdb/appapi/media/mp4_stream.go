@@ -23,8 +23,6 @@ type mp4Spooler struct {
 	video      *mp4TrackMeta
 	audio      *mp4TrackMeta
 	fileOffset int64
-	minStart   uint64
-	lastEnd    uint64
 }
 
 func newMP4Spooler(path string) (*mp4Spooler, error) {
@@ -73,6 +71,9 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					return err
 				}
 			}
+			if err := s.checkVideoTimestamps(track.Samples); err != nil {
+				return err
+			}
 			for _, sample := range track.Samples {
 				n, err := s.file.Write(sample.Data)
 				if err != nil {
@@ -86,7 +87,6 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					PTS: sample.PTS, DTS: sample.DTS, Sync: sample.Sync,
 				})
 				s.fileOffset += int64(len(sample.Data))
-				s.noteTimeline(sample.PTS, sample.DTS)
 			}
 		case streamTypeAAC:
 			track, err := parseAACTrack(*stream)
@@ -119,7 +119,6 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 					SpoolOffset: s.fileOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
 				})
 				s.fileOffset += int64(len(sample.Data))
-				s.noteTimeline(sample.PTS, sample.PTS)
 			}
 		}
 	}
@@ -128,26 +127,71 @@ func (s *mp4Spooler) addSegment(data []byte) error {
 
 // checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致(计划 #17)。
 func (s *mp4Spooler) checkVideoConfig(track *h264Track) error {
-	for _, ps := range track.ParamSets {
-		if ps[0]&0x1F != 7 {
+	for _, nalType := range []byte{7, 8} {
+		actual := h264ParameterSets(track.ParamSets, nalType)
+		if len(actual) == 0 {
+			// 某些 segment 只重复一种参数集；缺失本身不代表配置变化。
 			continue
 		}
-		firstSPS := ""
-		for _, first := range s.video.ParamSets {
-			if first[0]&0x1F == 7 {
-				firstSPS = string(first)
-				break
-			}
+		expected := h264ParameterSets(s.video.ParamSets, nalType)
+		if equalH264ParameterSets(expected, actual) {
+			continue
 		}
-		if firstSPS != "" && string(ps) != firstSPS {
-			w, h, err := parseSPSDimensions(ps)
+		if nalType == 7 {
+			w, h, err := parseSPSDimensions(actual[0])
 			if err != nil {
 				return fmt.Errorf("parse SPS in later segment: %w", err)
 			}
 			return fmt.Errorf("resolution change detected: SPS differs between segments (first %dx%d, later %dx%d)", s.video.Width, s.video.Height, w, h)
 		}
+		return fmt.Errorf("PPS changed between segments")
 	}
 	return nil
+}
+
+// checkVideoTimestamps 在写入 spool 前校验新 segment 的 DTS 不回退。
+// Layer A 只能发现单个 segment 内的问题，这里补上跨 segment 的全局时间轴约束。
+func (s *mp4Spooler) checkVideoTimestamps(samples []h264Sample) error {
+	var previous uint64
+	hasPrevious := false
+	if s.video != nil && len(s.video.Samples) > 0 {
+		previous = s.video.Samples[len(s.video.Samples)-1].DTS
+		hasPrevious = true
+	}
+	for _, sample := range samples {
+		if hasPrevious && sample.DTS < previous {
+			return fmt.Errorf("video timestamp regression across segments: DTS %d < previous DTS %d", sample.DTS, previous)
+		}
+		previous = sample.DTS
+		hasPrevious = true
+	}
+	return nil
+}
+
+// h264ParameterSets 按 NAL 类型筛选参数集，并复制后排序以消除传输顺序差异。
+func h264ParameterSets(paramSets [][]byte, nalType byte) [][]byte {
+	filtered := make([][]byte, 0, len(paramSets))
+	for _, paramSet := range paramSets {
+		if len(paramSet) > 0 && paramSet[0]&0x1F == nalType {
+			filtered = append(filtered, append([]byte(nil), paramSet...))
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return bytes.Compare(filtered[i], filtered[j]) < 0
+	})
+	return filtered
+}
+
+func equalH264ParameterSets(expected, actual [][]byte) bool {
+	if len(expected) != len(actual) {
+		return false
+	}
+	for i := range expected {
+		if !bytes.Equal(expected[i], actual[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // checkAudioConfig 校验后续 segment 的 AAC ASC/采样率/通道与首段一致(计划 #17)。
@@ -164,42 +208,21 @@ func (s *mp4Spooler) checkAudioConfig(track *aacTrack) error {
 	return nil
 }
 
-func (s *mp4Spooler) noteTimeline(pts, dts uint64) {
-	start := minU64(pts, dts)
-	end := maxU64(pts, dts)
-	if s.video == nil && s.audio == nil {
-		return
-	}
-	if len(s.videoSamples()) == 0 && len(s.audio.Samples) == 0 {
-		return
-	}
-	if s.lastEnd == 0 && s.minStart == 0 {
-		s.minStart = start
-	}
-	if start < s.minStart {
-		s.minStart = start
-	}
-	if end > s.lastEnd {
-		s.lastEnd = end
-	}
-}
-
-func (s *mp4Spooler) videoSamples() []mp4SampleMeta {
-	if s.video == nil {
-		return nil
-	}
-	return s.video.Samples
-}
-
 // finalize 计算 track 时长;文件保持打开,writeMP4Body 需要 ReadAt 读回样本。
 // 文件关闭由调用方 downloadMP4 的 defer 负责。
-func (s *mp4Spooler) finalize() {
+func (s *mp4Spooler) finalize() error {
 	if s.video != nil {
-		s.video.Duration = s.lastEnd - s.minStart
+		durations, duration, err := videoSampleDurations(s.video.Samples)
+		if err != nil {
+			return err
+		}
+		s.video.SampleDurations = durations
+		s.video.Duration = duration
 	}
 	if s.audio != nil {
 		s.audio.Duration = uint64(len(s.audio.Samples)) * 1024
 	}
+	return nil
 }
 
 // writeMP4Body 完成 Phase2:ftyp → moov → mdat(从 spool 拷贝样本)。
@@ -424,8 +447,11 @@ func validateMP4File(path string) (err error) {
 	videoOK, audioOK := false, false
 	type sampleTable struct {
 		trackID         uint32
+		mdhdSeen        bool
+		mdhdDuration    uint64
 		sttsSeen        bool
 		sttsSampleCount uint64
+		sttsDuration    uint64
 		stszSeen        bool
 		stszOff         int64
 		stszCnt         int64
@@ -437,7 +463,6 @@ func validateMP4File(path string) (err error) {
 	var tables []*sampleTable
 	var current *sampleTable
 	seenTrackIDs := map[uint32]bool{}
-	durationOK := false
 	sampleEntryKinds := map[string]bool{}
 	if err := walkBoxes(moov, 8, int64(len(moov)), func(ref boxWalker) error {
 		switch ref.kind {
@@ -459,15 +484,19 @@ func validateMP4File(path string) (err error) {
 			seenTrackIDs[trackID] = true
 			current.trackID = trackID
 		case "mdhd":
-			if ref.off+28 > int64(len(moov)) {
+			if current == nil || ref.off+28 > int64(len(moov)) {
 				return fmt.Errorf("mdhd is truncated")
+			}
+			if current.mdhdSeen {
+				return fmt.Errorf("track %d has duplicate mdhd tables", current.trackID)
 			}
 			timescale := beU32(moov[ref.off+20 : ref.off+24])
 			duration := beU32(moov[ref.off+24 : ref.off+28])
 			if timescale == 0 || duration == 0 {
 				return fmt.Errorf("track duration %d (timescale %d) is not positive", duration, timescale)
 			}
-			durationOK = true
+			current.mdhdSeen = true
+			current.mdhdDuration = uint64(duration)
 		case "stts":
 			if current == nil {
 				return fmt.Errorf("stts is outside a track")
@@ -491,15 +520,22 @@ func validateMP4File(path string) (err error) {
 				return fmt.Errorf("track %d has duplicate stts tables", current.trackID)
 			}
 			var sampleCount uint64
+			var timingDuration uint64
 			for pos := ref.off + 16; pos < entryEnd; pos += 8 {
 				count := uint64(beU32(moov[pos : pos+4]))
+				delta := uint64(beU32(moov[pos+4 : pos+8]))
 				if ^uint64(0)-sampleCount < count {
 					return fmt.Errorf("track %d stts sample count overflows", current.trackID)
 				}
+				if count != 0 && delta > (^uint64(0)-timingDuration)/count {
+					return fmt.Errorf("track %d stts duration overflows", current.trackID)
+				}
 				sampleCount += count
+				timingDuration += count * delta
 			}
 			current.sttsSeen = true
 			current.sttsSampleCount = sampleCount
+			current.sttsDuration = timingDuration
 		case "stsd":
 			// stsd:[size kind][ver/flags][entry_count][sample entry(size+kind+...)]:
 			// entry 的 kind 字段在 box 起始 +20。
@@ -533,13 +569,13 @@ func validateMP4File(path string) (err error) {
 	}); err != nil {
 		return err
 	}
-	if !durationOK {
-		return fmt.Errorf("moov has no positive mdhd duration")
-	}
 	if len(tables) == 0 {
 		return fmt.Errorf("moov has no tracks")
 	}
 	for _, table := range tables {
+		if !table.mdhdSeen {
+			return fmt.Errorf("track %d missing mdhd", table.trackID)
+		}
 		if !table.sttsSeen {
 			return fmt.Errorf("track %d missing stts timing table", table.trackID)
 		}
@@ -548,6 +584,9 @@ func validateMP4File(path string) (err error) {
 		}
 		if table.sttsSampleCount != uint64(table.stszCnt) {
 			return fmt.Errorf("track %d stts sample count %d != stsz sample count %d", table.trackID, table.sttsSampleCount, table.stszCnt)
+		}
+		if table.sttsDuration != table.mdhdDuration {
+			return fmt.Errorf("track %d stts duration %d != mdhd duration %d", table.trackID, table.sttsDuration, table.mdhdDuration)
 		}
 		if !table.stcoSeen {
 			return fmt.Errorf("track %d missing stco chunk table", table.trackID)

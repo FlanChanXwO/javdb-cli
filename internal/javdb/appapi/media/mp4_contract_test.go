@@ -215,6 +215,11 @@ func tTrackIDs(t *testing.T, mp4 []byte) []uint32 {
 
 func TestMP4STTSHasSampleCountEntries(t *testing.T) {
 	video, audio := buildTestTracks(t)
+	video.Samples = append(video.Samples, h264Sample{
+		Data: append([]byte(nil), video.Samples[1].Data...),
+		PTS:  video.Samples[1].PTS + 3600,
+		DTS:  video.Samples[1].DTS + 3600,
+	})
 	audio.Samples = append(audio.Samples, aacSample{
 		Data: append([]byte(nil), audio.Samples[0].Data...),
 		PTS:  audio.Samples[0].PTS + uint64(1024*90000/audio.SampleRate),
@@ -224,7 +229,7 @@ func TestMP4STTSHasSampleCountEntries(t *testing.T) {
 		t.Fatalf("buildMP4: %v", err)
 	}
 	tracks := parseMP4Tracks(t, mp4)
-	// 测试流两帧 DTS delta 相同:1 个 entry {2, 3600},而不是 {entry_count=1, delta...}。
+	// 测试流三帧 DTS 为 0、3600、7200:1 个 entry {3, 3600},而不是 {entry_count=1, delta...}。
 	vStts := tracks[0].sttsRaw
 	if vStts == nil {
 		t.Fatal("video track missing stts")
@@ -235,11 +240,14 @@ func TestMP4STTSHasSampleCountEntries(t *testing.T) {
 	}
 	sampleCount := beU32(vStts[16:20])
 	sampleDelta := beU32(vStts[20:24])
-	if sampleCount != 2 || sampleDelta != 3600 {
-		t.Fatalf("stts entry = {%d, %d}, want {2, 3600}", sampleCount, sampleDelta)
+	if sampleCount != 3 || sampleDelta != 3600 {
+		t.Fatalf("stts entry = {%d, %d}, want {3, 3600}", sampleCount, sampleDelta)
 	}
 	if tracks[0].sttsSampleCount != uint64(tracks[0].stszSampleCount) {
 		t.Fatalf("video stts sample count = %d, stsz sample count = %d", tracks[0].sttsSampleCount, tracks[0].stszSampleCount)
+	}
+	if tracks[0].mdhdDur != 10800 {
+		t.Fatalf("video mdhd duration = %d, want 10800 from three stts deltas", tracks[0].mdhdDur)
 	}
 	// 音频 track 同理:N 个 1024 delta → 1 个 entry。
 	aStts := tracks[1].sttsRaw
@@ -291,6 +299,43 @@ func TestLayerCRejectsSTTSSampleCountMismatch(t *testing.T) {
 	}
 }
 
+func TestLayerCRejectsSTTSDurationMismatch(t *testing.T) {
+	video, audio := buildTestTracks(t)
+	video.Samples = append(video.Samples, h264Sample{
+		Data: append([]byte(nil), video.Samples[1].Data...),
+		PTS:  video.Samples[1].PTS + 3600,
+		DTS:  video.Samples[1].DTS + 3600,
+	})
+	mp4, err := buildMP4(video, audio)
+	if err != nil {
+		t.Fatalf("buildMP4: %v", err)
+	}
+	var videoMDHD boxWalker
+	found := false
+	if err := walkBoxes(mp4, 0, int64(len(mp4)), func(ref boxWalker) error {
+		if ref.kind == "mdhd" && !found {
+			videoMDHD = ref
+			found = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk mdhd: %v", err)
+	}
+	if !found {
+		t.Fatal("video mdhd box not found")
+	}
+	corrupt := append([]byte(nil), mp4...)
+	// 正常视频样本的 stts 总时长为 10800；把 mdhd 改成 7200，Layer C 必须拒绝不一致文件。
+	overwriteUint32(corrupt, int(videoMDHD.off)+24, 7200)
+	path := filepath.Join(t.TempDir(), "duration-mismatch.mp4")
+	if err := os.WriteFile(path, corrupt, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateMP4File(path); err == nil || !strings.Contains(err.Error(), "stts duration") {
+		t.Fatalf("validate mismatch error = %v, want stts/mdhd duration rejection", err)
+	}
+}
+
 // ---- #20:ctts RLE + signed version 1;全零省略 ----
 
 func TestMP4CTTSOmittedWhenAllZero(t *testing.T) {
@@ -325,7 +370,10 @@ func TestMP4CTTSRLEPositiveOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planVideoTrack: %v", err)
 	}
-	stts, ctts, stss := buildVideoTimingBoxes(meta.Samples)
+	stts, ctts, stss, err := buildVideoTimingBoxes(meta.Samples)
+	if err != nil {
+		t.Fatalf("buildVideoTimingBoxes: %v", err)
+	}
 	// stts:delta 3600,3600,3600 → 1 个 entry {3, 3600}。
 	if ec := beU32(stts[12:16]); ec != 1 {
 		t.Fatalf("stts entry_count = %d, want 1", ec)
@@ -360,6 +408,15 @@ func TestPlanVideoTrackRejectsNoSyncSamples(t *testing.T) {
 	_, err := planVideoTrack(video)
 	if err == nil || !strings.Contains(err.Error(), "sync") {
 		t.Fatalf("error = %v, want no sync sample rejection", err)
+	}
+}
+
+func TestPlanVideoTrackRejectsSingleTimestampedSample(t *testing.T) {
+	video, _ := buildTestTracks(t)
+	video.Samples = video.Samples[:1]
+	_, err := planVideoTrack(video)
+	if err == nil || !strings.Contains(err.Error(), "at least two timestamped samples") {
+		t.Fatalf("error = %v, want single-sample duration rejection", err)
 	}
 }
 
@@ -587,10 +644,6 @@ func TestSpoolerRejectsCrossSegmentSPSChange(t *testing.T) {
 		t.Fatalf("first segment: %v", err)
 	}
 	// 第二个 segment 携带不同 SPS(不同分辨率)。
-	spool2, _ := newMP4Spooler(t.TempDir() + "/spool2")
-	defer os.RemoveAll(spool2.file.Name())
-	defer spool2.file.Close()
-	_ = spool2
 	// 构造不同 SPS 的 segment:640x480 → 320x240。
 	altSegment := validTSSegmentWithSPS(t, []byte{0x67, 0x42, 0x00, 0x1E, 0xF8, 0x14, 0x07, 0xB2})
 	err = spool.addSegment(altSegment)
@@ -599,10 +652,46 @@ func TestSpoolerRejectsCrossSegmentSPSChange(t *testing.T) {
 	}
 }
 
+func TestSpoolerRejectsCrossSegmentDTSRegression(t *testing.T) {
+	spool, err := newMP4Spooler(t.TempDir() + "/spool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(spool.file.Name())
+	defer spool.file.Close()
+	if err := spool.addSegment(validTSSegmentAt(0)); err != nil {
+		t.Fatalf("first segment: %v", err)
+	}
+	if err := spool.addSegment(validTSSegmentAt(0)); err == nil || !strings.Contains(err.Error(), "timestamp regression") {
+		t.Fatalf("error = %v, want cross-segment timestamp regression", err)
+	}
+}
+
+func TestSpoolerRejectsCrossSegmentPPSChange(t *testing.T) {
+	spool, err := newMP4Spooler(t.TempDir() + "/spool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(spool.file.Name())
+	defer spool.file.Close()
+	sps := []byte{0x67, 0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2}
+	if err := spool.addSegment(validTSSegmentWithSPSAndPPS(t, sps, []byte{0xCC, 0xDD})); err != nil {
+		t.Fatalf("first segment: %v", err)
+	}
+	err = spool.addSegment(validTSSegmentWithSPSAndPPS(t, sps, []byte{0xEE, 0xFF}))
+	if err == nil || !strings.Contains(err.Error(), "PPS") {
+		t.Fatalf("error = %v, want PPS change rejection", err)
+	}
+}
+
 // validTSSegmentWithSPS 构造携带指定 SPS 的合法 segment。
 func validTSSegmentWithSPS(t *testing.T, sps []byte) []byte {
+	return validTSSegmentWithSPSAndPPS(t, sps, []byte{0xCC, 0xDD})
+}
+
+func validTSSegmentWithSPSAndPPS(t *testing.T, sps, ppsPayload []byte) []byte {
 	t.Helper()
-	pps := h264Frame(8, []byte{0xCC, 0xDD})
+	pps := h264Frame(8, ppsPayload)
 	frame0 := append(append(append([]byte{}, append([]byte{0x00, 0x00, 0x00, 0x01}, sps...)...), pps...), h264Frame(5, []byte{0x01, 0x02})...)
 	frame1 := h264Frame(1, []byte{0x03, 0x04})
 	var data []byte

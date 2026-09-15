@@ -41,15 +41,16 @@ type mp4SampleMeta struct {
 
 // mp4TrackMeta 是一个 track 的完整 moov 级元数据。
 type mp4TrackMeta struct {
-	Timescale  uint32
-	Duration   uint64
-	Width      uint16
-	Height     uint16
-	ParamSets  [][]byte // video:SPS/PPS(avcC)
-	ASC        []byte   // audio:AudioSpecificConfig(esds)
-	Channels   int
-	SampleRate int
-	Samples    []mp4SampleMeta
+	Timescale       uint32
+	Duration        uint64
+	Width           uint16
+	Height          uint16
+	ParamSets       [][]byte // video:SPS/PPS(avcC)
+	ASC             []byte   // audio:AudioSpecificConfig(esds)
+	Channels        int
+	SampleRate      int
+	Samples         []mp4SampleMeta
+	SampleDurations []uint32 // video stts 与 mdhd 共用的样本 delta 序列
 }
 
 // planVideoTrack 把内存中的 H.264 样本转成 track 元数据(偏移顺序累计)。
@@ -82,21 +83,19 @@ func planVideoTrack(video *h264Track) (*mp4TrackMeta, error) {
 		ParamSets: video.ParamSets,
 	}
 	var offset int64
-	baseDTS := video.Samples[0].DTS
-	basePTS := video.Samples[0].PTS
-	minStart := minU64(basePTS, baseDTS)
-	var lastEnd uint64
 	for _, s := range video.Samples {
 		meta.Samples = append(meta.Samples, mp4SampleMeta{
 			Offset: offset, Size: uint32(len(s.Data)),
 			PTS: s.PTS, DTS: s.DTS, Sync: s.Sync,
 		})
 		offset += int64(len(s.Data))
-		if end := maxU64(s.PTS, s.DTS); end > lastEnd {
-			lastEnd = end
-		}
 	}
-	meta.Duration = lastEnd - minStart
+	durations, duration, err := videoSampleDurations(meta.Samples)
+	if err != nil {
+		return nil, err
+	}
+	meta.SampleDurations = durations
+	meta.Duration = duration
 	return meta, nil
 }
 
@@ -282,7 +281,18 @@ func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 		avcC,
 	)
 	stsd := mp4FullBox("stsd", 0, 0, mp4U32(1), avc1)
-	stts, ctts, stss := buildVideoTimingBoxes(meta.Samples)
+	durations := meta.SampleDurations
+	if len(durations) == 0 {
+		var err error
+		durations, _, err = videoSampleDurations(meta.Samples)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(durations) != len(meta.Samples) {
+		return nil, fmt.Errorf("video sample duration count %d != sample count %d", len(durations), len(meta.Samples))
+	}
+	stts, ctts, stss := buildVideoTimingBoxesWithDeltas(meta.Samples, durations)
 	boxes := [][]byte{stsd, stts, stss}
 	if ctts != nil {
 		boxes = append(boxes, ctts)
@@ -329,24 +339,51 @@ func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 // 时间戳以首样本为零基准(track 内时间从 0 开始)。
 // ISO BMFF 每个 stts/ctts entry 必须为 {sample_count, sample_delta/offset};
 // 末样本 delta 由倒数第二样本 delta 推导(计划 #19/#20)。
-func buildVideoTimingBoxes(samples []mp4SampleMeta) (stts, ctts, stss []byte) {
-	baseDTS := samples[0].DTS
-	// DTS delta 序列:最后一个样本的 delta 沿用倒数第二样本的 delta;
-	// 没有更可靠的信息时不隐式丢失。
-	deltas := make([]uint32, 0, len(samples))
-	prevDTS := baseDTS
-	lastDelta := uint32(0)
+func buildVideoTimingBoxes(samples []mp4SampleMeta) (stts, ctts, stss []byte, err error) {
+	deltas, _, err := videoSampleDurations(samples)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stts, ctts, stss = buildVideoTimingBoxesWithDeltas(samples, deltas)
+	return stts, ctts, stss, nil
+}
+
+// videoSampleDurations 计算视频样本的 stts delta，并返回与之相同来源的 mdhd duration。
+// 末样本没有下一个 DTS，因此沿用倒数第二个 delta；所有 delta 必须可编码为 uint32。
+func videoSampleDurations(samples []mp4SampleMeta) ([]uint32, uint64, error) {
+	if len(samples) < 2 {
+		return nil, 0, fmt.Errorf("video track requires at least two timestamped samples")
+	}
+	deltas := make([]uint32, len(samples))
 	for i := 1; i < len(samples); i++ {
-		delta := uint32(samples[i].DTS - prevDTS)
-		deltas = append(deltas, delta)
-		lastDelta = delta
-		prevDTS = samples[i].DTS
+		previous := samples[i-1].DTS
+		current := samples[i].DTS
+		if current < previous {
+			return nil, 0, fmt.Errorf("video timestamp regression at sample %d: DTS %d < previous DTS %d", i, current, previous)
+		}
+		delta := current - previous
+		if delta > uint64(^uint32(0)) {
+			return nil, 0, fmt.Errorf("video sample delta %d at sample %d exceeds uint32", delta, i)
+		}
+		deltas[i-1] = uint32(delta)
 	}
-	if len(samples) > 1 {
-		deltas = append(deltas, lastDelta)
-	} else {
-		deltas = append(deltas, 0)
+	deltas[len(deltas)-1] = deltas[len(deltas)-2]
+
+	var duration uint64
+	for _, delta := range deltas {
+		if ^uint64(0)-duration < uint64(delta) {
+			return nil, 0, fmt.Errorf("video track duration overflows uint64")
+		}
+		duration += uint64(delta)
 	}
+	if duration == 0 {
+		return nil, 0, fmt.Errorf("video track duration is zero")
+	}
+	return deltas, duration, nil
+}
+
+// buildVideoTimingBoxesWithDeltas 使用已经校验并保存的 delta，确保 stts 与 mdhd 不再各算一遍。
+func buildVideoTimingBoxesWithDeltas(samples []mp4SampleMeta, deltas []uint32) (stts, ctts, stss []byte) {
 	stts = buildRLE32(deltas)
 
 	// ctts:offset = PTS - DTS(RLE);存在负 offset 时使用 version 1 signed。

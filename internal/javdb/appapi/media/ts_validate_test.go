@@ -198,20 +198,20 @@ func TestDownloadHLSFailsAfterExhaustedSegmentRetries(t *testing.T) {
 	}
 }
 
-func TestDownloadHLSAcceptsDiscontinuityPlaylist(t *testing.T) {
+func TestDownloadHLSRejectsDiscontinuityPlaylist(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	resources := map[string][]byte{
-		playlistURL: []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\na.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:1.0,\nb.ts\n#EXT-X-ENDLIST\n"),
-		"https://media.example.test/previews/a.ts": validTSSegmentAt(0),
-		"https://media.example.test/previews/b.ts": validTSSegmentAt(180000),
-	}
 	target := t.TempDir() + "/preview.ts"
-	written, err := downloadTS(context.Background(), hlsFetch(resources), playlistURL, target)
-	if err != nil {
-		t.Fatalf("download HLS: %v", err)
+	_, err := downloadTS(context.Background(), func(_ context.Context, uri string) ([]byte, error) {
+		if uri == playlistURL {
+			return []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\na.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:1.0,\nb.ts\n#EXT-X-ENDLIST\n"), nil
+		}
+		return nil, errors.New("segment must not be fetched")
+	}, playlistURL, target)
+	if err == nil || !strings.Contains(err.Error(), "HLS discontinuity is not supported") {
+		t.Fatalf("download HLS error = %v, want discontinuity rejection", err)
 	}
-	if written != int64(2*len(validTSSegmentAt(0))) {
-		t.Fatalf("written = %d, want %d", written, 2*len(validTSSegmentAt(0)))
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("rejected playlist left output: %v", statErr)
 	}
 }
 
