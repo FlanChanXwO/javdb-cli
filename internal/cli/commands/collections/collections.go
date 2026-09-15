@@ -32,6 +32,18 @@ func collectionKind(selector string) (pipeline.Kind, error) {
 	return kind, nil
 }
 
+func collectionEnvelope(selector string, kind pipeline.Kind, item map[string]any) (pipeline.Envelope, error) {
+	row := result.ProjectNamed(item)
+	if row.ID == "" {
+		return pipeline.Envelope{}, fmt.Errorf("collections %s: entity has no id", selector)
+	}
+	ref := row.Name
+	if ref == "" {
+		ref = row.ID
+	}
+	return pipeline.New(kind, ref, row.ID).WithData(map[string]any{"entity": item}), nil
+}
+
 // New builds the collection listing command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var asJSON, asNDJSON bool
@@ -61,15 +73,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			envelopes := make([]pipeline.Envelope, 0, len(items))
 			for _, item := range items {
-				row := result.ProjectNamed(item)
-				ref := row.Name
-				if ref == "" {
-					ref = row.ID
+				envelope, err := collectionEnvelope(kind, pipelineKind, item)
+				if err != nil {
+					return nil, err
 				}
-				if ref == "" {
-					return nil, fmt.Errorf("collections %s: entity has no name or id", kind)
-				}
-				envelopes = append(envelopes, pipeline.New(pipelineKind, ref, row.ID).WithData(map[string]any{"entity": item}))
+				envelopes = append(envelopes, envelope)
 			}
 			return envelopes, nil
 		},

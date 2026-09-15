@@ -174,6 +174,7 @@ shape，多项输入输出信封数组。消费输入的命令对原始位置参
 不读 stdin，`--json` 保留其聚合 JSON shape，`--ndjson` 才逐条输出信封。Fan-out 命令每个
 结果输出一个信封：列表记录在 `id` 放稳定 list ID，`ref` 使用显示名称并在缺失时回退到 ID，
 原始对象放在 `data.list`；合集实体使用对应的单数 kind，原始对象放在 `data.entity`。
+列表和合集实体都必须有非空稳定 ID；缺少 ID 时显式失败，不会生成只有名称的信封。
 
 列表与合集的 fan-out NDJSON shape 是有意的 `javdb.pipeline/v1` machine-contract 迁移。消费
 旧聚合 `data.lists`/`data.items` 的程序必须迁移为每个信封读取一个 `data.list` 或 `data.entity`；
@@ -200,7 +201,8 @@ javdb lists related NUMBER [--id] [--page N] [--limit N] [--json|--ndjson]
 
 `lists --json` 保留既有的 `{"lists":[...],"current_page":"..."}` 聚合 shape，并复用本次
 已获取的页面。`lists --ndjson`、`lists search --ndjson` 与 `lists related --ndjson` 每个列表
-输出一个 `kind=list` 信封，原始列表对象放在 `data.list`。`lists related` 收到带非空 `id`
+输出一个 `kind=list` 信封，使用稳定 list ID 作为 `id`，显示名称作为 `ref`（缺失时回退到 ID），
+原始列表对象放在 `data.list`。`lists related` 收到带非空 `id`
 的 movie 信封时直接使用该 authoritative movie ID，不会把它重新解析成打印出的番号。原始位置
 输入的 legacy 人类输出与聚合 JSON 保持不变。
 
@@ -229,7 +231,7 @@ javdb unmark NUMBER [--id]
 
 `collections --ndjson` 会把五个 selector 展开为单数 kind：`actor`、`series`、`code`、
 `maker`、`director`。每个信封使用 `name_zht`/`name` 投影作为 `ref`，缺失时回退到 ID，
-使用投影 ID 作为 `id`，原始实体放在 `data.entity`。带 selector 的 `--json` 仍保留
+使用投影 ID 作为 `id`，原始实体放在 `data.entity`；实体缺少稳定 ID 时显式失败。带 selector 的 `--json` 仍保留
 `{"items":[...]}` 聚合 shape。
 
 `rankings movies`、`rankings playback` 与 `top250` 使用 `--json` 时输出 `{"movies":[...]}`；

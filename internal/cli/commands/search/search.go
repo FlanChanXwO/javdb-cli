@@ -53,6 +53,9 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if err := validateZone(zone); err != nil {
 				return err
 			}
+			if err := validateSearchType(typ); err != nil {
+				return err
+			}
 			if magnets < 0 {
 				return fmt.Errorf("--magnets must be >= 0")
 			}
@@ -143,6 +146,15 @@ func validateZone(zone string) error {
 		return nil
 	default:
 		return fmt.Errorf("zone must be one of censored|uncensored|western|fc2|all (got %q)", zone)
+	}
+}
+
+func validateSearchType(value string) error {
+	switch value {
+	case "", "movie", "code", "series", "actor", "maker", "director", "list":
+		return nil
+	default:
+		return fmt.Errorf("type must be one of movie|code|series|actor|maker|director|list (got %q)", value)
 	}
 }
 

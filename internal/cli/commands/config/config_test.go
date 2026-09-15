@@ -11,6 +11,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 )
 
 // isolateHome 把 HOME 指向临时目录，避免配置命令测试污染真实本机状态。
@@ -285,6 +286,28 @@ func TestConfigGetTTYMachineModesListDisplayKeysAsEnvelopes(t *testing.T) {
 			}
 			assertConfigDisplayEnvelopes(t, envelopes)
 		})
+	}
+}
+
+func TestConfigKeyEnvelopeUsesProvidedSnapshot(t *testing.T) {
+	cfg := settings.Defaults()
+	cfg.Host = "snapshot-host"
+	cfg.HTTPSProxy = "http://user:secret@proxy.example:8080"
+
+	host, err := configKeyEnvelope(cfg, "host")
+	if err != nil {
+		t.Fatalf("host envelope: %v", err)
+	}
+	if got := host.Data["value"]; got != "snapshot-host" {
+		t.Fatalf("host value = %#v, want snapshot-host", got)
+	}
+
+	proxy, err := configKeyEnvelope(cfg, "https_proxy")
+	if err != nil {
+		t.Fatalf("proxy envelope: %v", err)
+	}
+	if got := proxy.Data["value"]; got != "***" {
+		t.Fatalf("proxy value = %#v, want redacted value", got)
 	}
 }
 

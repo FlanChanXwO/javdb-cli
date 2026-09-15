@@ -22,7 +22,7 @@ func TestListEnvelopeProjectsIdentityAndRawItem(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "name and id", item: map[string]any{"id": "list-1", "name": "My List"}, wantRef: "My List", wantID: "list-1"},
-		{name: "name without id", item: map[string]any{"name": "Name Only"}, wantRef: "Name Only"},
+		{name: "name without id", item: map[string]any{"name": "Name Only"}, wantErr: true},
 		{name: "id fallback", item: map[string]any{"id": "list-2", "name": ""}, wantRef: "list-2", wantID: "list-2"},
 		{name: "missing identity", item: map[string]any{"name": ""}, wantErr: true},
 	}

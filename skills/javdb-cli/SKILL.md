@@ -51,7 +51,7 @@ token，token 失效则自动回退匿名请求。
 1. 先按用户的范围表达请求；仅在该命令 `--help` 显示 `--limit` 且用户给出条数时传入正数。不要为节省上下文擅自附加限额、页数、超时或重试次数。
 2. 小结果供人阅读时使用默认制表符文本；需要提取 ID、过滤或稳定字段时使用 `--json`，需要逐条管道信封或 fan-out 结果时使用 `--ndjson`。显式机器输出 flag 优先于 TTY 人类可读快捷路径。
 3. `--json` 只描述成功输出，并在适用时保留既有 legacy shape；`--ndjson` 输出可验证的 `javdb.pipeline/v1` 信封，fan-out 列表/合集结果分别把原始对象放在 `data.list`/`data.entity`。先检查命令退出状态；遇到认证、参数、网络或服务端错误时，报告 stderr 的真实原因，不要把它解析成 JSON 或伪装为“无结果”。
-   列表与合集的 fan-out NDJSON 是有意的 v1 machine-contract 迁移；消费旧聚合数据的程序必须按逐信封结果迁移，legacy 人类输出和显式聚合 `--json` 保持兼容。
+   列表与合集的 fan-out NDJSON 是有意的 v1 machine-contract 迁移；每个 list/entity 信封必须有非空稳定 ID，缺少 ID 时显式失败，显示名称缺失时 `ref` 回退到 ID。消费旧聚合数据的程序必须按逐信封结果迁移，legacy 人类输出和显式聚合 `--json` 保持兼容。
 4. `--all` 只在用户明确要求完整遍历时使用；它仅出现在实体/合集电影列表等支持的命令上。不要把它加到不支持的命令，也不要猜测 CLI 内部的分页行为。
 5. `--best` 会把 `magnets` 的结果缩为单个优先项（中字 > HD > 体积）。用户要完整列表时不要添加它。
 6. `comments` 每次只读一个页面，默认第 `1` 页、每页 `20` 条；不要为它附加 `--all` 或自动读取下一页。用户指定页码或条数时，原样传入正数。
@@ -104,7 +104,7 @@ javdb unmark SSIS-589
 ## 关键语义与常见陷阱
 
 1. `detail NUMBER` 默认把参数作为番号解析；`--id` 表示内部 movie ID。没有可靠来源时不要猜测并加 `--id`。
-2. `list REF` 是某个公开/用户合集中的电影；不带子命令的 `lists` 是“我的合集”，需要认证。`lists show/search/related` 与 `list` 的含义不同；`lists search/related --ndjson` 每个列表输出一个 `kind=list` 信封，`lists related` 收到带 ID 的 movie 信封时直接使用该 ID。
+2. `list REF` 是某个公开/用户合集中的电影；不带子命令的 `lists` 是“我的合集”，需要认证。`lists show/search/related` 与 `list` 的含义不同；`lists search/related --ndjson` 每个列表输出一个带稳定 ID 的 `kind=list` 信封，`lists related` 收到带 ID 的 movie 信封时直接使用该 ID；缺少 list/entity 稳定 ID 时命令显式失败。
 3. `search --type` 可返回 `movie` 以外的维度。将搜索结果交给 `actor`、`series`、`maker`、`director`、`code` 或 `list` 前，使用 JSON 中的实际 ID/名称，不要从显示文本臆测。
 4. `tags` 的首次调用可能联网建立缓存；`--refresh` 会明确覆写该缓存。标签参数可用 ID、英文名或中文名，优先使用刚读取到的确切值。
 5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`mark`/`unmark` 的番号定位会去除首尾空白，先按大小写不敏感的完整匹配处理；没有完整匹配时，只有唯一且无歧义的格式等价番号才接受；对应多个不同影片 ID 或只有模糊候选时失败，不选择搜索首项。管道 movie envelope 带非空 `id` 时直接使用该 ID；只有确认 raw 引用是内部 ID 时才使用 `--id`。`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。

@@ -37,6 +37,8 @@ terms and the laws that apply to you.
   feed the next command (`javdb search --ndjson | javdb detail`); `--json` keeps
   legacy aggregate shapes where applicable, while fan-out list and collection
   results use stable `id`/`ref` fields and raw `data.list`/`data.entity` values.
+  Every fan-out record requires a non-empty stable ID; missing IDs fail explicitly,
+  while a missing display name falls back to the ID in `ref`.
   The lists/collections fan-out NDJSON shape is an intentional v1 machine-contract
   migration; legacy human output and explicit aggregate `--json` remain compatible.
 - **API client, not a scraper** — commands use the App JSON API with explicit

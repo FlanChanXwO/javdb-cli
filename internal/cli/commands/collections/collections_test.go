@@ -91,6 +91,13 @@ func TestNewRejectsInvalidSelectorBatchBeforeClientSetup(t *testing.T) {
 	}
 }
 
+func TestCollectionEnvelopeRequiresStableID(t *testing.T) {
+	_, err := collectionEnvelope("actors", pipeline.KindActor, map[string]any{"name": "Name Only"})
+	if err == nil || !strings.Contains(err.Error(), "collections actors: entity has no id") {
+		t.Fatalf("collectionEnvelope error = %v, want missing-id error", err)
+	}
+}
+
 type collectionFixture struct {
 	selector string
 	path     string

@@ -221,7 +221,9 @@ while `--ndjson` emits one envelope per result. Fan-out commands emit one
 envelope per result: list records use the stable list ID in `id`, the display
 name with ID fallback in `ref`, and keep the raw object under `data.list`;
 collection records use the corresponding singular entity kind and keep the
-raw object under `data.entity`.
+raw object under `data.entity`. Both list and collection records require a
+non-empty stable ID; missing IDs fail explicitly instead of producing a
+name-only envelope.
 
 The lists/collections fan-out NDJSON shape is an intentional
 `javdb.pipeline/v1` machine-contract migration. Consumers of the former
@@ -253,7 +255,8 @@ entity-filmography command for a public or user list.
 `lists --json` preserves the legacy `{"lists":[...],"current_page":"..."}`
 shape and reuses the same fetched page. `lists --ndjson`, `lists search
 --ndjson`, and `lists related --ndjson` emit one `kind=list` envelope per list,
-with the raw list object in `data.list`. For `lists related`, a movie envelope's
+with a required stable list ID, the display name as `ref` (falling back to the
+ID when absent), and the raw list object in `data.list`. For `lists related`, a movie envelope's
 non-empty `id` is used as the authoritative movie ID; it is not reparsed as a
 printed number. Legacy human output and aggregate JSON for raw positional input
 remain unchanged.
@@ -285,7 +288,8 @@ handled internally.
 `collections --ndjson` fans out the five selectors to the singular kinds
 `actor`, `series`, `code`, `maker`, and `director`. Each envelope uses the
 projected `name_zht`/`name` as `ref` with ID fallback, the projected ID as
-`id`, and stores the raw entity in `data.entity`. Selector-based `--json`
+`id`, and stores the raw entity in `data.entity`; an entity without a stable ID
+fails explicitly. Selector-based `--json`
 retains the legacy aggregate `{"items":[...]}` shape.
 
 `rankings movies`, `rankings playback`, and `top250` emit `{"movies":[...]}` with `--json`;
