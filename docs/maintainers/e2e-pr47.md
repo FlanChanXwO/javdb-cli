@@ -3,7 +3,7 @@
 本页保留 PR #47 媒体链路的真实 JavDB E2E 记录。番号统一以 `NUMBER` 占位，
 不记录具体影片；媒体 URL 域名属于公开 CDN/镜像地址。
 
-实测环境：macOS darwin-arm64、Go `go1.26.3`，当前实现 commit `2aa1a50`；
+实测环境：macOS darwin-arm64、Go `go1.26.3`，当前实现 commit `a277d97`；
 `ffprobe`/`ffmpeg` `8.1.1`，仅用于独立验证，不是运行时依赖。当前契约的资产机器
 输出严格只有 `type` 与 `url`，不会在 list 阶段读取媒体内容。
 
@@ -21,26 +21,39 @@ javdb assets list NUMBER --type image 1-2 | javdb assets download -d DIR
 ```
 
 - stdout 只输出最终路径（`DIR/image-001.jpg`、`DIR/image-002.jpg`），无 `saved ...` 装饰。
-- `file` 与 macOS `sips` 确认产物可识别且可读取（本轮样本为 147×200 与 800×438 JPEG）；
+- `file` 与 macOS `sips` 确认产物可识别且可读取（本轮样本为 147×200 与 800×439 JPEG）；
   无残留 `.part`/`.spool` 临时文件，已有目标重复下载会失败且 SHA-256 不变。
 
 ## E2E #4：video → TS
 
 - `javdb assets list NUMBER --type video | javdb assets download -o preview.ts`
-  生成 MPEG-TS；`ffprobe` 确认 H.264 560×316，`ffmpeg -f null -` 完整 decode
-  退出码为 0。
+  生成 MPEG-TS；`ffprobe` 确认 H.264 720×404、AAC 48 kHz 双声道，
+  `ffmpeg -v error -f null -` 完整 decode 退出码为 0。
 
 ## E2E #5：video → MP4（Fast Start remux）
 
 - `javdb assets list NUMBER --type video | javdb assets download -o preview.mp4`
   生成 ISO MP4。
 - **Fast Start**：`ftyp → moov → mdat` 顺序确认。
-- **独立验证**：`ffprobe` 记录 format duration `132.539501s`；视频为 H.264
-  560×316、`30000/1001`、`132.465667s`；音频为 AAC、44100 Hz、双声道、
-  `132.539501s`。`ffmpeg -v error -i preview.mp4 -f null -` 完整解码退出码为 0；
-  null muxer 输出 1 条 B-frame DTS 诊断，但未导致解码失败。
+- **独立验证**：`ffprobe` 记录 format duration `116.916800s`；视频为 H.264
+  720×404、`30000/1001`、`116.850067s`；音频为 AAC、48000 Hz、双声道、
+  `116.885333s`。`ffmpeg -v error -i preview.mp4 -f null -` 完整解码退出码为 0，
+  stderr 为空。
+- **packet 级 B-frame 检查**：视频共 3502 个 packet，DTS 从 `0` 到 `10513503`
+  全程非递减、未发现 regression；PTS-DTS composition offset 范围为 `0..15015`
+  （90 kHz 时间基）。因此本次没有修改 mux 时间戳逻辑，也没有复现 null muxer 诊断。
 - 按探测到的总时长动态计算 10%、50%、90% 三个位置执行 seek，三处均成功；未使用
-  固定秒数。
+  固定秒数（本次位置约为 `11.692s`、`58.458s`、`105.225s`）。
+
+## E2E #7：最新 HEAD 的流式资源处理
+
+- 媒体 transport 将响应 body 交给下载层消费；playlist 按行读取，segment、解密结果和
+  图片中间结果使用临时文件流转，不把普通媒体响应无条件读入内存。只有协议明确要求
+  固定 16 字节的 AES-128 key 使用有界读取，并通过实际受限 reader 测试确认在超限后停止。
+- MP4 spool 使用 target 目录内的唯一临时文件；预先存在的 `preview.mp4.spool` 不会
+  阻塞下载。图片、TS、MP4 下载均未留下 `.part` 或 `.spool` 文件。
+- `ctts` composition offset 的 32-bit 表达边界、Layer C 的 `ctts` 版本/边界/样本数
+  一致性均在本次提交的 contract tests 中覆盖；未新增无依据的媒体总量或样本数硬上限。
 
 ## E2E #6：资源占用实测
 
