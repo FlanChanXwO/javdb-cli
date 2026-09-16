@@ -319,6 +319,51 @@ func TestProbeHLSMetadataReturnsContextCancellation(t *testing.T) {
 	})
 }
 
+type cancelOnReadBody struct {
+	reader io.Reader
+	cancel context.CancelFunc
+	read   bool
+	bytes  int
+}
+
+func (b *cancelOnReadBody) Read(p []byte) (int, error) {
+	n, err := b.reader.Read(p)
+	b.bytes += n
+	if !b.read {
+		b.read = true
+		b.cancel()
+	}
+	return n, err
+}
+
+func (b *cancelOnReadBody) Close() error { return nil }
+
+func TestProbeHLSMetadataStopsWhenContextCancelsDuringReader(t *testing.T) {
+	const playlistURL = "https://media.example.test/previews/index.m3u8"
+	const segmentURL = "https://media.example.test/previews/segment.ts"
+	ctx, cancel := context.WithCancel(context.Background())
+	playlistPayload := append([]byte("#EXTM3U\n#EXTINF:20.0\nsegment.ts\n#EXT-X-ENDLIST\n"), bytes.Repeat([]byte("#COMMENT\n"), 1<<17)...)
+	var playlistBody *cancelOnReadBody
+	endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
+		switch uri {
+		case playlistURL:
+			playlistBody = &cancelOnReadBody{reader: bytes.NewReader(playlistPayload), cancel: cancel}
+			return playlistBody, nil
+		case segmentURL:
+			return nil, context.Canceled
+		default:
+			return nil, fmt.Errorf("unexpected media URI %q", uri)
+		}
+	})
+	_, err := endpoint.ProbeHLSMetadata(ctx, playlistURL)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProbeHLSMetadata() error = %v, want context.Canceled", err)
+	}
+	if playlistBody == nil || playlistBody.bytes >= len(playlistPayload) {
+		t.Fatalf("playlist reader consumed %d/%d bytes after cancellation", playlistBody.bytes, len(playlistPayload))
+	}
+}
+
 func TestAnnexBSPSProbeStopsCollectingMalformedUnterminatedSPS(t *testing.T) {
 	var scanner annexBSPSProbe
 	if scanner.feed([]byte{0, 0, 0, 1, 0x67}) {

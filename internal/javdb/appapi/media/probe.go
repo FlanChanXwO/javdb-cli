@@ -44,7 +44,7 @@ func (e *MediaEndpoint) ProbeImageMetadata(ctx context.Context, sourceURL string
 	if body == nil {
 		return ProbeMetadata{}, fmt.Errorf("image probe response body is nil")
 	}
-	metadata, probeErr := probeImageMetadata(body)
+	metadata, probeErr := probeImageMetadata(&contextReader{ctx: ctx, reader: body})
 	closeErr := body.Close()
 	if err := ctx.Err(); err != nil {
 		return ProbeMetadata{}, errors.Join(err, closeErr)
@@ -65,7 +65,7 @@ func (e *MediaEndpoint) ProbeHLSMetadata(ctx context.Context, playlistURL string
 	if body == nil {
 		return ProbeMetadata{}, fmt.Errorf("download HLS playlist: media response body is nil")
 	}
-	playlist, parseErr := parseHLSProbePlaylistReader(playlistURL, body)
+	playlist, parseErr := parseHLSProbePlaylistReader(playlistURL, &contextReader{ctx: ctx, reader: body})
 	closeErr := body.Close()
 	if parseErr != nil || closeErr != nil {
 		return ProbeMetadata{}, errors.Join(parseErr, closeErr)
@@ -122,12 +122,29 @@ func (e *MediaEndpoint) probeHLSSegmentDimensions(ctx context.Context, segment h
 			return 0, 0, errors.Join(err, body.Close())
 		}
 	}
-	width, height, probeErr := probeTSDimensions(payload)
+	width, height, probeErr := probeTSDimensions(&contextReader{ctx: ctx, reader: payload})
 	closeErr := body.Close()
 	if err := ctx.Err(); err != nil {
 		return 0, 0, errors.Join(err, closeErr)
 	}
 	return width, height, errors.Join(probeErr, closeErr)
+}
+
+// contextReader 在底层 reader 即使继续产出数据时，也把取消及时传播给解析器。
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := r.reader.Read(p)
+	if ctxErr := r.ctx.Err(); ctxErr != nil {
+		return 0, ctxErr
+	}
+	return n, err
 }
 
 func probeImageMetadata(raw io.Reader) (ProbeMetadata, error) {
