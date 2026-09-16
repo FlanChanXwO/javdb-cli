@@ -59,7 +59,7 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 	if err := validateSegmentCodecsReader(reader); err != nil {
 		return err
 	}
-	_, err := walkTSFrames(reader, func(kind byte, frame demuxedFrame) error {
+	_, err := walkTSFrames(reader, func(_ uint16, kind byte, frame demuxedFrame) error {
 		switch kind {
 		case streamTypeH264:
 			track, err := parseH264Frame(frame)

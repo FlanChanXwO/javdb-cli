@@ -22,7 +22,7 @@ type demuxedFrame struct {
 
 // walkTSFrames 先读取 PSI 元数据，再逐包重组每个 PID 当前未完成的 PES。
 // consume 返回后不保留 frame；调用方必须在回调内处理并释放 payload。
-func walkTSFrames(reader io.ReadSeeker, consume func(byte, demuxedFrame) error) (map[uint16]byte, error) {
+func walkTSFrames(reader io.ReadSeeker, consume func(uint16, byte, demuxedFrame) error) (map[uint16]byte, error) {
 	pmtPIDs := map[uint16]bool{}
 	streamTypes := map[uint16]byte{}
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
@@ -73,7 +73,7 @@ func walkTSFrames(reader io.ReadSeeker, consume func(byte, demuxedFrame) error) 
 		if err != nil {
 			return err
 		}
-		return consume(streamType, frame)
+		return consume(pid, streamType, frame)
 	}
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("rewind TS segment: %w", err)

@@ -268,12 +268,7 @@ func TestParseAACTrackRejectsMoreThanStereo(t *testing.T) {
 
 func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
 	streams := map[uint16]*demuxedStream{}
-	types, err := walkTSFrames(bytes.NewReader(data), func(kind byte, frame demuxedFrame) error {
-		// 测试 fixture 每种 codec 只有一个 PID。
-		pid := uint16(videoPID)
-		if kind == streamTypeAAC {
-			pid = audioPID
-		}
+	types, err := walkTSFrames(bytes.NewReader(data), func(pid uint16, kind byte, frame demuxedFrame) error {
 		if streams[pid] == nil {
 			streams[pid] = &demuxedStream{streamType: kind}
 		}

@@ -199,8 +199,8 @@ func validateMediaStream(data []byte) error {
 // os.ReadFile 再解析而产生完整媒体 segment 的内存副本。
 func validateMediaStreamReader(reader io.ReadSeeker) error {
 	var video h264Track
-	var audioFrames int
-	types, err := walkTSFrames(reader, func(kind byte, frame demuxedFrame) error {
+	audioFrames := map[uint16]int{}
+	types, err := walkTSFrames(reader, func(pid uint16, kind byte, frame demuxedFrame) error {
 		switch kind {
 		case streamTypeH264:
 			track, err := parseH264Frame(frame)
@@ -224,7 +224,7 @@ func validateMediaStreamReader(reader io.ReadSeeker) error {
 				video.Samples = append(video.Samples, sample)
 			}
 		case streamTypeAAC:
-			if err := walkAACFrame(frame, func(_ *aacTrack, _ aacSample) error { audioFrames++; return nil }); err != nil {
+			if err := walkAACFrame(frame, func(_ *aacTrack, _ aacSample) error { audioFrames[pid]++; return nil }); err != nil {
 				return fmt.Errorf("parse AAC track: %w", err)
 			}
 		}
@@ -236,13 +236,10 @@ func validateMediaStreamReader(reader io.ReadSeeker) error {
 	if err := validateStreamTypes(types); err != nil {
 		return err
 	}
-	videos, audios := 0, 0
+	videos := 0
 	for _, kind := range types {
 		if kind == streamTypeH264 {
 			videos++
-		}
-		if kind == streamTypeAAC {
-			audios++
 		}
 	}
 	if videos != 1 {
@@ -260,8 +257,10 @@ func validateMediaStreamReader(reader io.ReadSeeker) error {
 	if video.Samples[len(video.Samples)-1].PTS <= video.Samples[0].PTS {
 		return fmt.Errorf("video duration is not positive")
 	}
-	if audios > 0 && audioFrames == 0 {
-		return fmt.Errorf("audio track has no samples")
+	for pid, kind := range types {
+		if kind == streamTypeAAC && audioFrames[pid] == 0 {
+			return fmt.Errorf("audio track has no samples for PID 0x%04X", pid)
+		}
 	}
 	return nil
 }
@@ -306,7 +305,7 @@ func validateSegmentCodecsFile(path string) error {
 }
 
 func validateSegmentCodecsReader(reader io.ReadSeeker) error {
-	types, err := walkTSFrames(reader, func(byte, demuxedFrame) error { return nil })
+	types, err := walkTSFrames(reader, func(uint16, byte, demuxedFrame) error { return nil })
 	if err != nil {
 		return err
 	}

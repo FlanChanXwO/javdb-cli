@@ -140,3 +140,14 @@ func TestSpoolAcceptsParameterSetsInSeparatePES(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLayerBRejectsDeclaredAudioTrackWithoutFrames(t *testing.T) {
+	segment := validTSSegmentAt(0)
+	pmt := pmtSection()
+	body := append([]byte(nil), pmt[4:len(pmt)-4]...)
+	body = append(body, 0x0f, 0xe1, 0x03, 0xf0, 0) // 额外声明 PID 0x103，但不提供该轨道 PES。
+	copy(segment[188:376], tsPacket(pmtPID, true, 0, psiSection(2, body)))
+	if err := validateMediaStream(segment); err == nil {
+		t.Fatal("empty declared AAC track was masked by another audio track")
+	}
+}
