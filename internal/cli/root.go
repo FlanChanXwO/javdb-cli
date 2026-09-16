@@ -12,6 +12,7 @@ import (
 
 	"github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
 	actorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/actor"
+	assetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/assets"
 	authcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/auth"
 	browsecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/browse"
 	cachecmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/cache"
@@ -21,7 +22,6 @@ import (
 	configcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/config"
 	detailcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/detail"
 	directorcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/director"
-	downloadcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/download"
 	listcmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/list"
 	listscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/lists"
 	magnetscmd "github.com/FlanChanXwO/javdb-cli/internal/cli/commands/magnets"
@@ -73,10 +73,10 @@ func New(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	command.AddCommand(detailcmd.New(options, streams))
 	command.AddCommand(commentscmd.New(options, streams))
 	command.AddCommand(magnetscmd.New(options, streams))
-	command.AddCommand(downloadcmd.New(options, streams))
 	command.AddCommand(tagscmd.New(options, streams))
 	command.AddCommand(browsecmd.New(options, streams))
 	command.AddCommand(actorcmd.New(options, streams))
+	command.AddCommand(assetscmd.New(options, streams))
 	command.AddCommand(seriescmd.New(options, streams))
 	command.AddCommand(makercmd.New(options, streams))
 	command.AddCommand(directorcmd.New(options, streams))

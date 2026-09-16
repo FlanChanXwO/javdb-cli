@@ -95,7 +95,7 @@ log, panic, error wrapper, or test fixture.
 | --- | --- |
 | Discovery | `Search`, `MovieDetail`, `ResolveMovieID`, `Browse`, `ResolveTags` |
 | Reviews | `MovieComments` |
-| Local movie assets | `DownloadMovieAssets`, `MovieAssetDownloadOptions`, `MovieAssetDownloadResult` |
+| Local movie assets | `MovieAssets`, `DownloadMovieAsset`, `MovieAsset`, `MovieAssetsFromDetail`, `MovieAssetDescriptions`, `ImageAssetFormat` |
 | Entity graph | `ResolveEntity`, `EntityDetail`, `EntityMovies`, `AllEntityMovies` |
 | Magnets | `MovieMagnets`, `FilterMagnets`, `PickBestMagnet`, `RankMagnets`, `MagnetURI` |
 | Rankings | `RankingsMovies`, `RankingsActors`, `RankingsPlayback`, `Top250` |
@@ -132,33 +132,54 @@ actors := result.Named("actors")
 walks subsequent pages. Non-positive values use page `1` and limit `20`, which
 matches the CLI's one-page default.
 
-Use `DownloadMovieAssets` only with explicitly chosen new local paths:
+`MovieAssets(ctx, movieID)` returns the movie's media assets as a minimal
+`MovieAsset{Type, URL}` sequence in a fixed order:
+thumbnail, cover (when the detail provides one), every preview image
+(`large_url` preferred, falling back to `thumb_url`), then the preview video.
+Missing items are skipped, so the length varies per movie. `Type` is only
+`"image"` or `"video"`. The model deliberately carries no metadata such as
+dimensions, duration, id, index, or role.
+
+`DownloadMovieAsset(ctx, asset, target)` downloads one asset to an exact path
+and returns the written byte count. Images are validated (XOR unwrap when the
+CDN obfuscates, then magic-byte checks) and published atomically without any
+format conversion. Videos select the output format by target extension:
+`.ts` keeps the decrypted, validated MPEG-TS; `.mp4` produces a fast-start MP4
+(ftyp → moov → mdat) via a pure-Go remux of the H.264/AAC stream — no ffmpeg,
+no transcoding; any other extension returns
+`unsupported video output format`. Unsupported codecs (HEVC, AC-3, ...) fail
+explicitly. Context cancellation stops every stage and leaves no output file.
+
+MP4 requires exactly one H.264 PID and at most one AAC-LC PID per segment,
+with one raw data block per ADTS frame. Only channel configurations 1 (mono)
+and 2 (stereo) are remuxed; extra tracks or unsupported AAC profiles, block
+counts, or channel configurations fail explicitly. Timed ID3 is ignored in MP4.
+TS publication validates the media structure and video timeline
+while preserving ADTS bytes without the MP4
+profile/block/channel-configuration restrictions.
+
+`MovieAssetsFromDetail` / `MovieAssetDescriptions` map an already-fetched
+detail map to the same asset sequence and TTY-only description texts; keep
+descriptions out of machine output. `ImageAssetFormat(path)` reports the
+detected image format for local naming.
 
 ```go
-downloaded, err := client.DownloadMovieAssets(ctx, movieID, javdb.MovieAssetDownloadOptions{
-    PreviewImagePath: "/chosen/output/preview-0.jpg", // only preview_images[0]
-    PreviewVideoPath: "/chosen/output/preview.ts",
-})
+assets, err := client.MovieAssets(ctx, movieID)
 if err != nil {
     return err
 }
-fmt.Println(downloaded.PreviewImageBytes, downloaded.PreviewVideoBytes)
+for _, asset := range assets {
+    if asset.Type == "video" {
+        _, err := client.DownloadMovieAsset(ctx, asset, "/chosen/output/preview.mp4")
+        return err
+    }
+}
 ```
 
-Each non-empty path selects one local asset. `PreviewImagePath` always uses only
-the first preview image; the method never enumerates later images. Images are
-validated before writing. The HLS video path supports completed single-media
-playlists (including AES-128); master, byte-range, fragmented-MP4, and
-unfinished/live playlists return an error. All selected outputs must be
-distinct, their parent directories must exist, and no output may already exist.
 This API writes only thumbnail/preview assets; it does not download a full movie
-or a magnet target.
-
-This is a breaking API rename. `DownloadMovieMedia`,
-`MovieMediaDownloadOptions`, and `MovieMediaDownloadResult` were removed
-without aliases or forwarding wrappers; replace them with
+or a magnet target. This is a breaking change: the path-per-type
 `DownloadMovieAssets`, `MovieAssetDownloadOptions`, and
-`MovieAssetDownloadResult`.
+`MovieAssetDownloadResult` API was removed without aliases.
 
 Methods that update watch/want state or refresh the local public tag cache are
 mutations. Call them only when the application has explicit authority to do so.

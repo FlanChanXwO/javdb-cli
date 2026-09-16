@@ -11,6 +11,9 @@
 7. 磁力：`javdb magnets NUMBER --json` 无需登录即可获取磁力链接；已保存默认账号 token 时自动带上，token 失效则回退匿名。用户要求一条推荐结果时才加 `--best`；需要指定条件可用 `--cnsub`、`--hd`、`--min-size`，其中 `--min-size` 必须为非负数（零合法，负小数也拒绝），并在回应中说明过滤条件。
 8. 排行：`javdb rankings movies|actors|playback --json` 无需登录；`javdb top250 --json` 需要登录。影片与播放排行的结果字段为 `movies`，演员排行为 `actors`。需要仅保留有磁力的影片时加 `--has-magnets`，不要把过滤后结果误称为完整榜单。
 9. 评论：`javdb comments NUMBER --page 1 --limit 20 --json` 每次只取所选一页；不要自动读取后续页，也不要把页面评论误称为全量评论。
-10. 本地资源：只有用户明确要求写入本机文件时，才执行 `javdb assets NUMBER --thumbnail PATH`、`--preview-image PATH` 或 `--preview-video PATH`。`download` 是兼容别名；`--preview-image` 只写入首张预览图。该命令只保存 thumbnail/preview 资源，不下载完整影片或磁力目标；路径必须是新的，不能替换已有文件。
+10. 本地资源：只有用户明确要求写入本机文件时，才执行 `javdb assets list NUMBER` 查看资产（顺序固定：thumbnail、cover、preview 图、preview 视频；编号只是过滤后列表的位置），再用 selector（如 `1-4`、`1,3-5`）或 `--type image|video` 过滤，管道到 `javdb assets download`（`-d DIR` 自动命名，`-o PATH` 仅限单个资产）。该命令域只保存 thumbnail/preview 资源，不下载完整影片或磁力目标；绝不替换已有文件。
 
 每个阶段先检查退出码；API 返回错误、空结果或认证失败均应如实呈现，而不是更换主机、代理、账号或关键字来“补救”。
+
+媒体下载边界：MP4 每段仅支持一个 H.264 PID 和至多一个 AAC-LC PID（每 ADTS 帧一个 raw data block），只重封装 channel_configuration 1（mono）和 2（stereo）；多轨或其他 AAC profile/block/channel configuration 明确失败；timed ID3 不写入 MP4。
+TS 发布前校验媒体结构与视频时间轴，ADTS 原文保留，不套用 MP4 的 profile/block/channel configuration 限制。

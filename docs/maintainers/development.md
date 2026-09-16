@@ -49,9 +49,9 @@ internal/cli/client/                    # 配置解析、SDK client、required/o
 internal/cli/authstore/                 # 默认认证文件路径/目录/store 打开
 internal/cli/result/                    # 纯结果投影与过滤（movie/magnet/named 分文件）
 internal/cli/entity/                    # 六实体查询用例 Execute
-internal/common/{jsonx,scalar}/         # 纯 JSON 与标量转换（根目录无包）
+internal/common/{jsonx,scalar,atomicfile}/ # 转换与原子 no-replace 文件原语（根目录无包）
 internal/cli/commands/{auth,config}/    # 认证与配置命令域
-internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 影片目录命令域
+internal/cli/commands/{search,detail,comments,magnets,assets,tags,browse}/    # 影片目录命令域
 internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
 internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
 internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）

@@ -57,11 +57,10 @@ HTTP、签名或上游响应解码。目录职责如下：
   `MagnetRow`/`ProjectMagnet`、`NamedRow`/`ProjectNamed`）。
 - `cli/entity`：只保留六类实体命令共享的查询用例 `Execute`；命名实体投影位于
   `cli/result`。
-- `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
+- `cli/commands/{auth,config,search,detail,comments,magnets,assets,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
-  其中 `commands/download` 持有正式 `assets` 命令实现，`download` 仅是同一 Cobra
-  command object 的兼容别名。
+  其中 `commands/assets` 持有 `assets list` 与 `assets download`，不提供顶层 `download` 别名。
   `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info
   获取（未导出 helper）。
 
@@ -70,8 +69,8 @@ HTTP、签名或上游响应解码。目录职责如下：
 公开 Go SDK，导入路径为 `github.com/FlanChanXwO/javdb-cli/sdk`，声明为
 `package javdb`。它提供 client options、稳定的操作方法、公开的请求/错误别名、本机
 device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`，以及影片单页评论和
-本地影片资源写入的 typed 请求类型（`DownloadMovieAssets`、`MovieAssetDownloadOptions`、
-`MovieAssetDownloadResult`）。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
+本地影片资源 API（`MovieAssets`、`DownloadMovieAsset` 与最小 `MovieAsset{Type,URL}` 模型，
+辅以 `MovieAssetsFromDetail`、`MovieAssetDescriptions`、`ImageAssetFormat`）。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
 集成 API。`SelectAutoHost` 显式联网选线并返回具体 URL，`javdb.New(WithHost("auto"))`
 不会自动联网。排行 zone 与 period 的协议归一化由 `internal/javdb/appapi` 负责；`sdk`
 暴露通用 `RankingPeriod`，并保留 `ActorPeriod` 废弃别名以兼容既有调用方，CLI 不预先复制
@@ -88,7 +87,17 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
 - `appapi/model`：Options、SearchResult、错误类型及 wire/domain model。
 - `appapi/endpoint/{auth,browse,entity,lists,magnets,movie,rankings,route,search,user}`：有状态 capability service；`endpoint/magnets` 保持纯 helper，`endpoint/route` 是自动选线 capability（startup 域名解密、并发探测与确定性选择），经根 Client 组合。
 - `appapi/codec`：App JSON、JWT、用户 ID 和响应数组解析。
-- `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理和独占文件写入，通过 fetch callback 接入 client。
+- `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理、三层完整性
+  （Layer A segment 校验、Layer B 媒体模型校验、Layer C MP4 容器校验）、按协议要求的
+  segment 重试、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与 no-replace 发布，
+  TS 临时文件逐包重组每个 PID 当前未完成的 PES，H.264/AAC 样本立即校验并写入
+  spool；长期只保留 codec 配置与 sample metadata，最终 mdat 使用固定 I/O 缓冲复制。
+  TS 发布前运行 Layer B；MP4 每段仅支持一个 H.264 PID、至多一个 AAC-LC PID，
+  AAC 每 ADTS 帧须只有一个 raw data block，timed ID3 忽略。TS 保留模式不套用
+  MP4 的 AAC profile/block 限制。
+  峰值内存仍包含当前 PES 与 moov 元数据，不承诺与样本数无关的常量内存。
+  通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
+  javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。
 
 详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责写入、解密并合并；
 该能力不包含完整影片或磁力目标下载。
@@ -108,14 +117,16 @@ App API 不解析终端参数，也不格式化面向用户的输出。
 `config/settings` 负责 TOML schema、默认值（`host` 缺省为 `auto`）、环境变量和运行时
 合并。调用方直接依赖两个子包。配置优先级必须维持为命令行 flag > 环境变量 > 文件 > 默认值。
 
-### `internal/common/jsonx` 与 `internal/common/scalar`
+### `internal/common/{jsonx,scalar,atomicfile}`
 
-纯底层转换，根目录不建立 package：`jsonx` 提供 `ObjectArray`/`ObjectSlice`/
+纯底层转换与文件原语，根目录不建立 package：`jsonx` 提供 `ObjectArray`/`ObjectSlice`/
 `RawString`/`MarshalLine`（`MarshalLine` 保证 SetEscapeHTML(false) 且恰好一个尾随
-换行），`scalar` 提供 `String`/`Int64`。两个包不接收 `io.Writer`、不写输出、不含 CLI
+换行），`scalar` 提供 `String`/`Int64`。这些包不接收 `io.Writer`、不写输出、不含 CLI
 文案、不吞编码错误，也不反向依赖 CLI/SDK/App API/config/update。CLI 浮点截断、
 App API 前缀数字解析、各领域 truthy 规则、CLI 文案、密码输入、HLS、分页和错误降级
 必须留在对应领域，不在此目录继续堆叠通用 helper。
+`atomicfile.LinkNoReplace` 只提供同文件系统内的原子 no-replace 硬链接，供 CLI
+图片自动命名与 media 的 TS/MP4 发布共享；它不负责目录创建、临时文件清理或输出文案。
 
 ### `internal/storage/auth`、`internal/storage/tags` 与 `internal/storage/route`
 
