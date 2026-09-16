@@ -1,7 +1,6 @@
 package media
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 )
@@ -21,24 +20,9 @@ type demuxedFrame struct {
 	HasDTS bool
 }
 
-// demuxedStream 是单个 elementary stream 的帧序列。
-type demuxedStream struct {
-	streamType byte
-	frames     []demuxedFrame
-}
-
-// parseTSStreams 把已通过 Layer A 校验的 TS segment 拆成 elementary streams。
-// PES 重组按 PUSI 分界(HLS 每帧一个 PES 的约定),时间戳从 PES header 提取。
-func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
-	if len(data)%tsPacketSize != 0 {
-		return nil, fmt.Errorf("TS segment size %d is not %d-byte aligned", len(data), tsPacketSize)
-	}
-	return parseTSStreamsReader(bytes.NewReader(data))
-}
-
-// parseTSStreamsReader 从可回退的 reader 逐包拆流。segment 保存在临时文件时只把当前
-// PES 累积到内存,不会再把完整 TS 一次性读入 []byte。
-func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, error) {
+// walkTSFrames 先读取 PSI 元数据，再逐包重组每个 PID 当前未完成的 PES。
+// consume 返回后不保留 frame；调用方必须在回调内处理并释放 payload。
+func walkTSFrames(reader io.ReadSeeker, consume func(byte, demuxedFrame) error) (map[uint16]byte, error) {
 	pmtPIDs := map[uint16]bool{}
 	streamTypes := map[uint16]byte{}
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
@@ -73,10 +57,6 @@ func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, erro
 		return nil, err
 	}
 
-	streams := map[uint16]*demuxedStream{}
-	for pid := range streamTypes {
-		streams[pid] = &demuxedStream{streamType: streamTypes[pid]}
-	}
 	pending := map[uint16][]byte{}
 	flush := func(pid uint16) error {
 		raw, ok := pending[pid]
@@ -85,7 +65,7 @@ func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, erro
 			return nil
 		}
 		delete(pending, pid)
-		stream, ok := streams[pid]
+		streamType, ok := streamTypes[pid]
 		if !ok {
 			return nil // 未在 PMT 声明(如填充流):忽略
 		}
@@ -93,8 +73,7 @@ func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, erro
 		if err != nil {
 			return err
 		}
-		stream.frames = append(stream.frames, frame)
-		return nil
+		return consume(streamType, frame)
 	}
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("rewind TS segment: %w", err)
@@ -104,7 +83,7 @@ func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, erro
 		if !ok {
 			return nil
 		}
-		if _, known := streams[pid]; !known {
+		if _, known := streamTypes[pid]; !known {
 			return nil
 		}
 		if pusi {
@@ -120,12 +99,12 @@ func parseTSStreamsReader(reader io.ReadSeeker) (map[uint16]*demuxedStream, erro
 	if err != nil {
 		return nil, err
 	}
-	for pid := range streams {
+	for pid := range streamTypes {
 		if err := flush(pid); err != nil {
 			return nil, err
 		}
 	}
-	return streams, nil
+	return streamTypes, nil
 }
 
 // parsePMTTypes 从单包 PMT section 提取 PID→stream_type。

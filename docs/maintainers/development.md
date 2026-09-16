@@ -240,7 +240,7 @@ JAVDB_RELEASE_ED25519_PRIVATE_KEYS="[\"$seed\"]" go run ./scripts/sign-release -
 v0.6.1 是发布桥：交付签名清单更新器、把 `publish` job 绑定受保护的 `release`
 environment；旧兼容阶段已经结束，当前版本使用根 `--version`，并继续发布兼容
 `checksums.txt`，保证 v0.6.0 可直接
-验证并安装后续版本。v0.6.1 的精确 bridge commit 记录在 goal-1 完成记录中；创建 v0.6.1 tag
+验证并安装后续版本。创建 v0.6.1 tag
 必须由维护者明确授权。
 
 ## CI 与发布

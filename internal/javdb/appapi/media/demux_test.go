@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -263,4 +264,65 @@ func TestParseAACTrackRejectsMoreThanStereo(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "channel") {
 		t.Fatalf("error = %v, want channel configuration rejection", err)
 	}
+}
+
+func parseTSStreams(data []byte) (map[uint16]*demuxedStream, error) {
+	streams := map[uint16]*demuxedStream{}
+	types, err := walkTSFrames(bytes.NewReader(data), func(kind byte, frame demuxedFrame) error {
+		// 测试 fixture 每种 codec 只有一个 PID。
+		pid := uint16(videoPID)
+		if kind == streamTypeAAC {
+			pid = audioPID
+		}
+		if streams[pid] == nil {
+			streams[pid] = &demuxedStream{streamType: kind}
+		}
+		streams[pid].frames = append(streams[pid].frames, frame)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for pid, kind := range types {
+		if streams[pid] == nil {
+			streams[pid] = &demuxedStream{streamType: kind}
+		}
+	}
+	return streams, nil
+}
+
+func parseAACTrack(stream demuxedStream) (*aacTrack, error) {
+	var result *aacTrack
+	for _, frame := range stream.frames {
+		if err := walkAACFrame(frame, func(track *aacTrack, sample aacSample) error {
+			if result == nil {
+				result = track
+			}
+			sample.Data = append([]byte(nil), sample.Data...)
+			result.Samples = append(result.Samples, sample)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+// demuxedStream 是单个 elementary stream 的帧序列。
+type demuxedStream struct {
+	streamType byte
+	frames     []demuxedFrame
+}
+
+func parseH264Track(stream demuxedStream) (*h264Track, error) {
+	result := &h264Track{}
+	for _, frame := range stream.frames {
+		track, err := parseH264Frame(frame)
+		if err != nil {
+			return nil, err
+		}
+		result.ParamSets = append(result.ParamSets, track.ParamSets...)
+		result.Samples = append(result.Samples, track.Samples...)
+	}
+	return result, nil
 }

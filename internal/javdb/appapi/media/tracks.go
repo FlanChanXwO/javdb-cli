@@ -51,38 +51,36 @@ func aacFrequency(freqIdx byte) (int, error) {
 	return aacFrequencies[freqIdx], nil
 }
 
-// parseH264Track 把 H.264 PES 帧序列转成 AVCC 样本。
+// parseH264Frame 把一个 H.264 PES 转成 AVCC 样本。
 // HLS 惯例是每个 PES 承载一个 access unit,SPS/PPS 在帧前内联,剥离进参数集。
-func parseH264Track(stream demuxedStream) (*h264Track, error) {
+func parseH264Frame(frame demuxedFrame) (*h264Track, error) {
 	track := &h264Track{}
 	seenParams := map[string]bool{}
-	for _, frame := range stream.frames {
-		nals, err := splitAnnexBNALs(frame.ES)
-		if err != nil {
-			return nil, err
-		}
-		avcc := make([]byte, 0, len(frame.ES))
-		sync := false
-		for _, nal := range nals {
-			switch nalType := nal[0] & 0x1F; nalType {
-			case 7, 8: // SPS / PPS
-				key := string(nal)
-				if !seenParams[key] {
-					seenParams[key] = true
-					track.ParamSets = append(track.ParamSets, append([]byte(nil), nal...))
-				}
-				continue
-			case 5: // IDR
-				sync = true
-			}
-			avcc = append(avcc, byte(len(nal)>>24), byte(len(nal)>>16), byte(len(nal)>>8), byte(len(nal)))
-			avcc = append(avcc, nal...)
-		}
-		if len(avcc) == 0 {
-			continue // 仅参数集的帧不产出样本
-		}
-		track.Samples = append(track.Samples, h264Sample{Data: avcc, PTS: frame.PTS, DTS: frame.DTS, Sync: sync})
+	nals, err := splitAnnexBNALs(frame.ES)
+	if err != nil {
+		return nil, err
 	}
+	avcc := make([]byte, 0, len(frame.ES))
+	sync := false
+	for _, nal := range nals {
+		switch nalType := nal[0] & 0x1F; nalType {
+		case 7, 8: // SPS / PPS
+			key := string(nal)
+			if !seenParams[key] {
+				seenParams[key] = true
+				track.ParamSets = append(track.ParamSets, append([]byte(nil), nal...))
+			}
+			continue
+		case 5: // IDR
+			sync = true
+		}
+		avcc = append(avcc, byte(len(nal)>>24), byte(len(nal)>>16), byte(len(nal)>>8), byte(len(nal)))
+		avcc = append(avcc, nal...)
+	}
+	if len(avcc) == 0 {
+		return track, nil // 仅参数集的帧不产出样本
+	}
+	track.Samples = append(track.Samples, h264Sample{Data: avcc, PTS: frame.PTS, DTS: frame.DTS, Sync: sync})
 	return track, nil
 }
 
@@ -122,41 +120,33 @@ func trimLeadingZero(data []byte) []byte {
 	return data
 }
 
-// parseAACTrack 把 AAC ADTS 帧序列转成 raw 样本,并从首个 ADTS 头提取配置。
-// 一个音频 PES 常承载多个 ADTS 帧,必须逐帧切分,每帧一个样本;
-// 帧的 PTS 按 1024 samples/frame 在 90kHz 时间轴上顺次推进。
-func parseAACTrack(stream demuxedStream) (*aacTrack, error) {
-	track := &aacTrack{}
-	for _, frame := range stream.frames {
-		es := frame.ES
-		pts := frame.PTS
-		for len(es) > 0 {
-			payload, freqIdx, channels, consumed, err := parseADTS(es)
-			if err != nil {
-				return nil, err
-			}
-			if track.Config == nil {
-				sampleRate, err := aacFrequency(freqIdx)
-				if err != nil {
-					return nil, err
-				}
-				if int(channels) > 2 {
-					return nil, fmt.Errorf("unsupported ADTS channel configuration %d: only mono/stereo can be remuxed", channels)
-				}
-				// AudioSpecificConfig:AOT=2(AAC-LC)+ 频率索引 + 通道配置。
-				track.Config = []byte{byte(2)<<3 | freqIdx>>1, freqIdx<<7 | channels<<3}
-				track.SampleRate = sampleRate
-				track.Channels = int(channels)
-			}
-			track.Samples = append(track.Samples, aacSample{Data: append([]byte(nil), payload...), PTS: pts})
-			pts += uint64(1024) * 90000 / uint64(track.SampleRate)
-			es = es[consumed:]
+// walkAACFrame 逐 ADTS 帧消费借用的 raw payload；回调返回后不持有样本。
+// 每帧均传递配置，让消费方同时检查 PES 内和跨 PES/segment 的连续性。
+func walkAACFrame(frame demuxedFrame, consume func(*aacTrack, aacSample) error) error {
+	es, pts := frame.ES, frame.PTS
+	if len(es) == 0 {
+		return fmt.Errorf("audio track has no AAC frames")
+	}
+	for len(es) > 0 {
+		payload, freqIdx, channels, consumed, err := parseADTS(es)
+		if err != nil {
+			return err
 		}
+		sampleRate, err := aacFrequency(freqIdx)
+		if err != nil {
+			return err
+		}
+		if channels > 2 {
+			return fmt.Errorf("unsupported ADTS channel configuration %d: only mono/stereo can be remuxed", channels)
+		}
+		track := &aacTrack{Config: []byte{2<<3 | freqIdx>>1, freqIdx<<7 | channels<<3}, SampleRate: sampleRate, Channels: int(channels)}
+		if err := consume(track, aacSample{Data: payload, PTS: pts}); err != nil {
+			return err
+		}
+		pts += uint64(1024) * 90000 / uint64(sampleRate)
+		es = es[consumed:]
 	}
-	if track.Config == nil {
-		return nil, fmt.Errorf("audio track has no AAC frames")
-	}
-	return track, nil
+	return nil
 }
 
 // parseADTS 剥离单个 ADTS 帧(protection_absent=1,7 字节头),返回帧总长。
@@ -208,39 +198,55 @@ func validateMediaStream(data []byte) error {
 // validateMediaStreamReader 对可回退的 TS reader 执行 Layer B 校验,避免文件模式先
 // os.ReadFile 再解析而产生完整媒体 segment 的内存副本。
 func validateMediaStreamReader(reader io.ReadSeeker) error {
-	streams, err := parseTSStreamsReader(reader)
+	var video h264Track
+	var audioFrames int
+	types, err := walkTSFrames(reader, func(kind byte, frame demuxedFrame) error {
+		switch kind {
+		case streamTypeH264:
+			track, err := parseH264Frame(frame)
+			if err != nil {
+				return fmt.Errorf("parse H.264 track: %w", err)
+			}
+			for _, param := range track.ParamSets {
+				found := false
+				for _, existing := range video.ParamSets {
+					if bytes.Equal(param, existing) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					video.ParamSets = append(video.ParamSets, param)
+				}
+			}
+			for _, sample := range track.Samples {
+				sample.Data = nil // Layer B 只保留时间戳，不延长媒体 payload 生命周期。
+				video.Samples = append(video.Samples, sample)
+			}
+		case streamTypeAAC:
+			if err := walkAACFrame(frame, func(_ *aacTrack, _ aacSample) error { audioFrames++; return nil }); err != nil {
+				return fmt.Errorf("parse AAC track: %w", err)
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	var videoStreams, audioStreams []*demuxedStream
-	for _, stream := range streams {
-		switch stream.streamType {
-		case streamTypeH264:
-			videoStreams = append(videoStreams, stream)
-		case streamTypeAAC:
-			audioStreams = append(audioStreams, stream)
-		case streamTypeID3:
-			// timed ID3 metadata:默认丢弃,不创建 MP4 track(计划 #39)。
-		default:
-			name := codecNames[uint16(stream.streamType)]
-			if name == "" {
-				name = fmt.Sprintf("0x%02X", stream.streamType)
-			}
-			if isVideoStreamType(stream.streamType) {
-				return fmt.Errorf("unsupported video codec: %s", name)
-			}
-			if isAudioStreamType(stream.streamType) {
-				return fmt.Errorf("unsupported audio codec: %s", name)
-			}
-			return fmt.Errorf("unsupported stream type %s", name)
+	if err := validateStreamTypes(types); err != nil {
+		return err
+	}
+	videos, audios := 0, 0
+	for _, kind := range types {
+		if kind == streamTypeH264 {
+			videos++
+		}
+		if kind == streamTypeAAC {
+			audios++
 		}
 	}
-	if len(videoStreams) != 1 {
-		return fmt.Errorf("expected exactly one H.264 video track, got %d", len(videoStreams))
-	}
-	video, err := parseH264Track(*videoStreams[0])
-	if err != nil {
-		return fmt.Errorf("parse H.264 track: %w", err)
+	if videos != 1 {
+		return fmt.Errorf("expected exactly one H.264 video track, got %d", videos)
 	}
 	if len(video.Samples) == 0 {
 		return fmt.Errorf("video track has no samples")
@@ -254,17 +260,8 @@ func validateMediaStreamReader(reader io.ReadSeeker) error {
 	if video.Samples[len(video.Samples)-1].PTS <= video.Samples[0].PTS {
 		return fmt.Errorf("video duration is not positive")
 	}
-	for _, audio := range audioStreams {
-		track, err := parseAACTrack(*audio)
-		if err != nil {
-			return fmt.Errorf("parse AAC track: %w", err)
-		}
-		if len(track.Samples) == 0 {
-			return fmt.Errorf("audio track has no samples")
-		}
-		if len(track.Config) != 2 {
-			return fmt.Errorf("audio track has invalid AAC config")
-		}
+	if audios > 0 && audioFrames == 0 {
+		return fmt.Errorf("audio track has no samples")
 	}
 	return nil
 }
@@ -309,23 +306,27 @@ func validateSegmentCodecsFile(path string) error {
 }
 
 func validateSegmentCodecsReader(reader io.ReadSeeker) error {
-	streams, err := parseTSStreamsReader(reader)
+	types, err := walkTSFrames(reader, func(byte, demuxedFrame) error { return nil })
 	if err != nil {
 		return err
 	}
-	for _, stream := range streams {
-		switch stream.streamType {
+	return validateStreamTypes(types)
+}
+
+func validateStreamTypes(types map[uint16]byte) error {
+	for _, kind := range types {
+		switch kind {
 		case streamTypeH264, streamTypeAAC, streamTypeID3:
 			continue
 		default:
-			name := codecNames[uint16(stream.streamType)]
+			name := codecNames[uint16(kind)]
 			if name == "" {
-				name = fmt.Sprintf("0x%02X", stream.streamType)
+				name = fmt.Sprintf("0x%02X", kind)
 			}
-			if isVideoStreamType(stream.streamType) {
+			if isVideoStreamType(kind) {
 				return fmt.Errorf("unsupported video codec: %s", name)
 			}
-			if isAudioStreamType(stream.streamType) {
+			if isAudioStreamType(kind) {
 				return fmt.Errorf("unsupported audio codec: %s", name)
 			}
 			return fmt.Errorf("unsupported stream type %s", name)

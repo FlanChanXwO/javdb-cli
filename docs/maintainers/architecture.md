@@ -57,11 +57,10 @@ HTTP、签名或上游响应解码。目录职责如下：
   `MagnetRow`/`ProjectMagnet`、`NamedRow`/`ProjectNamed`）。
 - `cli/entity`：只保留六类实体命令共享的查询用例 `Execute`；命名实体投影位于
   `cli/result`。
-- `cli/commands/{auth,config,search,detail,comments,magnets,download,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
+- `cli/commands/{auth,config,search,detail,comments,magnets,assets,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
   每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
   metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
-  其中 `commands/download` 持有正式 `assets` 命令实现，`download` 仅是同一 Cobra
-  command object 的兼容别名。
+  其中 `commands/assets` 持有 `assets list` 与 `assets download`，不提供顶层 `download` 别名。
   `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info
   获取（未导出 helper）。
 
@@ -91,6 +90,9 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
 - `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理、三层完整性
   （Layer A segment 校验、Layer B 媒体模型校验、Layer C MP4 容器校验）、按协议要求的
   segment 重试、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与 no-replace 发布，
+  TS 临时文件逐包重组每个 PID 当前未完成的 PES，H.264/AAC 样本立即校验并写入
+  spool；长期只保留 codec 配置与 sample metadata，最终 mdat 使用固定 I/O 缓冲复制。
+  峰值内存仍包含当前 PES 与 moov 元数据，不承诺与样本数无关的常量内存。
   通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
   javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。
 

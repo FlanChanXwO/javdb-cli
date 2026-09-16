@@ -59,34 +59,18 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 	if err := validateSegmentCodecsReader(reader); err != nil {
 		return err
 	}
-	streams, err := parseTSStreamsReader(reader)
-	if err != nil {
-		return err
-	}
-	for _, stream := range streams {
-		switch stream.streamType {
+	_, err := walkTSFrames(reader, func(kind byte, frame demuxedFrame) error {
+		switch kind {
 		case streamTypeH264:
-			track, err := parseH264Track(*stream)
+			track, err := parseH264Frame(frame)
 			if err != nil {
 				return fmt.Errorf("parse H.264 track: %w", err)
 			}
 			if s.video == nil {
-				width, height, err := parseSPSDimensions(track.ParamSets[0])
-				if err != nil {
-					return fmt.Errorf("parse SPS: %w", err)
-				}
-				s.video = &mp4TrackMeta{
-					Timescale: mp4VideoTimescale,
-					Width:     width,
-					Height:    height,
-					ParamSets: track.ParamSets,
-				}
-			} else if len(track.ParamSets) > 0 {
-				// 跨 segment codec configuration 校验(计划 #17):
-				// 后续 segment 的 SPS/PPS 必须与首段一致。
-				if err := s.checkVideoConfig(track); err != nil {
-					return err
-				}
+				s.video = &mp4TrackMeta{Timescale: mp4VideoTimescale}
+			}
+			if err := s.checkVideoConfig(track); err != nil {
+				return err
 			}
 			if err := s.checkVideoTimestamps(track.Samples); err != nil {
 				return err
@@ -106,25 +90,22 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 				s.fileOffset += int64(len(sample.Data))
 			}
 		case streamTypeAAC:
-			track, err := parseAACTrack(*stream)
-			if err != nil {
-				return fmt.Errorf("parse AAC track: %w", err)
-			}
-			if s.audio == nil {
-				s.audio = &mp4TrackMeta{
-					Timescale:  uint32(track.SampleRate),
-					ASC:        track.Config,
-					Channels:   track.Channels,
-					SampleRate: track.SampleRate,
+			return walkAACFrame(frame, func(track *aacTrack, sample aacSample) error {
+				if s.audio == nil {
+					s.audio = &mp4TrackMeta{
+						Timescale:  uint32(track.SampleRate),
+						ASC:        track.Config,
+						Channels:   track.Channels,
+						SampleRate: track.SampleRate,
+					}
+				} else {
+					// 跨 segment codec configuration 校验(计划 #17):
+					// 后续 segment 的 AAC ASC/采样率/通道必须与首段一致。
+					if err := s.checkAudioConfig(track); err != nil {
+						return err
+					}
 				}
-			} else {
-				// 跨 segment codec configuration 校验(计划 #17):
-				// 后续 segment 的 AAC ASC/采样率/通道必须与首段一致。
-				if err := s.checkAudioConfig(track); err != nil {
-					return err
-				}
-			}
-			for _, sample := range track.Samples {
+
 				n, err := s.file.Write(sample.Data)
 				if err != nil {
 					return err
@@ -136,10 +117,12 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 					SpoolOffset: s.fileOffset, Size: uint32(len(sample.Data)), PTS: sample.PTS,
 				})
 				s.fileOffset += int64(len(sample.Data))
-			}
+				return nil
+			})
 		}
-	}
-	return nil
+		return nil
+	})
+	return err
 }
 
 // checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致(计划 #17)。
@@ -151,6 +134,18 @@ func (s *mp4Spooler) checkVideoConfig(track *h264Track) error {
 			continue
 		}
 		expected := h264ParameterSets(s.video.ParamSets, nalType)
+		// SPS/PPS 可以分别出现在不同 PES；第一次出现时建立该类配置。
+		if len(expected) == 0 {
+			if nalType == 7 {
+				w, h, err := parseSPSDimensions(actual[0])
+				if err != nil {
+					return fmt.Errorf("parse SPS: %w", err)
+				}
+				s.video.Width, s.video.Height = w, h
+			}
+			s.video.ParamSets = append(s.video.ParamSets, actual...)
+			continue
+		}
 		if equalH264ParameterSets(expected, actual) {
 			continue
 		}
@@ -228,6 +223,10 @@ func (s *mp4Spooler) checkAudioConfig(track *aacTrack) error {
 // finalize 计算 track 时长;文件保持打开,writeMP4Body 需要 ReadAt 读回样本。
 // 文件关闭由调用方 downloadMP4 的 defer 负责。
 func (s *mp4Spooler) finalize() error {
+	if s.video == nil || len(h264ParameterSets(s.video.ParamSets, 7)) == 0 || len(h264ParameterSets(s.video.ParamSets, 8)) == 0 {
+		return fmt.Errorf("video track is missing SPS/PPS")
+	}
+
 	if s.video != nil {
 		durations, duration, err := videoSampleDurations(s.video.Samples)
 		if err != nil {
@@ -379,21 +378,20 @@ func interleaveSamples(video, audio *mp4TrackMeta, mdatStart int64) (videoChunks
 	return videoChunks, audioChunks
 }
 
-// copySamplesFromSpool 把样本按元数据顺序从 spool 拷出;错误以负数长度返回。
+// copySamplesFromSpool 以固定 I/O 缓冲从 spool 区间复制，避免按 sample 大小分配。
 func copySamplesFromSpool(spool *mp4Spooler, samples []mp4SampleMeta, out io.Writer) (int64, error) {
 	var written int64
+	buffer := make([]byte, 32*1024)
 	for _, sample := range samples {
-		data := make([]byte, sample.Size)
-		if _, err := spool.file.ReadAt(data, sample.SpoolOffset); err != nil {
-			return written, fmt.Errorf("read spool at %d: %w", sample.SpoolOffset, err)
-		}
-		n, err := out.Write(data)
-		written += int64(n)
+		section := io.NewSectionReader(spool.file, sample.SpoolOffset, int64(sample.Size))
+		// 只暴露 Write，避免目的端 ReaderFrom 绕过指定缓冲策略。
+		n, err := io.CopyBuffer(struct{ io.Writer }{out}, section, buffer)
+		written += n
 		if err != nil {
-			return written, err
+			return written, fmt.Errorf("copy spool at %d: %w", sample.SpoolOffset, err)
 		}
-		if n != len(data) {
-			return written, io.ErrShortWrite
+		if n != int64(sample.Size) {
+			return written, io.ErrUnexpectedEOF
 		}
 	}
 	return written, nil
