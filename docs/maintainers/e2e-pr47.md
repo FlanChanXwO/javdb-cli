@@ -1,75 +1,103 @@
-# PR #47 真实 E2E 实测报告
+# PR #47 媒体验收记录
 
-本页保留 PR #47 媒体链路的真实 JavDB E2E 记录。番号统一以 `NUMBER` 占位，
-不记录具体影片；媒体 URL 域名属于公开 CDN/镜像地址。
+本轮验证日期为 2026-09-17，代码版本为 `8ee7b64`，已合入 `main` 的
+`bd2798a`（#46）。后续本页的证据更新不改变被测生产代码。环境为 macOS
+`darwin/arm64`、Go `go1.26.3`、ffmpeg/ffprobe `8.1.1`。
+ffmpeg/ffprobe 仅是独立验收工具，不属于 CLI 运行时依赖。
 
-实测环境：macOS darwin-arm64、Go `go1.26.3`，本次 E2E 验证代码 commit `699505d`；
-`ffprobe`/`ffmpeg` `8.1.1`，仅用于独立验证，不是运行时依赖。当前契约的资产机器
-输出严格只有 `type` 与 `url`，不会在 list 阶段读取媒体内容。
+番号以 `NUMBER` 表示；本页不保存媒体、签名 URL、凭据或本机工作目录。
 
-## E2E #1/#2：`assets list NUMBER`
+## 列表、过滤与图片
 
-- `javdb assets list NUMBER` 返回 13 个资产（thumbnail、cover、10 张 preview 图与 preview video），
-  管道输出为 `TYPE<TAB>URL`，无装饰；视频筛选结果为单行 `video<TAB>URL`。
-- `javdb assets list NUMBER --json` 返回 JSON 数组；逐项校验确认对象严格只有 `type` 与 `url`，
-  `type` 仅为 `image`/`video`，URL 为 HTTP(S)。
-
-## E2E #3：pipe → download
+使用真实 JavDB API 分别执行：
 
 ```bash
+javdb assets list NUMBER
+javdb assets list NUMBER --json
+javdb assets list NUMBER --ndjson
+javdb assets list NUMBER --type image 1-4
+javdb assets list NUMBER --type video
 javdb assets list NUMBER --type image 1-2 | javdb assets download -d DIR
 ```
 
-- stdout 只输出最终路径（`DIR/image-001.jpg`、`DIR/image-002.jpg`），无 `saved ...` 装饰。
-- `file` 与 macOS `sips` 确认产物可识别且可读取（本轮样本为 147×200 与 800×439 JPEG）；
-  无残留 `.part`/`.spool` 临时文件，已有目标重复下载会失败且 SHA-256 不变。
+- 本轮样本包含 13 个资产，类型、顺序与过滤后 selector 对应；非 TTY 每行严格为
+  `TYPE<TAB>URL`，JSON/NDJSON 每个对象严格只有 `type`、`url`。
+- 上游媒体 URL 的 `sign`/`t` 会随请求改变。跨次调用比较类型、scheme、host、path
+  与顺序；下载使用该次请求的完整签名 URL，不要求不同请求的签名相同。
+- 图片无需手工 Referer/Origin；JPEG magic 与 `sips` 解码检查通过。
+  stdout 每行只输出最终文件路径。重复写入同一路径失败，已有文件 SHA-256 不变。
+- 本地 HTTP 故障 fixture 提供无效图片与 TS 数据：图片、TS、MP4 下载均非零退出，
+  不发布目标文件，目标目录不遗留临时文件。真实下载后的目标目录同样无 `.part`、spool 残留。
 
-## E2E #4：video → TS
+## 真实 TS 与 Fast Start MP4
 
-- `javdb assets list NUMBER --type video | javdb assets download -o preview.ts`
-  生成 MPEG-TS；`ffprobe` 确认 H.264 720×404、AAC 48 kHz 双声道，
-  `ffmpeg -v error -f null -` 完整 decode 退出码为 0。
+```bash
+javdb assets list NUMBER --type video | javdb assets download -o preview.ts
+javdb assets list NUMBER --type video | javdb assets download -o preview.mp4
+ffprobe -v error -show_format -show_streams -of json preview.ts
+ffprobe -v error -show_format -show_streams -of json preview.mp4
+ffmpeg -v error -i preview.ts -f null -
+ffmpeg -v error -i preview.mp4 -f null -
+```
 
-## E2E #5：video → MP4（Fast Start remux）
+- TS 保留 H.264 720×404、AAC 48 kHz 双声道和输入的 timed ID3；MP4 只写入
+  H.264 `avc1` 与 AAC `mp4a`。两种输出均通过完整解码，退出码 0、stderr 为空。
+- TS 为 49,052,960 bytes，MP4 为 47,548,685 bytes；MP4 duration 为
+  `116.916800s`。逐 box 检查确认 `ftyp → moov → mdat`，moov 在媒体数据之前。
+- 视频 3,502 个 packet 的 DTS 全程非递减；PTS−DTS 为 `0..15015`（90 kHz）。
+- 从 `ffprobe` duration 动态计算 10%/50%/90% 的 seek 位置，本轮为
+  `11.69168s`、`58.45840s`、`105.22512s`；三处读取并解码视频帧成功，stderr 为空。
 
-- `javdb assets list NUMBER --type video | javdb assets download -o preview.mp4`
-  生成 ISO MP4。
-- **Fast Start**：`ftyp → moov → mdat` 顺序确认。
-- **独立验证**：`ffprobe` 记录 format duration `116.916800s`；视频为 H.264
-  720×404、`30000/1001`、`116.850067s`；音频为 AAC、48000 Hz、双声道、
-  `116.885333s`。`ffmpeg -v error -i preview.mp4 -f null -` 完整解码退出码为 0，
-  stderr 为空。
-- **packet 级 B-frame 检查**：视频共 3502 个 packet，DTS 从 `0` 到 `10513503`
-  全程非递减、未发现 regression；PTS-DTS composition offset 范围为 `0..15015`
-  （90 kHz 时间基）。因此本次没有修改 mux 时间戳逻辑，也没有复现 null muxer 诊断。
-- 按探测到的总时长动态计算 10%、50%、90% 三个位置执行 seek，三处均成功；未使用
-  固定秒数（本次位置约为 `11.692s`、`58.458s`、`105.225s`）。
+## 单 segment 与总长度资源实测
 
-## E2E #7：最新 HEAD 的流式资源处理
+所有下载均使用同一台机器的本地 HTTP server，单独以 `/usr/bin/time -l`
+记录被测 CLI 的 peak RSS；ffmpeg 解码在下载退出后独立执行，不计入 CLI RSS。
+使用已保存的真实 TS fixture：普通 case 将整份 TS 作为一个 HLS segment；
+大单段通过 `ffmpeg -stream_loop 11 -c copy -f mpegts` 推进时间戳并重复为约 12 倍；
+多段 case 再以 `-f segment -segment_time 120` 切分同一大输入，保持时间戳连续。
+生成 fixture 时不转码，验收仍由当前版本 CLI 重新下载、解析并 remux。
 
-- 媒体 transport 将响应 body 交给下载层消费；playlist 按行读取，segment、解密结果和
-  图片中间结果使用临时文件流转，不把普通媒体响应无条件读入内存。只有协议明确要求
-  固定 16 字节的 AES-128 key 使用有界读取，并通过实际受限 reader 测试确认在超限后停止。
-- MP4 spool 使用 target 目录内的唯一临时文件；预先存在的 `preview.mp4.spool` 不会
-  阻塞下载。图片、TS、MP4 下载均未留下 `.part` 或 `.spool` 文件。
-- `ctts` composition offset 的 32-bit 表达边界、Layer C 的 `ctts` 版本/边界/样本数
-  一致性均在本次提交的 contract tests 中覆盖；未新增无依据的媒体总量或样本数硬上限。
+| 输入 | MP4 输出（MB） | peak RSS（MB） | wall time（s） | full decode |
+| --- | ---: | ---: | ---: | --- |
+| 普通单段（49.05 MB TS） | 47.55 | 27.48 | 13.20 | PASS |
+| 大单段（593.92 MB TS） | 570.57 | 54.89 | 10.82 | PASS |
+| 相同大输入切为 12 段 | 570.57 | 59.51 | 10.31 | PASS |
 
-## E2E #6：资源占用实测
+MB 使用十进制 1,000,000 bytes。
 
-历史测量（非本轮重跑）使用同一 segment 重复引用 120 次、输出约 569 MB，基于
-`e96202b`：
+三组 MP4 全量解码退出码均为 0，stderr 为空。输出约增长 12 倍，RSS 约增长
+2 倍；大单段与相同总长度多段的 RSS 接近，没有观察到 RAM 与单个 segment payload
+近似 1:1 增长。RSS 仍包含当前各 PID 的未完成 PES、codec 配置和 MP4 样本元数据；
+样本越多，metadata 仍会增长，本结果不表示与样本数无关的常量内存。
 
-| 指标 | 1x（约 47.5 MB 输出） | 10x（约 569 MB 输出） |
-| --- | --- | --- |
-| peak RSS | 73.4 MB | **68.2 MB** |
-| wall time | 12.5 s（真实 CDN） | 2.7 s（本地服务器） |
+这些 wall time 仅记录运行环境中的观测值，不作为吞吐对比或性能承诺。旧记录的
+47.5 MB / 569 MB 约为 12 倍而非 10 倍，且旧 CDN 与本地服务器耗时不可横比；
+本轮结果取代基于 `e96202b` 的旧资源证据。
 
-RSS 不随媒体长度线性增长：样本落盘，内存只保留 moov 级元数据。
+## 回归与质量门禁
 
-## 结论
+以下检查在上述代码版本完成：
 
-媒体 E2E 覆盖资产顺序、`TYPE<TAB>URL` 管道、图片 magic 校验、no-replace 发布、
-TS 完整性、MP4 Fast Start、独立解码和 spool 资源特征。固定的 playlist、segment、
-image、总 payload 与 segment 数硬上限不属于当前契约；保留协议/格式边界和明确的
-segment 重试语义。
+- `go test ./... -count=1`
+- `go test -race ./... -count=1`
+- `go vet ./...`
+- `sh scripts/build.sh`
+- `sh scripts/test-package-release.sh`
+- `sh scripts/test-homebrew-formula.sh`
+- `sh scripts/test-workflows.sh`
+- `python3 -m pre_commit run --all-files`（pre-commit 4.6.0）
+- tracked Go files 的 gofmt、`git diff --check`、受影响 Go 文件的 LSP 诊断。
+
+补充回归先实际执行 Red，再执行 Green：segment 未读完时真实 spool 已有 payload；
+多 PES 样本数、时间戳与 MP4 容器；大 sample 的有界复制与内容一致；PES 内 AAC
+配置变化拒绝；分别传输的 SPS/PPS；按 PID 拒绝声明后无帧的音轨。原有跨 segment
+DTS、SPS/PPS 连续性、TS 结构、AES-128 与 MP4 Layer C 测试继续通过。
+
+生产路径不再提供整段 `[]demuxedFrame` 聚合；H.264 每 PES 处理后立即写 spool，
+AAC 每 ADTS 帧直接消费借用的 payload，最终 mdat 以 32 KiB I/O 缓冲读取 spool
+区间。没有新增媒体总量、segment 大小/数量、样本数量等硬配额；既有格式与协议
+表达边界继续显式报错。
+
+最终 PR HEAD 的 GitHub Actions 状态见 PR 检查页；仅以该 HEAD 的 Quality gate、
+Real API e2e、Container image smoke 与 Platform packaged binary smoke 为合并依据，
+不沿用旧 base/HEAD 的绿色结果。
