@@ -59,9 +59,16 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 	if err := validateSegmentCodecsReader(reader); err != nil {
 		return err
 	}
-	_, err := walkTSFrames(reader, func(_ uint16, kind byte, frame demuxedFrame) error {
+	// 每段只允许一条视频和至多一条音频；相同配置不代表相同轨道。
+	var videoPID, audioPID uint16
+	var hasVideo, hasAudio bool
+	_, err := walkTSFrames(reader, func(pid uint16, kind byte, frame demuxedFrame) error {
 		switch kind {
 		case streamTypeH264:
+			if hasVideo && videoPID != pid {
+				return fmt.Errorf("multiple H.264 video tracks are not supported")
+			}
+			videoPID, hasVideo = pid, true
 			track, err := parseH264Frame(frame)
 			if err != nil {
 				return fmt.Errorf("parse H.264 track: %w", err)
@@ -90,6 +97,10 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 				s.fileOffset += int64(len(sample.Data))
 			}
 		case streamTypeAAC:
+			if hasAudio && audioPID != pid {
+				return fmt.Errorf("multiple AAC audio tracks are not supported")
+			}
+			audioPID, hasAudio = pid, true
 			return walkAACFrame(frame, func(track *aacTrack, sample aacSample) error {
 				if s.audio == nil {
 					s.audio = &mp4TrackMeta{
@@ -122,7 +133,13 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if !hasVideo {
+		return fmt.Errorf("expected exactly one H.264 video track")
+	}
+	return nil
 }
 
 // checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致(计划 #17)。

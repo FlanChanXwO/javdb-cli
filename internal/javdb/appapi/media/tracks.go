@@ -132,6 +132,14 @@ func walkAACFrame(frame demuxedFrame, consume func(*aacTrack, aacSample) error) 
 		if err != nil {
 			return err
 		}
+		// MP4 ASC 固定为 AAC-LC，且每个 sample 的时长为 1024 个采样。
+		// 其他 profile 或多 raw_data_block 必须拒绝，不能写出错误配置/时间轴。
+		if profile := (es[2] >> 6) & 0x03; profile != 1 {
+			return fmt.Errorf("unsupported ADTS profile %d: MP4 requires AAC-LC", profile)
+		}
+		if blocks := es[6] & 0x03; blocks != 0 {
+			return fmt.Errorf("multiple ADTS raw data blocks (%d) are not supported in MP4", blocks+1)
+		}
 		sampleRate, err := aacFrequency(freqIdx)
 		if err != nil {
 			return err
@@ -224,8 +232,15 @@ func validateMediaStreamReader(reader io.ReadSeeker) error {
 				video.Samples = append(video.Samples, sample)
 			}
 		case streamTypeAAC:
-			if err := walkAACFrame(frame, func(_ *aacTrack, _ aacSample) error { audioFrames[pid]++; return nil }); err != nil {
-				return fmt.Errorf("parse AAC track: %w", err)
+			// TS 原样保存只校验 ADTS 结构，不生成 ASC 或按 1024 samples 重写时间轴，
+			// 因而不套用 MP4 的 AAC-LC/单 raw_data_block 限制。
+			for es := frame.ES; len(es) > 0; {
+				_, _, _, consumed, err := parseADTS(es)
+				if err != nil {
+					return fmt.Errorf("parse AAC track: %w", err)
+				}
+				audioFrames[pid]++
+				es = es[consumed:]
 			}
 		}
 		return nil

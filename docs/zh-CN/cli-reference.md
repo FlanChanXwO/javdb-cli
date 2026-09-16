@@ -122,6 +122,10 @@ remux 生成——无 ffmpeg、无转码；`.ts` 保留解密后的 MPEG-TS。�
 明确失败。仅接受已结束的单媒体 HLS playlist；master playlist、byte-range 媒体、fragmented MP4
 媒体，以及未结束/直播 playlist 都会明确失败。两个命令都不会下载完整影片或磁力目标。
 
+MP4 每段要求恰好一个 H.264 PID、至多一个 AAC-LC PID，且每个 ADTS 帧只有一个 raw data block；
+多轨、不支持的 AAC profile 或 block 数会明确失败。MP4 忽略 timed ID3。
+TS 发布前校验媒体结构和视频时间轴，保留 ADTS 原文，不套用 MP4 的 profile/block 限制。
+
 ## 以图搜番
 
 ```bash

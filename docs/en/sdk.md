@@ -150,6 +150,12 @@ no transcoding; any other extension returns
 `unsupported video output format`. Unsupported codecs (HEVC, AC-3, ...) fail
 explicitly. Context cancellation stops every stage and leaves no output file.
 
+MP4 requires exactly one H.264 PID and at most one AAC-LC PID per segment,
+with one raw data block per ADTS frame;
+extra tracks or unsupported AAC profiles/block counts fail explicitly. Timed ID3 is ignored in MP4.
+TS publication validates the media structure and video timeline
+while preserving ADTS bytes without the MP4 profile/block restrictions.
+
 `MovieAssetsFromDetail` / `MovieAssetDescriptions` map an already-fetched
 detail map to the same asset sequence and TTY-only description texts; keep
 descriptions out of machine output. `ImageAssetFormat(path)` reports the

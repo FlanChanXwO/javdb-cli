@@ -323,3 +323,44 @@ func TestValidateTSSegmentContinuationOnlyStreamRejected(t *testing.T) {
 		t.Fatalf("error = %v, want no payload for continuation-only stream", err)
 	}
 }
+
+func TestDownloadTSRejectsMalformedMediaWithoutOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		packet    int
+		pid       uint16
+		streamID  byte
+		wantError string
+	}{
+		{"h264_annex_b", 2, videoPID, 0xE0, "H.264"},
+		{"aac_adts", 4, audioPID, 0xC0, "ADTS"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			segment := validTSSegment()
+			copy(segment[tc.packet*188:(tc.packet+1)*188], tsPacket(tc.pid, true, 1, pesBytes(tc.streamID, 90000, 90000, true, []byte{0xDE, 0xAD, 0xBE, 0xEF})))
+			if err := validateTSSegment(segment); err != nil {
+				t.Fatalf("fixture must pass Layer A: %v", err)
+			}
+			dir := t.TempDir()
+			t.Setenv("TMPDIR", dir)
+			t.Setenv("TMP", dir)
+			t.Setenv("TEMP", dir)
+			target := dir + "/preview.ts"
+			resources := map[string][]byte{
+				"https://media.example.test/p.m3u8": []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1,\ns.ts\n#EXT-X-ENDLIST\n"),
+				"https://media.example.test/s.ts":   segment,
+			}
+			_, err := downloadTS(context.Background(), hlsFetch(resources), "https://media.example.test/p.m3u8", target)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Errorf("error = %v, want %s", err, tc.wantError)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("rejected media left target/temp files: %v", entries)
+			}
+		})
+	}
+}

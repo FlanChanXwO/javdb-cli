@@ -14,3 +14,6 @@
 10. 本地资源：只有用户明确要求写入本机文件时，才执行 `javdb assets list NUMBER` 查看资产（顺序固定：thumbnail、cover、preview 图、preview 视频；编号只是过滤后列表的位置），再用 selector（如 `1-4`、`1,3-5`）或 `--type image|video` 过滤，管道到 `javdb assets download`（`-d DIR` 自动命名，`-o PATH` 仅限单个资产）。该命令域只保存 thumbnail/preview 资源，不下载完整影片或磁力目标；绝不替换已有文件。
 
 每个阶段先检查退出码；API 返回错误、空结果或认证失败均应如实呈现，而不是更换主机、代理、账号或关键字来“补救”。
+
+媒体下载边界：MP4 每段仅支持一个 H.264 PID 和至多一个 AAC-LC PID（每 ADTS 帧一个 raw data block），多轨或其他 AAC profile/block 数明确失败；timed ID3 不写入 MP4。
+TS 发布前校验媒体结构与视频时间轴，ADTS 原文保留，不套用 MP4 的 profile/block 限制。

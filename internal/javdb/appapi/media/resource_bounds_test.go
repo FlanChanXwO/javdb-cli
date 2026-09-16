@@ -47,11 +47,14 @@ func TestDownloadHLSPreservesMoreThanFormerSegmentLimit(t *testing.T) {
 		b.WriteString("seg.ts\n")
 	}
 	b.WriteString("#EXT-X-ENDLIST\n")
+	var base uint64
 	fetch := byteFetch(func(_ context.Context, uri string) ([]byte, error) {
 		if strings.HasSuffix(uri, ".m3u8") {
 			return []byte(b.String()), nil
 		}
-		return validTSSegmentAt(0), nil
+		segment := validTSSegmentAt(base)
+		base += 90000 // 多段 fixture 必须维持真实媒体的递增时间轴。
+		return segment, nil
 	})
 	written, err := DownloadHLS(context.Background(), fetch, "https://media.example.test/v.m3u8", filepath.Join(t.TempDir(), "v.ts"))
 	if err != nil {

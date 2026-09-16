@@ -166,7 +166,7 @@ type hlsMediaPlaylist struct {
 const maxSegmentAttempts = 3
 
 // downloadTS 产出保留 Transport Stream 的 .ts:每个 segment 通过 Layer A 与
-// codec 检查后写入 .part,最终做分块结构校验后原子发布(计划 #33)。
+// codec 检查后写入 .part,最终通过结构与 Layer B 媒体校验后原子发布。
 func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
 	playlist, err := fetchHLSMediaPlaylist(ctx, fetch, playlistURL)
 	if err != nil {
@@ -191,7 +191,7 @@ func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target str
 			}
 		}
 		return total, nil
-	}, validateTSFileStream)
+	}, validateTSOutput)
 }
 
 // downloadMP4 走 spool 管线产出 Fast Start MP4(计划 #35/#36)。
@@ -863,6 +863,14 @@ func publishMediaFile(path string, write func(io.Writer) (int64, error), validat
 		return 0, fmt.Errorf("remove media temp file after publish: %w", err)
 	}
 	return written, nil
+}
+
+// validateTSOutput 在发布前复核结构和媒体模型，验证器都按 reader 读取文件。
+func validateTSOutput(path string) error {
+	if err := validateTSFileStream(path); err != nil {
+		return err
+	}
+	return validateMediaFile(path)
 }
 
 // validateMediaFile 对已落盘的 TS 做最终媒体校验:

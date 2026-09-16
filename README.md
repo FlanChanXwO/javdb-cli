@@ -284,7 +284,9 @@ TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
 local state and should be used deliberately. `javdb assets download` writes
 selected media assets to explicit new local paths and outputs only the final
-path per line. `javdb assets list --json/--ndjson` exposes
+path per line. MP4 supports one H.264 track and at most one AAC-LC track;
+see the [media contract](docs/en/cli-reference.md#local-movie-assets) for validation boundaries.
+`javdb assets list --json/--ndjson` exposes
 `type` and `url` only; listing does not download or probe the media payloads.
 They never download a full movie or magnet target and never replace an existing
 file.

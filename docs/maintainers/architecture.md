@@ -92,6 +92,9 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
   segment 重试、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与 no-replace 发布，
   TS 临时文件逐包重组每个 PID 当前未完成的 PES，H.264/AAC 样本立即校验并写入
   spool；长期只保留 codec 配置与 sample metadata，最终 mdat 使用固定 I/O 缓冲复制。
+  TS 发布前运行 Layer B；MP4 每段仅支持一个 H.264 PID、至多一个 AAC-LC PID，
+  AAC 每 ADTS 帧须只有一个 raw data block，timed ID3 忽略。TS 保留模式不套用
+  MP4 的 AAC profile/block 限制。
   峰值内存仍包含当前 PES 与 moov 元数据，不承诺与样本数无关的常量内存。
   通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
   javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。

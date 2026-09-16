@@ -2,6 +2,7 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -107,18 +108,18 @@ func TestUnitMatrixIsCompleteIdentity(t *testing.T) {
 	u32 := func(off int) uint32 {
 		return binary.BigEndian.Uint32(m[off : off+4])
 	}
-	// a=0x00010000, b/u=0, c/v=0, d=0x00010000(中间对角项), e/w=0, f=0x40000000
+	// ISO BMFF 顺序为 a/b/u/c/d/v/x/y/w；单位阵仅 a/d/w 非零。
 	if got := u32(0); got != 0x00010000 {
 		t.Fatalf("a = 0x%08X, want 0x00010000", got)
 	}
-	if got := u32(12); got != 0x00010000 {
+	if got := u32(16); got != 0x00010000 {
 		t.Fatalf("d(中间对角项) = 0x%08X, want 0x00010000", got)
 	}
 	if got := u32(32); got != 0x40000000 {
-		t.Fatalf("f = 0x%08X, want 0x40000000", got)
+		t.Fatalf("w = 0x%08X, want 0x40000000", got)
 	}
 	// 其余项必须为 0。
-	for _, off := range []int{4, 8, 16, 20, 24, 28} {
+	for _, off := range []int{4, 8, 12, 20, 24, 28} {
 		if got := u32(off); got != 0 {
 			t.Fatalf("matrix[%d] = 0x%08X, want 0", off, got)
 		}
@@ -154,6 +155,16 @@ func TestMP4TrackIDsAndTimescales(t *testing.T) {
 	}
 	var mvhd boxWalker
 	if err := walkBoxes(mp4, 0, int64(len(mp4)), func(ref boxWalker) error {
+		if ref.kind == "tkhd" {
+			// version 0 tkhd 的 matrix 位于 box 起点 +48，独立检查最终布局。
+			want := [9]uint32{0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000}
+			for i, value := range want {
+				off := ref.off + 48 + int64(i*4)
+				if got := beU32(mp4[off : off+4]); got != value {
+					t.Errorf("tkhd matrix[%d] = 0x%08X, want 0x%08X", i, got, value)
+				}
+			}
+		}
 		if ref.kind == "mvhd" {
 			mvhd = ref
 		}
@@ -778,4 +789,95 @@ func validTSSegmentWithSPSAndPPS(t *testing.T, sps, ppsPayload []byte) []byte {
 	data = append(data, tsPacket(videoPID, true, 2, pesBytes(0xE0, 93600, 93600, true, frame1))...)
 	data = append(data, tsPacket(audioPID, true, 3, pesBytes(0xC0, 90000, 0, false, adtsFrame()))...)
 	return data
+}
+
+// 相同 codec configuration 也不能把不同 PID 的 elementary stream 合成一轨。
+func TestMP4RejectsMultipleMediaPIDs(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		extraKind byte
+		wantError string
+	}{
+		{"two_video", streamTypeH264, "multiple H.264 video tracks"},
+		{"two_audio", streamTypeAAC, "multiple AAC audio tracks"},
+		{"single_video_and_audio", 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			segment := validTSSegment()
+			if tc.extraKind != 0 {
+				body := []byte{0, 1, 0xC1, 0, 0, 0xE1, 1, 0xF0, 0,
+					streamTypeH264, 0xE1, 1, 0xF0, 0, streamTypeAAC, 0xE1, 2, 0xF0, 0,
+					tc.extraKind, 0xE1, 3, 0xF0, 0}
+				copy(segment[188:376], tsPacket(pmtPID, true, 0, psiSection(2, body)))
+				packetIndex := 2
+				if tc.extraKind == streamTypeAAC {
+					packetIndex = 4
+				}
+				duplicate := append([]byte(nil), segment[packetIndex*188:(packetIndex+1)*188]...)
+				duplicate[2] = 3 // PID 0x0103，ES 内容与原轨一致。
+				segment = append(segment, duplicate...)
+			}
+			spool, err := newMP4Spooler(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer spool.file.Close()
+			err = spool.addSegmentReader(bytes.NewReader(segment))
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("error = %v, want %s", err, tc.wantError)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TS 保留 ADTS 原文；MP4 只接受能按 AAC-LC/1024 samples 正确封装的帧。
+func TestAACRemuxBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		profile, blocks byte
+		wantError       string
+	}{
+		{"lc_one_block", 1, 0, ""},
+		{"non_lc", 0, 0, "unsupported ADTS profile"},
+		{"multiple_blocks", 1, 1, "raw data blocks"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adts := adtsFrame()
+			adts[2] = (adts[2] & 0x3F) | tc.profile<<6
+			adts[6] = (adts[6] & 0xFC) | tc.blocks
+			segment := validTSSegment()
+			copy(segment[4*188:], tsPacket(audioPID, true, 3, pesBytes(0xC0, 90000, 0, false, adts)))
+			resources := map[string][]byte{
+				"https://media.example.test/p.m3u8": []byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1,\ns.ts\n#EXT-X-ENDLIST\n"),
+				"https://media.example.test/s.ts":   segment,
+			}
+			tsTarget := filepath.Join(t.TempDir(), "preview.ts")
+			if _, err := downloadTS(context.Background(), hlsFetch(resources), "https://media.example.test/p.m3u8", tsTarget); err != nil {
+				t.Fatalf("TS preservation: %v", err)
+			}
+			saved, err := os.ReadFile(tsTarget)
+			if err != nil || !bytes.Equal(saved, segment) {
+				t.Fatalf("TS bytes changed: %v", err)
+			}
+			dir := t.TempDir()
+			_, err = downloadMP4(context.Background(), hlsFetch(resources), "https://media.example.test/p.m3u8", filepath.Join(dir, "preview.mp4"))
+			if tc.wantError == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Errorf("error = %v, want %s", err, tc.wantError)
+				}
+				entries, readErr := os.ReadDir(dir)
+				if readErr != nil || len(entries) != 0 {
+					t.Fatalf("rejected MP4 left files: %v (%v)", entries, readErr)
+				}
+			}
+		})
+	}
 }
