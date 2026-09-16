@@ -136,6 +136,11 @@ channel configuration 会明确失败。MP4 忽略 timed ID3。
 TS 发布前校验媒体结构和视频时间轴，保留 ADTS 原文，不套用 MP4 的
 profile/block/channel configuration 限制。
 
+`ProbeMovieAssets(ctx, assets, options)` 使用固定 worker pool 探测选定的图片与预览视频资产，保持输入
+顺序，并按 `Type + URL` 去重。`MovieAssetProbeOptions.Concurrency == 0` 使用默认值 `4`；负数会被拒绝。
+单个资产错误是 best-effort，context 取消或 deadline 会让整个调用失败。图片元数据为 `Width`/`Height`；
+预览视频 `Duration` 为 HLS 时长四舍五入后的整数秒。方法只流式读取 header/首段，不下载完整图片或视频。
+
 `MovieAssetsFromDetail` / `MovieAssetDescriptions` 把已取得的详情 map 映射为同一资产序列与仅用于
 TTY 渲染的描述文本；描述文本不得进入机器输出。`ImageAssetFormat(path)` 报告本地图片的检测格式。
 

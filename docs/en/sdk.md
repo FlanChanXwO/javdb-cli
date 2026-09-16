@@ -158,6 +158,15 @@ TS publication validates the media structure and video timeline
 while preserving ADTS bytes without the MP4
 profile/block/channel-configuration restrictions.
 
+`ProbeMovieAssets(ctx, assets, options)` probes selected image and preview-video
+assets with a fixed worker pool, preserving input order and deduplicating by
+`Type + URL`. `MovieAssetProbeOptions.Concurrency == 0` uses the default `4`;
+negative values are rejected. Metadata is best-effort per asset, while context
+cancellation and deadlines fail the whole call. Image dimensions are reported
+as `Width`/`Height`; preview-video `Duration` is an integer number of seconds,
+rounded from the HLS duration. The method streams headers/segments and does not
+download complete image or video payloads.
+
 `MovieAssetsFromDetail` / `MovieAssetDescriptions` map an already-fetched
 detail map to the same asset sequence and TTY-only description texts; keep
 descriptions out of machine output. `ImageAssetFormat(path)` reports the

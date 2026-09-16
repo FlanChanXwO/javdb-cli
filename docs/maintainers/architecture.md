@@ -99,6 +99,12 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
   通过 fetch callback 接入 client。assets 域（`javdb assets list|download`）不使用
   javdb.pipeline/v1 envelope，管道协议为 `TYPE<TAB>URL` 文本流。
 
+  `assets list` 在 selector 完成后通过 SDK `ProbeMovieAssets` 执行默认启用的 bounded
+  streaming metadata probe；固定 worker pool 只保留图片 header、HLS playlist 与首段 SPS
+  所需的小量状态，不把完整媒体载荷放入内存。JSON/NDJSON 将 probe 结果作为可选字段，TTY
+  展示尺寸/预览时长，pipe 仍严格保持 `TYPE<TAB>URL`。配置由 `[assets.probe]` 控制；默认配置
+  文件保持 sparse，`config get` 展示 effective defaults。
+
 详情给出的缩略图、首张预览图和已结束的单媒体 HLS 仍由 adapter 负责写入、解密并合并；
 该能力不包含完整影片或磁力目标下载。
 App API 不解析终端参数，也不格式化面向用户的输出。
