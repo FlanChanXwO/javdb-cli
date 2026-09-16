@@ -43,6 +43,21 @@ func knownConfigKey(key string) bool {
 	return ok
 }
 
+func configKeyEnvelope(cfg settings.Settings, key string) (pipeline.Envelope, error) {
+	if !knownConfigKey(key) {
+		return pipeline.Envelope{}, fmt.Errorf("unknown key %q", key)
+	}
+
+	value, err := lookupKey(cfg, key)
+	if err != nil {
+		return pipeline.Envelope{}, err
+	}
+
+	return pipeline.New(pipeline.KindConfigKey, key, "").WithData(map[string]any{
+		"value": redactSensitiveValue(key, value),
+	}), nil
+}
+
 func parseKeyValue(key, value string) (any, error) {
 	switch knownConfigKeys[key].kind {
 	case "bool":
@@ -160,19 +175,11 @@ func newGet(streams *invocation.Streams) *cobra.Command {
 		ClientFactory: nil,
 		RunOne: func(_ *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
 			key := pipeline.ConsumerRef(input)
-			if !knownConfigKey(key) {
-				return pipeline.Envelope{}, fmt.Errorf("unknown key %q", key)
-			}
 			cfg, _, err := load()
 			if err != nil {
 				return pipeline.Envelope{}, err
 			}
-			value, err := lookupKey(cfg, key)
-			if err != nil {
-				return pipeline.Envelope{}, err
-			}
-			return pipeline.New(pipeline.KindConfigKey, key, "").
-				WithData(map[string]any{"value": redactSensitiveValue(key, value)}), nil
+			return configKeyEnvelope(cfg, key)
 		},
 		Legacy: func(args []string) error {
 			if !knownConfigKey(args[0]) {
@@ -199,6 +206,27 @@ func newGet(streams *invocation.Streams) *cobra.Command {
 				return fmt.Errorf("unknown key %q", args[0])
 			}
 			if len(args) == 0 {
+				if streams.InIsTerminal && (asJSON || asNDJSON) {
+					mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
+					if err != nil {
+						return err
+					}
+					cfg, _, err := load()
+					if err != nil {
+						return err
+					}
+					writer := pipeline.NewWriter(streams.Out, mode)
+					for _, key := range displayConfigKeys {
+						envelope, err := configKeyEnvelope(cfg, key)
+						if err != nil {
+							return err
+						}
+						if err := writer.Write(envelope); err != nil {
+							return err
+						}
+					}
+					return writer.Finish()
+				}
 				// 无 key：TTY 打印全部；非 TTY 从 stdin 读取 key 批处理。
 				cfg, _, err := load()
 				if err != nil {

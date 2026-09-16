@@ -16,23 +16,70 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
+var collectionKinds = map[string]pipeline.Kind{
+	"actors":    pipeline.KindActor,
+	"series":    pipeline.KindSeries,
+	"codes":     pipeline.KindCode,
+	"makers":    pipeline.KindMaker,
+	"directors": pipeline.KindDirector,
+}
+
+func collectionKind(selector string) (pipeline.Kind, error) {
+	kind, ok := collectionKinds[selector]
+	if !ok {
+		return "", fmt.Errorf("collection kind must be one of actors|series|codes|makers|directors")
+	}
+	return kind, nil
+}
+
+func collectionEnvelope(selector string, kind pipeline.Kind, item map[string]any) (pipeline.Envelope, error) {
+	row := result.ProjectNamed(item)
+	if row.ID == "" {
+		return pipeline.Envelope{}, fmt.Errorf("collections %s: entity has no id", selector)
+	}
+	ref := row.Name
+	if ref == "" {
+		ref = row.ID
+	}
+	return pipeline.New(kind, ref, row.ID).WithData(map[string]any{"entity": item}), nil
+}
+
 // New builds the collection listing command.
 func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var asJSON, asNDJSON bool
 	runner := &pipeline.BatchRunner{
 		Name:       "collections",
 		LegacyJSON: true,
+		Preflight: func(inputs []pipeline.Envelope) error {
+			for _, input := range inputs {
+				if _, err := collectionKind(pipeline.ConsumerRef(input)); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.NewWithDefaultToken(options)
 		},
-		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
 			kind := pipeline.ConsumerRef(input)
+			pipelineKind, err := collectionKind(kind)
+			if err != nil {
+				return nil, err
+			}
 			items, err := c.Collected(ctx, kind)
 			if err != nil {
-				return pipeline.Envelope{}, err
+				return nil, err
 			}
-			pipelineKind := pipeline.Kind(kind)
-			return pipeline.New(pipelineKind, kind, "").WithData(map[string]any{"items": items}), nil
+			envelopes := make([]pipeline.Envelope, 0, len(items))
+			for _, item := range items {
+				envelope, err := collectionEnvelope(kind, pipelineKind, item)
+				if err != nil {
+					return nil, err
+				}
+				envelopes = append(envelopes, envelope)
+			}
+			return envelopes, nil
 		},
 		Legacy: func(args []string) error {
 			kind := args[0]
@@ -53,6 +100,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List a collection: actors|series|codes|makers|directors",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				if _, err := collectionKind(args[0]); err != nil {
+					return err
+				}
+			}
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}

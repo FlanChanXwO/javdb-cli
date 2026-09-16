@@ -19,6 +19,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 	var page, limit int
 	var sortBy string
 	var asJSON bool
+	var currentPage string
 	producer := &pipeline.Producer{
 		Name: "lists",
 		Produce: func(ctx context.Context) ([]pipeline.Envelope, error) {
@@ -30,10 +31,15 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			if err != nil {
 				return nil, fmt.Errorf("lists failed: %w", err)
 			}
+			currentPage = jsonx.RawString(res["current_page"])
 			items := res.Named("lists")
 			envelopes := make([]pipeline.Envelope, 0, len(items))
 			for _, item := range items {
-				envelopes = append(envelopes, pipeline.New(pipeline.KindList, display(item["name"]), display(item["id"])).WithData(map[string]any{"list": item}))
+				envelope, err := listEnvelope(item)
+				if err != nil {
+					return nil, err
+				}
+				envelopes = append(envelopes, envelope)
 			}
 			return envelopes, nil
 		},
@@ -46,19 +52,18 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			return writeListRows(w, streams.Err, items)
 		},
-		LegacyJSON: func(w io.Writer) error {
-			c, err := client.NewWithDefaultToken(options)
-			if err != nil {
-				return err
+		RenderJSON: func(w io.Writer, envelopes []pipeline.Envelope) error {
+			items := make([]map[string]any, 0, len(envelopes))
+			for _, envelope := range envelopes {
+				list, ok := envelope.Data["list"].(map[string]any)
+				if !ok {
+					return fmt.Errorf("lists JSON renderer: envelope missing data.list")
+				}
+				items = append(items, list)
 			}
-			res, err := c.MyLists(context.Background(), page, limit, sortBy)
-			if err != nil {
-				return fmt.Errorf("lists failed: %w", err)
-			}
-			items := res.Named("lists")
 			return writeJSON(w, map[string]any{
 				"lists":        items,
-				"current_page": jsonx.RawString(res["current_page"]),
+				"current_page": currentPage,
 			})
 		},
 	}

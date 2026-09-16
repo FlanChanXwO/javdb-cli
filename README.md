@@ -34,7 +34,14 @@ terms and the laws that apply to you.
 - **Composable pipelines** — most commands accept non-TTY stdin batches;
   TTY stdout defaults to human-readable text, non-TTY to stable record streams;
   explicit `--ndjson` emits `javdb.pipeline/v1` envelopes so command output can
-  feed the next command (`javdb search --ndjson | javdb detail`).
+  feed the next command (`javdb search --ndjson | javdb detail`); `--json` keeps
+  legacy aggregate shapes where applicable, while fan-out list and collection
+  results use stable `id`/`ref` fields and raw `data.list`/`data.entity` values.
+  Every fan-out record requires a non-empty stable ID; missing IDs fail explicitly,
+  while a missing display name falls back to the ID in `ref`.
+  The lists/collections fan-out NDJSON shape is an intentional v1 machine-contract
+  migration. Legacy human output and explicit aggregate `--json` retain their
+  existing output shapes; list/entity records without a stable ID fail explicitly.
 - **API client, not a scraper** — commands use the App JSON API with explicit
   host and proxy selection; failures remain visible rather than becoming
   fabricated empty results.
@@ -194,6 +201,11 @@ javdb lists search 巨乳 --zone all --json
 
 Movie and playback rankings accept `censored`, `uncensored`, `western`, or
 `fc2` as their zone selector; ranking periods use `day`, `week`, or `month`.
+
+`search --zone` and `lists search --zone` accept the same five zone names and
+reject invalid values before making a network request. For integrated magnet
+search, `--min-size` is non-negative; zero is valid, including when a unit
+suffix is used.
 
 The global `--proxy URL` and `--host auto|mirror|main|URL` flags affect only that command.
 The default `auto` host reuses the cached route immediately when validation succeeds.

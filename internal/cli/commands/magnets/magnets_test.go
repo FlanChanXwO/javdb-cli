@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,17 +36,64 @@ func TestNewHelpListsFlags(t *testing.T) {
 }
 
 func TestParseSizeMiB(t *testing.T) {
-	n, err := ParseSizeMiB("4GB")
-	if err != nil || n != 4096 {
-		t.Fatalf("%d %v", n, err)
+	tests := []struct {
+		input   string
+		want    int
+		wantErr bool
+	}{
+		{input: "4GB", want: 4096},
+		{input: "500MB", want: 500},
+		{input: "2000", want: 2000},
+		{input: "0", want: 0},
+		{input: "0GB", want: 0},
+		{input: "-1", wantErr: true},
+		{input: "-0.5GB", wantErr: true},
+		{input: "NaN", wantErr: true},
+		{input: "Inf", wantErr: true},
+		{input: "+Inf", wantErr: true},
+		{input: "-Inf", wantErr: true},
+		{input: "1e100", wantErr: true},
 	}
-	n, err = ParseSizeMiB("500MB")
-	if err != nil || n != 500 {
-		t.Fatalf("%d %v", n, err)
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := ParseSizeMiB(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ParseSizeMiB(%q) = %d, want an error", tc.input, got)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("ParseSizeMiB(%q) = %d, %v, want %d", tc.input, got, err, tc.want)
+			}
+		})
 	}
-	n, err = ParseSizeMiB("2000")
-	if err != nil || n != 2000 {
-		t.Fatalf("%d %v", n, err)
+}
+
+func TestNewRejectsInvalidMinSizeBeforeClientSetup(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"movie-id", "--id", "--min-size=-1", "--ndjson"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "invalid --min-size: -1") {
+		t.Fatalf("invalid --min-size error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("invalid --min-size sent %d request(s), want none", requests)
+	}
+	for _, name := range []string{"config.toml", "device_uuid"} {
+		if _, statErr := os.Stat(filepath.Join(home, ".javdb-cli", name)); !os.IsNotExist(statErr) {
+			t.Fatalf("invalid --min-size created %s: %v", name, statErr)
+		}
 	}
 }
 
