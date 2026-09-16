@@ -12,11 +12,21 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/javdb-cli/internal/common/jsonx"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
+type assetListItem struct {
+	Type     string `json:"type"`
+	URL      string `json:"url"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+	Duration int    `json:"duration,omitempty"`
+}
+
 // NewList builds the `assets list NUMBER [SELECTOR...]` command.
-// 处理顺序固定:获取详情 → --type 过滤 → 生成 1..N 编号 → selector → 输出;
+// 处理顺序固定:获取详情 → --type 过滤 → 生成 1..N 编号 → selector → metadata probe → 输出;
 // 编号只是当前过滤结果的顺序位置,不是长期资产 ID。
 func NewList(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var typeFilter string
@@ -28,14 +38,18 @@ func NewList(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 		Long: "List the media assets of a movie: thumbnail, cover, preview images and preview video. " +
 			"Optional selectors are 1-based positions in the current (filtered) list, e.g. 1, 1-4, 1,3-5, or several: 1 3 5. " +
 			"Without a selector every asset of the requested type is listed. " +
-			"Pipe output is TYPE<TAB>URL per line and feeds `javdb assets download`. " +
-			"JSON/NDJSON output contains only type and url.",
+			"JSON/NDJSON always contain type/url and add best-effort width/height/duration metadata when available. " +
+			"Pipe output remains TYPE<TAB>URL per line and feeds `javdb assets download`.",
 		Example: "  javdb assets list SSIS-589\n" +
 			"  javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./images\n" +
 			"  javdb assets list SSIS-589 --type video | javdb assets download -o preview.mp4",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
+			if err != nil {
+				return err
+			}
+			probeSettings, err := resolveAssetProbeSettings()
 			if err != nil {
 				return err
 			}
@@ -59,7 +73,16 @@ func NewList(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 				if err != nil {
 					return err
 				}
-				return renderAssetList(streams.Out, mode, assets, descs)
+				infos := assetInfosWithoutMetadata(assets)
+				if probeSettings.Enabled {
+					infos, err = c.ProbeMovieAssets(ctx, assets, javdb.MovieAssetProbeOptions{
+						Concurrency: probeSettings.Concurrency,
+					})
+					if err != nil {
+						return err
+					}
+				}
+				return renderAssetList(streams.Out, mode, infos, descs)
 			})
 		},
 	}
@@ -67,6 +90,26 @@ func NewList(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Machine-readable JSON array")
 	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "One JSON object per line")
 	return cmd
+}
+
+func resolveAssetProbeSettings() (settings.ResolvedAssetProbe, error) {
+	path, err := paths.ConfigPath()
+	if err != nil {
+		return settings.ResolvedAssetProbe{}, err
+	}
+	configured, err := settings.LoadFile(path)
+	if err != nil {
+		return settings.ResolvedAssetProbe{}, err
+	}
+	return settings.ResolveAssetProbe(configured)
+}
+
+func assetInfosWithoutMetadata(assets []javdb.MovieAsset) []javdb.MovieAssetInfo {
+	infos := make([]javdb.MovieAssetInfo, len(assets))
+	for index, asset := range assets {
+		infos[index].Asset = asset
+	}
+	return infos
 }
 
 // filterAssets 按 --type 过滤;仅接受 image/video,空串表示全部。
@@ -114,19 +157,19 @@ func selectAssets(assets []javdb.MovieAsset, descs []string, selector string) ([
 }
 
 // renderAssetList 按输出模式写出资产列表。
-// 描述文本只在 TTY 模式渲染;pipe/JSON/NDJSON 严格只含 type 与 url。
-func renderAssetList(out io.Writer, mode pipeline.OutputMode, assets []javdb.MovieAsset, descs []string) error {
+func renderAssetList(out io.Writer, mode pipeline.OutputMode, infos []javdb.MovieAssetInfo, descs []string) error {
 	switch mode {
 	case pipeline.OutputHuman:
-		return renderAssetTable(out, assets, descs)
+		return renderAssetTable(out, infos, descs)
 	case pipeline.OutputText:
-		for _, asset := range assets {
+		for _, info := range infos {
+			asset := info.Asset
 			if _, err := fmt.Fprintf(out, "%s\t%s\n", asset.Type, asset.URL); err != nil {
 				return err
 			}
 		}
 	case pipeline.OutputJSON:
-		line, err := jsonx.MarshalLine(assets)
+		line, err := jsonx.MarshalLine(flattenAssetInfos(infos))
 		if err != nil {
 			return err
 		}
@@ -139,8 +182,8 @@ func renderAssetList(out io.Writer, mode pipeline.OutputMode, assets []javdb.Mov
 		}
 		return nil
 	case pipeline.OutputNDJSON:
-		for _, asset := range assets {
-			line, err := jsonx.MarshalLine(asset)
+		for _, item := range flattenAssetInfos(infos) {
+			line, err := jsonx.MarshalLine(item)
 			if err != nil {
 				return err
 			}
@@ -156,19 +199,49 @@ func renderAssetList(out io.Writer, mode pipeline.OutputMode, assets []javdb.Mov
 	return nil
 }
 
+func flattenAssetInfos(infos []javdb.MovieAssetInfo) []assetListItem {
+	items := make([]assetListItem, len(infos))
+	for index, info := range infos {
+		items[index] = assetListItem{
+			Type:     info.Asset.Type,
+			URL:      info.Asset.URL,
+			Width:    info.Metadata.Width,
+			Height:   info.Metadata.Height,
+			Duration: info.Metadata.Duration,
+		}
+	}
+	return items
+}
+
 // renderAssetTable 输出 TTY 编号表格;描述列仅存在于 TTY 渲染层。
-func renderAssetTable(out io.Writer, assets []javdb.MovieAsset, descs []string) error {
-	width := len(strconv.Itoa(len(assets)))
+func renderAssetTable(out io.Writer, infos []javdb.MovieAssetInfo, descs []string) error {
+	width := len(strconv.Itoa(len(infos)))
 	if width < 1 {
 		width = 1
 	}
-	if _, err := fmt.Fprintf(out, "%*s  %-5s  DESCRIPTION\n", width, "#", "TYPE"); err != nil {
+	if _, err := fmt.Fprintf(out, "%*s  %-5s  %-9s  %-8s  DESCRIPTION\n", width, "#", "TYPE", "SIZE", "DURATION"); err != nil {
 		return err
 	}
-	for i, asset := range assets {
-		if _, err := fmt.Fprintf(out, "%*d  %-5s  %s\n", width, i+1, asset.Type, descs[i]); err != nil {
+	for i, info := range infos {
+		asset := info.Asset
+		if _, err := fmt.Fprintf(out, "%*d  %-5s  %-9s  %-8s  %s\n",
+			width, i+1, asset.Type, formatAssetSize(info.Metadata), formatAssetDuration(info.Metadata), descs[i]); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func formatAssetSize(metadata javdb.MovieAssetMetadata) string {
+	if metadata.Width <= 0 || metadata.Height <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%dx%d", metadata.Width, metadata.Height)
+}
+
+func formatAssetDuration(metadata javdb.MovieAssetMetadata) string {
+	if metadata.Duration <= 0 {
+		return "-"
+	}
+	return strconv.Itoa(metadata.Duration) + "s"
 }

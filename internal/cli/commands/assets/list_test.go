@@ -1,12 +1,17 @@
 package assets
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/cli/invocation"
@@ -14,9 +19,8 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// assets list 契约：
-// 资产获取 → --type 过滤 → 生成 1..N 编号 → selector;
-// TTY 输出编号+类型+描述;非 TTY 默认 TYPE<TAB>URL;--json/--ndjson 只有 type/url。
+// assets list 契约：资产获取 → --type 过滤 → selector → probe → 输出。
+// TTY 和机器输出可包含 best-effort metadata；plain pipe 始终只有 TYPE<TAB>URL。
 
 // listDetailFixture 的 <SERVER> 在 server 建立后替换为真实地址,
 // 以便 list 的输出能直接喂给 download 测试(真管道)。
@@ -25,10 +29,46 @@ const listDetailFixture = `{"thumb_url":"<SERVER>/thumb.jpg","cover_url":"<SERVE
 	{"thumb_url":"<SERVER>/p2-thumb.jpg"},
 	{"large_url":"<SERVER>/p3-large.jpg"}]}`
 
+type listRequestLog struct {
+	mu    sync.Mutex
+	paths map[string]int
+}
+
+func (log *listRequestLog) record(path string) {
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	log.paths[path]++
+}
+
+func (log *listRequestLog) mediaPaths() map[string]int {
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	paths := make(map[string]int)
+	for path, count := range log.paths {
+		if !strings.HasPrefix(path, "/api/") {
+			paths[path] = count
+		}
+	}
+	return paths
+}
+
 func newListServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	server, _ := newTrackedListServer(t)
+	return server
+}
+
+func newTrackedListServer(t *testing.T) (*httptest.Server, *listRequestLog) {
+	t.Helper()
 	serverURL := ""
+	var imageBody bytes.Buffer
+	if err := jpeg.Encode(&imageBody, image.NewRGBA(image.Rect(0, 0, 13, 7)), nil); err != nil {
+		t.Fatalf("encode list JPEG: %v", err)
+	}
+	encodedImage := imageBody.Bytes()
+	requests := &listRequestLog{paths: make(map[string]int)}
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.record(request.URL.Path)
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
 		case request.URL.Path == "/api/v2/search":
@@ -40,13 +80,17 @@ func newListServer(t *testing.T) *httptest.Server {
 		case strings.HasSuffix(request.URL.Path, ".ts"):
 			_, _ = writer.Write(validTSSegmentFixture())
 		case strings.HasSuffix(request.URL.Path, ".jpg"):
-			_, _ = writer.Write(testJPEG)
+			if request.URL.Path == "/p2-thumb.jpg" {
+				_, _ = writer.Write(testJPEG)
+			} else {
+				_, _ = writer.Write(encodedImage)
+			}
 		default:
 			http.NotFound(writer, request)
 		}
 	}))
 	serverURL = server.URL
-	return server
+	return server, requests
 }
 
 func runList(t *testing.T, args ...string) (string, string, error) {
@@ -56,11 +100,33 @@ func runList(t *testing.T, args ...string) (string, string, error) {
 
 func runListWithStreams(t *testing.T, outIsTerminal bool, args ...string) (string, string, error) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
+	out, serverURL, err, _ := runListConfigured(t, outIsTerminal, "", args...)
+	return out, serverURL, err
+}
+
+func runListConfigured(t *testing.T, outIsTerminal bool, config string, args ...string) (string, string, error, *listRequestLog) {
+	t.Helper()
+	out, _, serverURL, err, requests := executeListConfigured(t, outIsTerminal, config, args...)
+	return out, serverURL, err, requests
+}
+
+func executeListConfigured(t *testing.T, outIsTerminal bool, config string, args ...string) (string, string, string, error, *listRequestLog) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
 	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
-	server := newListServer(t)
+	if config != "" {
+		configDir := filepath.Join(home, ".javdb-cli")
+		if err := os.MkdirAll(configDir, 0o700); err != nil {
+			t.Fatalf("create config dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(config), 0o600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+	}
+	server, requests := newTrackedListServer(t)
 	defer server.Close()
 
 	streams := invocation.NewStreams(strings.NewReader(""), &strings.Builder{}, &strings.Builder{})
@@ -69,7 +135,8 @@ func runListWithStreams(t *testing.T, outIsTerminal bool, args ...string) (strin
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	out := streams.Out.(*strings.Builder).String()
-	return out, server.URL, err
+	errOut := streams.Err.(*strings.Builder).String()
+	return out, errOut, server.URL, err, requests
 }
 
 func TestListPipeOutputIsTypeTabURL(t *testing.T) {
@@ -103,13 +170,13 @@ func TestListTTYOutputRendersNumberedTable(t *testing.T) {
 		t.Fatalf("execute error = %v", err)
 	}
 	wantLines := []string{
-		"#  TYPE   DESCRIPTION",
-		"1  image  thumbnail",
-		"2  image  cover",
-		"3  image  preview 1",
-		"4  image  preview 2",
-		"5  image  preview 3",
-		"6  video  preview",
+		"#  TYPE   SIZE       DURATION  DESCRIPTION",
+		"1  image  13x7       -         thumbnail",
+		"2  image  13x7       -         cover",
+		"3  image  13x7       -         preview 1",
+		"4  image  -          -         preview 2",
+		"5  image  13x7       -         preview 3",
+		"6  video  640x480    1s        preview",
 	}
 	gotLines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(gotLines) != len(wantLines) {
@@ -122,8 +189,8 @@ func TestListTTYOutputRendersNumberedTable(t *testing.T) {
 	}
 }
 
-func TestListJSONOutputHasOnlyTypeAndURL(t *testing.T) {
-	out, _, err := runList(t, "SSIS-589", "--json")
+func TestListJSONOutputAddsProbedMetadata(t *testing.T) {
+	out, _, err := runList(t, "SSIS-589", "--type", "video", "--json")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -131,46 +198,101 @@ func TestListJSONOutputHasOnlyTypeAndURL(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &assets); err != nil {
 		t.Fatalf("json decode: %v (out=%q)", err, out)
 	}
-	if len(assets) != 6 {
-		t.Fatalf("asset count = %d, want 6", len(assets))
+	if len(assets) != 1 {
+		t.Fatalf("asset count = %d, want 1", len(assets))
 	}
-	for i, asset := range assets {
-		if len(asset) != 2 {
-			t.Fatalf("asset %d has %d fields, want only type and url: %v", i, len(asset), asset)
-		}
-		if _, ok := asset["type"]; !ok {
-			t.Fatalf("asset %d missing type: %v", i, asset)
-		}
-		if _, ok := asset["url"]; !ok {
-			t.Fatalf("asset %d missing url: %v", i, asset)
-		}
-		if asset["type"] == nil || asset["url"] == nil {
-			t.Fatalf("asset %d missing type/url: %v", i, asset)
-		}
-	}
-	if assets[0]["type"] != "image" {
-		t.Fatalf("first asset = %v", assets[0])
-	}
-	if assets[5]["type"] != "video" {
-		t.Fatalf("last asset = %v", assets[5])
+	got := assets[0]
+	if got["type"] != "video" || !strings.HasSuffix(got["url"].(string), "/preview.m3u8") ||
+		got["width"] != float64(640) || got["height"] != float64(480) || got["duration"] != float64(1) {
+		t.Fatalf("video asset = %v, want flattened probed metadata", got)
 	}
 }
 
-func TestListNDJSONOutputHasOnlyTypeAndURL(t *testing.T) {
-	out, _, err := runList(t, "SSIS-589", "--ndjson")
+func TestListNDJSONOutputAddsProbedMetadata(t *testing.T) {
+	out, _, err := runList(t, "SSIS-589", "--type", "video", "--ndjson")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(lines) != 6 {
-		t.Fatalf("line count = %d, want 6 (out=%q)", len(lines), out)
+	if len(lines) != 1 {
+		t.Fatalf("line count = %d, want 1 (out=%q)", len(lines), out)
 	}
 	var first map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
 		t.Fatalf("ndjson decode: %v", err)
 	}
-	if len(first) != 2 || first["type"] != "image" {
+	if first["type"] != "video" || first["width"] != float64(640) ||
+		first["height"] != float64(480) || first["duration"] != float64(1) {
 		t.Fatalf("first ndjson line = %v", first)
+	}
+}
+
+func TestListPipeProbesOnlySelectedAssets(t *testing.T) {
+	out, _, err, requests := runListConfigured(t, false, "", "SSIS-589", "--type", "image", "3")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	if !strings.HasPrefix(out, "image\t") || !strings.HasSuffix(strings.TrimSpace(out), "/p1-large.jpg") {
+		t.Fatalf("pipe output = %q, want selected TYPE<TAB>URL", out)
+	}
+	if got := requests.mediaPaths(); len(got) != 1 || got["/p1-large.jpg"] != 1 {
+		t.Fatalf("media requests = %v, want only selected asset", got)
+	}
+}
+
+func TestListDisabledProbeSkipsMediaRequests(t *testing.T) {
+	config := "[assets.probe]\nenabled = false\nconcurrency = 2\n"
+	out, _, err, requests := runListConfigured(t, false, config, "SSIS-589", "--type", "video", "--json")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(out), &items); err != nil {
+		t.Fatalf("json decode: %v", err)
+	}
+	if len(items) != 1 || len(items[0]) != 2 || items[0]["type"] != "video" {
+		t.Fatalf("disabled probe output = %v, want type/url only", items)
+	}
+	if got := requests.mediaPaths(); len(got) != 0 {
+		t.Fatalf("media requests = %v, want none when disabled", got)
+	}
+}
+
+func TestListProbeFailureKeepsAssetWithoutMetadata(t *testing.T) {
+	out, errOut, _, err, _ := executeListConfigured(t, false, "", "SSIS-589", "--type", "image", "4", "--json")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	if errOut != "" {
+		t.Fatalf("stderr = %q, want no per-item probe warning", errOut)
+	}
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(out), &items); err != nil {
+		t.Fatalf("json decode: %v", err)
+	}
+	if len(items) != 1 || len(items[0]) != 2 || !strings.HasSuffix(items[0]["url"].(string), "/p2-thumb.jpg") {
+		t.Fatalf("failed probe output = %v, want selected type/url only", items)
+	}
+}
+
+func TestListRejectsInvalidProbeConfig(t *testing.T) {
+	config := "[assets.probe]\nconcurrency = 0\n"
+	_, _, err, requests := runListConfigured(t, false, config, "SSIS-589", "--json")
+	if err == nil || !strings.Contains(err.Error(), "assets.probe.concurrency must be positive") {
+		t.Fatalf("error = %v, want invalid concurrency", err)
+	}
+	if got := requests.mediaPaths(); len(got) != 0 {
+		t.Fatalf("media requests = %v, want none after config error", got)
+	}
+}
+
+func TestListHelpDescribesMetadataAndStablePipe(t *testing.T) {
+	cmd := NewList(&invocation.RootOptions{}, invocation.NewStreams(strings.NewReader(""), &strings.Builder{}, &strings.Builder{}))
+	if !strings.Contains(cmd.Long, "best-effort width/height/duration metadata") {
+		t.Fatalf("Long = %q, want metadata contract", cmd.Long)
+	}
+	if !strings.Contains(cmd.Long, "Pipe output remains TYPE<TAB>URL") {
+		t.Fatalf("Long = %q, want stable pipe contract", cmd.Long)
 	}
 }
 
@@ -257,7 +379,7 @@ func TestListHumanOutputPropagatesWriterError(t *testing.T) {
 	err := renderAssetList(
 		listErrorWriter{},
 		pipeline.OutputHuman,
-		[]javdb.MovieAsset{{Type: "image", URL: "https://media.example.test/image.jpg"}},
+		[]javdb.MovieAssetInfo{{Asset: javdb.MovieAsset{Type: "image", URL: "https://media.example.test/image.jpg"}}},
 		[]string{"thumbnail"},
 	)
 	if !errors.Is(err, errListWriter) {
