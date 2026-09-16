@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -227,6 +228,22 @@ func TestWriterModes(t *testing.T) {
 	var array []map[string]any
 	if err := json.Unmarshal(multiOut.Bytes(), &array); err != nil || len(array) != 2 {
 		t.Fatalf("multi json output = %q err=%v", multiOut.String(), err)
+	}
+}
+
+func TestWriterRejectsInvalidMachineEnvelope(t *testing.T) {
+	invalid := Envelope{Schema: Schema, Kind: Kind("ghost"), Ref: "invalid"}
+	for _, mode := range []OutputMode{OutputNDJSON, OutputJSON} {
+		t.Run(fmt.Sprintf("mode-%d", mode), func(t *testing.T) {
+			var out bytes.Buffer
+			writer := NewWriter(&out, mode)
+			if err := writer.Write(invalid); err == nil {
+				t.Fatal("Write accepted unsupported kind")
+			}
+			if out.Len() != 0 {
+				t.Fatalf("invalid envelope was written: %q", out.String())
+			}
+		})
 	}
 }
 

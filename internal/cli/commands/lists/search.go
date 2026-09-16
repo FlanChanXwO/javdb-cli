@@ -33,12 +33,20 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},
-		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
 			items, err := runOne(c, ctx, pipeline.ConsumerRef(input))
 			if err != nil {
-				return pipeline.Envelope{}, err
+				return nil, err
 			}
-			return pipeline.New(pipeline.KindList, input.Ref, "").WithData(map[string]any{"lists": items}), nil
+			envelopes := make([]pipeline.Envelope, 0, len(items))
+			for _, item := range items {
+				envelope, err := listEnvelope(item)
+				if err != nil {
+					return nil, err
+				}
+				envelopes = append(envelopes, envelope)
+			}
+			return envelopes, nil
 		},
 		Legacy: func(args []string) error {
 			c, err := client.New(options, "")
@@ -60,6 +68,9 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 		Short: "Search public 合集",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateZone(zone); err != nil {
+				return err
+			}
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
@@ -69,4 +80,13 @@ func NewSearch(options *invocation.RootOptions, streams *invocation.Streams) *co
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, "Pipeline NDJSON envelopes")
 	return cmd
+}
+
+func validateZone(zone string) error {
+	switch zone {
+	case "censored", "uncensored", "western", "fc2", "all":
+		return nil
+	default:
+		return fmt.Errorf("zone must be one of censored|uncensored|western|fc2|all (got %q)", zone)
+	}
 }

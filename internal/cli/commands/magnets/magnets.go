@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		cnsub, hd, best, isID bool
 		asJSON, asNDJSON      bool
 		minSize               string
+		minMiB                int
 	)
 	fetch := func(c *javdb.Client, ctx context.Context, input pipeline.Envelope, useID bool) (string, []map[string]any, error) {
 		mid := pipeline.ConsumerRef(input)
@@ -55,13 +57,6 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 			}
 			if err != nil {
 				return "", nil, fmt.Errorf("magnets failed: %w", err)
-			}
-		}
-		minMiB := 0
-		if minSize != "" {
-			minMiB, err = ParseSizeMiB(minSize)
-			if err != nil {
-				return "", nil, err
 			}
 		}
 		items = javdb.FilterMagnets(items, cnsub, hd, minMiB)
@@ -145,6 +140,11 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 		Short: "List magnet links for a movie",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+			minMiB, err = ParseSizeMiB(minSize)
+			if err != nil {
+				return err
+			}
 			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
@@ -203,10 +203,24 @@ func ParseSizeMiB(text string) (int, error) {
 		s = strings.TrimSuffix(s, "M")
 	}
 	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
 		return 0, fmt.Errorf("invalid --min-size: %s", text)
 	}
-	return int(f * mult), nil
+	value := f * mult
+	if math.IsInf(value, 0) {
+		return 0, fmt.Errorf("invalid --min-size: %s", text)
+	}
+	// 先检查浮点值，再转换为 int，避免负小数截断成合法的 0，或溢出后得到错误整数。
+	maxInt := int(^uint(0) >> 1)
+	maxValue := float64(maxInt)
+	if strconv.IntSize == 64 {
+		// float64(maxInt) 会舍入到 2^63，必须退到仍可安全转换的最大浮点值。
+		maxValue = math.Nextafter(maxValue, 0)
+	}
+	if value > maxValue {
+		return 0, fmt.Errorf("invalid --min-size: %s", text)
+	}
+	return int(value), nil
 }
 
 // magnetCount 是 magnets_count 的整数解析（缺失 → 0）。

@@ -77,6 +77,11 @@ func (w *Writer) Write(envelope Envelope) error {
 	if w == nil {
 		return nil
 	}
+	if w.mode == OutputNDJSON || w.mode == OutputJSON {
+		if err := envelope.Validate(); err != nil {
+			return err
+		}
+	}
 	switch w.mode {
 	case OutputNDJSON:
 		return w.ndjson.Encode(envelope)

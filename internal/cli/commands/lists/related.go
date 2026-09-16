@@ -39,13 +39,22 @@ func NewRelated(options *invocation.RootOptions, streams *invocation.Streams) *c
 		ClientFactory: func() (*javdb.Client, error) {
 			return client.New(options, "")
 		},
-		RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
+		RunMany: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) ([]pipeline.Envelope, error) {
 			ref := pipeline.ConsumerRef(input)
-			mid, items, err := runOne(c, ctx, ref, isID && input.ID == "")
+			// 信封自带的 ID 是权威 movie ID；--id 只影响没有 ID 的输入。
+			_, items, err := runOne(c, ctx, ref, input.ID != "" || isID)
 			if err != nil {
-				return pipeline.Envelope{}, err
+				return nil, err
 			}
-			return pipeline.New(pipeline.KindList, input.Ref, mid).WithData(map[string]any{"lists": items}), nil
+			envelopes := make([]pipeline.Envelope, 0, len(items))
+			for _, item := range items {
+				envelope, err := listEnvelope(item)
+				if err != nil {
+					return nil, err
+				}
+				envelopes = append(envelopes, envelope)
+			}
+			return envelopes, nil
 		},
 		Legacy: func(args []string) error {
 			c, err := client.New(options, "")

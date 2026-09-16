@@ -3,6 +3,7 @@ package pipeline
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -13,8 +14,8 @@ import (
 // BatchRunner 是只读命令的管道化执行器：
 //   - 单项 + （TTY 文本 或 显式 --json）走 Legacy 既有路径（保持既有 shape
 //     与可选认证/匿名重试行为）。
-//   - 其余情况（多项，或单项显式 --ndjson）走逐项 RunOne：单项失败原位错误
-//     信封并继续，最终非零；批量显式 --json 输出信封数组。
+//   - 其余情况（多项，或单项显式 --ndjson）走 pipeline 执行：RunMany 优先于
+//     RunOne，并在单项失败时生成原位错误信封；批量显式 --json 输出信封数组。
 //
 // 管道执行保持三条不变量：输入索引决定输出顺序；RunMany 只在对应输入槽内
 // fan-out；错误项只产生错误信封或 stderr 诊断，不伪造成功 ref。
@@ -68,7 +69,10 @@ func (b *BatchRunner) Execute(streams *invocation.Streams, args []string, ndjson
 		return err
 	}
 	if len(inputs) == 0 {
-		return fmt.Errorf("keyword or an image")
+		if b.Name == "" {
+			return errors.New("input required")
+		}
+		return fmt.Errorf("%s: input required", b.Name)
 	}
 	return b.ExecuteWithInputs(streams, inputs, mode)
 }
@@ -127,13 +131,15 @@ func pipelineConsumerRef(input Envelope) string {
 }
 
 // Producer 是无位置参数命令的输出器：不消费 stdin，默认走 Text 渲染；
-// 显式 --ndjson 逐条输出信封，--json 走 LegacyJSON。
+// 显式 --ndjson 逐条输出信封，--json 优先走 RenderJSON，否则走 LegacyJSON。
 type Producer struct {
 	Name string
 	// Produce 执行并返回输出信封序列（空切片表示无结果）。
 	Produce func(context.Context) ([]Envelope, error)
 	// RenderText 渲染人类文本。
 	RenderText func(io.Writer, []Envelope) error
+	// RenderJSON 序列化已生成的信封；设置时不再重复调用 LegacyJSON。
+	RenderJSON func(io.Writer, []Envelope) error
 	// LegacyJSON 输出显式 --json 的既有 shape。
 	LegacyJSON func(io.Writer) error
 }
@@ -150,6 +156,9 @@ func (p *Producer) Execute(streams *invocation.Streams, ndjson, json bool) error
 	}
 	switch mode {
 	case OutputJSON:
+		if p.RenderJSON != nil {
+			return p.RenderJSON(streams.Out, envelopes)
+		}
 		return p.LegacyJSON(streams.Out)
 	case OutputText:
 		for _, envelope := range envelopes {
