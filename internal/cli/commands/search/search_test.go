@@ -143,6 +143,33 @@ func TestExecuteMoviesJSONHasMagnetsFilter(t *testing.T) {
 	}
 }
 
+func TestExecuteMoviesTTYShowsFeatureDuration(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"movies":[
+			{"number":"SSIS-589","id":"9DGB5X","title":"TITLE","release_date":"2022-08-10","duration":130},
+			{"number":"ZERO","id":"x2","title":"NO DURATION"}
+		]}}`))
+	}))
+	defer server.Close()
+
+	streams := invocation.NewStreams(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	streams.OutIsTerminal = true
+	cmd := New(&invocation.RootOptions{Host: server.URL}, streams)
+	cmd.SetArgs([]string{"SSIS"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+	want := "SSIS-589\t9DGB5X\tTITLE\t2022-08-10\t130m\nZERO\tx2\tNO DURATION\n"
+	if got := streams.Out.(*bytes.Buffer).String(); got != want {
+		t.Fatalf("TTY output = %q, want %q", got, want)
+	}
+}
+
 // TestExecuteNamedText 覆盖 --type actor 命名分支文本输出。
 func TestExecuteNamedText(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

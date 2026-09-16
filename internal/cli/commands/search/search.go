@@ -509,8 +509,12 @@ func writeMovieRows(w, errW io.Writer, movies []map[string]any) error {
 		_, err := errW.Write([]byte("(空列表)\n"))
 		return err
 	}
-	for _, row := range result.ProjectMovies(movies) {
-		if _, err := fmt.Fprintln(w, row.Line()); err != nil {
+	for index, row := range result.ProjectMovies(movies) {
+		line := row.Line()
+		if minutes, ok := result.MovieDurationMinutes(movies[index]); ok {
+			line += fmt.Sprintf("\t%dm", minutes)
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}
 	}
