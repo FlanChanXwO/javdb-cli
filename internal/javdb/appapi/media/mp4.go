@@ -1,6 +1,7 @@
 package media
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -15,6 +16,8 @@ const mp4VideoTimescale = 90000
 // mp4MovieTimescale 是 movie 层的独立固定时间基;tkhd/mvhd duration
 // 必须换算到它，不能直接用视频 90k 或音频采样率时间。
 const mp4MovieTimescale = 1000
+
+var errSPSTruncated = errors.New("SPS truncated")
 
 // mp4 track ID 必须唯一，禁止音视频共用 track ID 1。
 const (
@@ -865,7 +868,7 @@ type bitReader struct {
 func (r *bitReader) readBit() (uint64, error) {
 	bytePos := r.pos / 8
 	if bytePos >= len(r.data) {
-		return 0, fmt.Errorf("SPS truncated")
+		return 0, errSPSTruncated
 	}
 	bit := (r.data[bytePos] >> (7 - uint(r.pos%8))) & 1
 	r.pos++

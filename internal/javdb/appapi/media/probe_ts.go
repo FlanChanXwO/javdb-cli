@@ -120,18 +120,45 @@ func (p *annexBSPSProbe) feed(data []byte) bool {
 			p.waitingHeader = false
 			p.collecting = value&0x1f == 7
 			if p.collecting {
-				p.sps = append(p.sps, value)
+				if p.appendSPSByte(value) {
+					return true
+				}
 			}
 			p.zeroCount = 0
 			continue
 		}
 		if p.collecting {
 			for i := 0; i < p.zeroCount; i++ {
-				p.sps = append(p.sps, 0)
+				if p.appendSPSByte(0) {
+					return true
+				}
 			}
-			p.sps = append(p.sps, value)
+			if p.appendSPSByte(value) {
+				return true
+			}
 		}
 		p.zeroCount = 0
+	}
+	return false
+}
+
+// appendSPSByte 在语法解析仍需要更多字节时才继续收集；遇到确定性的
+// SPS 语法错误会立即停止收集，避免未终止的恶意 NAL 长线性占用内存。
+func (p *annexBSPSProbe) appendSPSByte(value byte) bool {
+	p.sps = append(p.sps, value)
+	if len(p.sps) < 4 {
+		return false
+	}
+	width, height, err := parseSPSDimensions(p.sps)
+	if err == nil {
+		p.width = int(width)
+		p.height = int(height)
+		return true
+	}
+	if !errors.Is(err, io.EOF) && !errors.Is(err, errSPSTruncated) {
+		p.lastErr = err
+		p.collecting = false
+		p.sps = nil
 	}
 	return false
 }

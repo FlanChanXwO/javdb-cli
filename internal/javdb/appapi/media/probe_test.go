@@ -318,3 +318,23 @@ func TestProbeHLSMetadataReturnsContextCancellation(t *testing.T) {
 		}
 	})
 }
+
+func TestAnnexBSPSProbeStopsCollectingMalformedUnterminatedSPS(t *testing.T) {
+	var scanner annexBSPSProbe
+	if scanner.feed([]byte{0, 0, 0, 1, 0x67}) {
+		t.Fatal("malformed SPS unexpectedly produced dimensions")
+	}
+	scanner.feed(bytes.Repeat([]byte{0}, 1<<20))
+	if scanner.feed([]byte{2}) {
+		t.Fatal("malformed SPS unexpectedly produced dimensions")
+	}
+	if scanner.collecting {
+		t.Fatal("malformed SPS remained in collecting state")
+	}
+	if len(scanner.sps) > 64 {
+		t.Fatalf("malformed SPS buffer grew to %d bytes, want bounded parser state", len(scanner.sps))
+	}
+	if scanner.lastErr == nil {
+		t.Fatal("malformed SPS did not expose a parse error")
+	}
+}
