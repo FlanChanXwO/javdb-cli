@@ -14,7 +14,7 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// assets list 契约(input.md 计划 #1/#7/#9/#11):
+// assets list 契约：
 // 资产获取 → --type 过滤 → 生成 1..N 编号 → selector;
 // TTY 输出编号+类型+描述;非 TTY 默认 TYPE<TAB>URL;--json/--ndjson 只有 type/url。
 

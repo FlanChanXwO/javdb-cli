@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// selector 契约(input.md 计划 #7/#8):支持单个编号、空格/逗号分隔、闭区间,
+// selector 契约：支持单个编号、空格/逗号分隔、闭区间，
 // 可混用;编号 1-based;重叠去重并按列表顺序输出;非法输入明确报错。
 
 func TestParseAssetSelector(t *testing.T) {
@@ -60,7 +60,7 @@ func TestParseAssetSelector(t *testing.T) {
 	}
 }
 
-// ---- 计划 #9:selector 防止巨型区间提前展开 ----
+// ---- selector 防止巨型区间提前展开 ----
 
 // 1-1000000000 会在检查实际资产数量前尝试分配巨大 slice:
 // 必须先解析 start/end,结合资产数校验,再展开。
@@ -85,4 +85,4 @@ func TestSelectAssetsRejectsRangeBeyondAssets(t *testing.T) {
 	}
 }
 
-// ---- 计划 #10:movieString 只接受 string ----
+// ---- movieString 只接受 string ----

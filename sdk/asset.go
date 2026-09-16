@@ -39,7 +39,7 @@ func (c *Client) MovieAssets(ctx context.Context, movieID string) ([]MovieAsset,
 // image:下载 → 必要时 XOR 解包 → 图片魔数校验 → 原子写入,不做任何格式转换。
 // video:输出格式由 target 后缀决定——.ts 保留解密校验后的 MPEG-TS,
 // .mp4 输出 Fast Start MP4(纯 remux,不转码);其余后缀明确拒绝。
-// ctx 贯穿全部阶段(计划 #44):取消时立即停止网络与工作,不留输出文件。
+// ctx 贯穿全部阶段，取消时立即停止网络与媒体处理，不留输出文件。
 func (c *Client) DownloadMovieAsset(ctx context.Context, asset MovieAsset, target string) (int64, error) {
 	switch asset.Type {
 	case assetTypeImage:
@@ -126,7 +126,7 @@ func movieAssetsWithDescriptions(movie map[string]any) ([]MovieAsset, []string) 
 	return assets, descs
 }
 
-// movieString 只接受 string 类型(计划 #10):非字符串字段不得
+// movieString 只接受 string 类型，非字符串字段不得
 // stringify 成 "123"/"true"/"map[...]" 伪 URL 进入资产列表。
 // TrimSpace 后非字符串/空白字符串直接跳过。
 func movieString(value any) string {

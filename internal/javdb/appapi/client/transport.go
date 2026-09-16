@@ -132,7 +132,7 @@ func (c *Client) SetLanguage(lang string) { c.lang = lang }
 func (c *Client) CloseIdleConnections() { c.http.CloseIdleConnections() }
 
 // FetchMedia 获取未经过 App envelope 包装的媒体资源,供 media 包通过 callback 使用。
-// ctx 贯穿媒体请求(计划 #44):取消时立即中断网络读取。成功时由调用方负责关闭返回的 body;
+// ctx 贯穿媒体请求，取消时立即中断网络读取。成功时由调用方负责关闭返回的 body；
 // transport 不把媒体响应一次性读入内存,由上层按用途流式消费。
 func (c *Client) FetchMedia(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	u, err := url.Parse(rawURL)

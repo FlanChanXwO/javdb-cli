@@ -7,7 +7,7 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// movieString 只接受 string(计划 #10):非字符串字段不得 stringify 成
+// movieString 只接受 string：非字符串字段不得 stringify 成
 // "123"/"true"/"map[...]" 伪 URL 进入资产列表。
 func TestMovieAssetsRejectsNonStringFields(t *testing.T) {
 	movie := map[string]any{

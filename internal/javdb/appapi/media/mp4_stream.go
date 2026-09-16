@@ -9,7 +9,7 @@ import (
 	"sort"
 )
 
-// MP4 生产管线(input.md 计划 #35/#36/#37/#40):
+// MP4 生产管线：
 // Phase1:逐 segment 下载/解密/Layer A 校验 → demux → 样本写入 spool 文件,
 //        内存只保留 moov 级元数据(O(samples) 的紧凑记录);
 // Phase2:样本表齐备后按 ftyp → moov → mdat 顺序写出,mdat 从 spool 流式拷贝。
@@ -38,7 +38,7 @@ func newMP4Spooler(dir string) (*mp4Spooler, error) {
 // addSegment 解析单个 segment 并把样本追加进 spool。
 // 每段都做 codec 检查;首个 segment 建立 codec configuration(H.264 SPS/PPS、
 // AAC ASC、宽高、采样率、通道),后续 segment 再次出现配置时必须与首段一致;
-// 检测到 change 直接拒绝 remux(计划 #17)。
+// 检测到 change 直接拒绝 remux。
 func (s *mp4Spooler) addSegment(data []byte) error {
 	return s.addSegmentReader(bytes.NewReader(data))
 }
@@ -110,7 +110,7 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 						SampleRate: track.SampleRate,
 					}
 				} else {
-					// 跨 segment codec configuration 校验(计划 #17):
+					// 跨 segment codec configuration 校验：
 					// 后续 segment 的 AAC ASC/采样率/通道必须与首段一致。
 					if err := s.checkAudioConfig(track); err != nil {
 						return err
@@ -142,7 +142,7 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 	return nil
 }
 
-// checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致(计划 #17)。
+// checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致。
 func (s *mp4Spooler) checkVideoConfig(track *h264Track) error {
 	for _, nalType := range []byte{7, 8} {
 		actual := h264ParameterSets(track.ParamSets, nalType)
@@ -223,7 +223,7 @@ func equalH264ParameterSets(expected, actual [][]byte) bool {
 	return true
 }
 
-// checkAudioConfig 校验后续 segment 的 AAC ASC/采样率/通道与首段一致(计划 #17)。
+// checkAudioConfig 校验后续 segment 的 AAC ASC/采样率/通道与首段一致。
 func (s *mp4Spooler) checkAudioConfig(track *aacTrack) error {
 	if !bytes.Equal(track.Config, s.audio.ASC) {
 		return fmt.Errorf("AAC ASC change detected between segments")
@@ -259,7 +259,7 @@ func (s *mp4Spooler) finalize() error {
 }
 
 // writeMP4Body 完成 Phase2:ftyp → moov → mdat(从 spool 拷贝样本)。
-// mdat 使用 chunk 级 A/V interleave(计划 #25):按时间顺序交锳视频/音频
+// mdat 使用 chunk 级 A/V interleave：按时间顺序交错视频/音频
 // chunk(约 1 秒)，样本从 spool 按交错顺序拷出，stco 指向交错后的绝对位置。
 func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 	ftyp := buildFTYP()
@@ -317,9 +317,9 @@ type mp4Chunk struct {
 	samples []mp4SampleMeta
 }
 
-// interleaveSamples 按 chunk 级 A/V interleave(计划 #25)重分配样本的
+// interleaveSamples 按 chunk 级 A/V interleave 重分配样本的
 // mdat Offset：视频按 GOP(以 sync sample 边界)、音频按约 1 秒时间窗口，
-// 按时间顺序交锳。stco 指向交错后的绝对位置，样本顺序由 chunk 表决定。
+// 按时间顺序交错。stco 指向交错后的绝对位置，样本顺序由 chunk 表决定。
 func interleaveSamples(video, audio *mp4TrackMeta, mdatStart int64) (videoChunks, audioChunks []mp4Chunk) {
 	if video == nil {
 		return nil, nil
@@ -418,7 +418,7 @@ func copySamplesFromSpool(spool *mp4Spooler, samples []mp4SampleMeta, out io.Wri
 
 // validateMP4File 重新打开最终文件解析 box 树:
 // ftyp → moov → mdat 顺序、avc1/mp4a 轨、duration>0、样本>0、
-// stco/stss 越界、stsz 总和与 mdat 一致。通过才允许发布(计划 #40)。
+// stco/stss 越界、stsz 总和与 mdat 一致。通过才允许发布。
 func validateMP4File(path string) (err error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -507,7 +507,7 @@ func validateMP4File(path string) (err error) {
 			if current == nil || ref.off+24 > int64(len(moov)) {
 				return fmt.Errorf("tkhd is outside a track or truncated")
 			}
-			// track_ID 唯一(计划 #30):禁止音视频共用 track ID。
+			// track_ID 必须唯一，禁止音视频共用 track ID。
 			trackID := beU32(moov[ref.off+20 : ref.off+24])
 			if trackID == 0 {
 				return fmt.Errorf("tkhd track_ID is zero")
@@ -536,7 +536,7 @@ func validateMP4File(path string) (err error) {
 				return fmt.Errorf("stts is outside a track")
 			}
 			// stts:[size kind][ver/flags][entry_count][entries(count,delta)]:
-			// entries 越出 box 是损坏容器,显式拒绝(计划 #30)。
+			// entries 越出 box 是损坏容器，显式拒绝。
 			// entryCount 可能是损坏的超大值,乘法前先证明上限,避免 int64 溢出。
 			tsBoxSize := int64(beU32(moov[ref.off : ref.off+4]))
 			if tsBoxSize < 16 || ref.off+tsBoxSize > int64(len(moov)) {
@@ -745,7 +745,7 @@ func walkBoxes(data []byte, start, end int64, fn func(boxWalker) error) error {
 	return nil
 }
 
-// hasOnlyOneTrak 判断 moov 是否只有一个 trak(video-only 合法,计划 #24)。
+// hasOnlyOneTrak 判断 moov 是否只有一个 trak，video-only 合法。
 func hasOnlyOneTrak(moov []byte) (bool, error) {
 	count := 0
 	if err := walkBoxes(moov, 8, int64(len(moov)), func(ref boxWalker) error {

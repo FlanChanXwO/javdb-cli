@@ -8,11 +8,11 @@ import (
 	"os"
 )
 
-// Layer A 的 segment 结构校验(input.md 计划 #29-#32):
+// Layer A 的 segment 结构校验：
 // 只证明 segment 是结构可解析的 MPEG-TS(188 对齐、0x47 同步、PAT/PMT 可解析、
 // 声明的 elementary stream 携带 PES 数据、无明显截断),不做任何重新多路复用。
 // 连续性计数器刻意不校验:真实 CDN 流在 segment 边界与 EXT-X-DISCONTINUITY 处
-// 合法重置,过严的 cc 检查会误报损坏(计划 #31)。
+// 合法重置，过严的 cc 检查会误报损坏。
 
 const tsPacketSize = 188
 
@@ -133,7 +133,7 @@ func validateTSSegmentReader(reader io.ReadSeeker) error {
 		}
 		if pusi {
 			// "seen" 表示至少观察到 PUSI + 合法 PES prefix;
-			// 只看到 continuation payload 不能证明该 stream 合法存在(计划 #15)。
+			// 只看到 continuation payload 不能证明该 stream 合法存在。
 			if !isPESPayload(payload) {
 				return fmt.Errorf("PES payload for PID 0x%04X does not start with a PES prefix", pid)
 			}
@@ -198,7 +198,7 @@ func parsePSIMap(payload []byte, tableID byte) (map[uint16]bool, error) {
 	start := 3 + 5
 	if tableID == 0x02 {
 		// program_info_length 指向的描述符区必须先证明 section 足够长
-		// 才能跳越(计划 #15):远端 malformed TS 必须返回 error,不能越界 panic。
+		// 才能跳越：远端 malformed TS 必须返回 error，不能越界 panic。
 		if len(section) < 12 {
 			return nil, fmt.Errorf("PMT header truncated")
 		}
@@ -222,13 +222,13 @@ func parsePSIMap(payload []byte, tableID byte) (map[uint16]bool, error) {
 			if pos+5 > end {
 				return nil, fmt.Errorf("truncated PMT entry")
 			}
-			// timed ID3 元数据流(0x15)默认丢弃(计划 #39),
+			// timed ID3 元数据流(0x15)默认丢弃，
 			// 不参与 Layer A 的"每条声明流必须有载荷"检查。
 			if section[pos] != 0x15 {
 				table[(uint16(section[pos+1]&0x1F)<<8)|uint16(section[pos+2])] = true
 			}
 			esLen := (int(section[pos+3]&0x0F) << 8) | int(section[pos+4])
-			// ES_info_length 跳出 section 末尾是 malformed TS,显式拒绝(计划 #15)。
+			// ES_info_length 跳出 section 末尾是 malformed TS，必须显式拒绝。
 			if pos+5+esLen > end {
 				return nil, fmt.Errorf("PMT ES_info_length %d out of bounds", esLen)
 			}

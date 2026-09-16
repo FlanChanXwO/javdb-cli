@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// MP4 结构契约(计划 #18-#26/#30):
+// MP4 结构契约：
 // mvhd/tkhd/mdhd 按 ISO BMFF 字段布局;track ID 唯一(video=1, audio=2);
 // stts/ctts 带 sample_count 的 RLE entry;stss 语义正确;avcC 分 SPS[]/PPS[];
 // mdat A/V chunk interleave;32-bit 溢出明确拒绝。

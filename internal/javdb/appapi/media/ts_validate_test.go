@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Layer A segment 完整性契约(input.md 计划 #29-#32/#58):
+// Layer A segment 完整性契约：
 // 每个 segment 下载→解密后必须通过结构校验(188 对齐、0x47、PAT/PMT 可解析、
 // PES 前缀、明显截断)才能进入输出;损坏 segment 重试同一 segment 至多 3 次。
 
@@ -92,7 +92,7 @@ func validTSSegmentAt(base uint64) []byte {
 	return data
 }
 
-// ---- validateTSSegment 表驱动(input.md #58) ----
+// ---- validateTSSegment 表驱动 ----
 
 func TestValidateTSSegment(t *testing.T) {
 	valid := validTSSegment()
@@ -272,7 +272,7 @@ func TestDownloadHLSRejectsUnsupportedCodecAtFinalValidation(t *testing.T) {
 	}
 }
 
-// ---- 计划 #15:PSI/PMT 边界检查与 stream "seen" 语义 ----
+// ---- PSI/PMT 边界检查与 stream "seen" 语义 ----
 
 // PMT program_info_length 声称的描述符区越过 section 末尾必须报错,不能越界访问。
 func TestParsePSIMapRejectsHugeProgramInfoLength(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// assets download 契约(input.md 计划 #13/#14/#42/#43/#55):
+// assets download 契约：
 // stdin 读 TYPE<TAB>URL;-d DIR 默认 .;-o 仅允许恰好一个资产;
 // 默认命名 image-NNN.<magic ext> / video-NNN.mp4;不覆盖已有文件;坏输入明确失败。
 
@@ -352,7 +352,7 @@ func min(a, b int) int {
 	return b
 }
 
-// ---- 计划 #7/#8:download stdout 与 stdin 流式处理 ----
+// ---- download stdout 与 stdin 流式处理 ----
 
 // stdout 只输出最终路径;不再输出 `saved <path> (<bytes> bytes)`。
 func TestDownloadOutputsOnlyFinalPath(t *testing.T) {
@@ -387,7 +387,7 @@ func TestDownloadOutOutputsOnlyFinalPath(t *testing.T) {
 	}
 }
 
-// stdin 流式处理(计划 #8):第一条失败立即停止,不缓存全部记录;
+// stdin 流式处理：第一条失败立即停止，不缓存全部记录；
 // 巨型 stdin 不应先全量读入。
 func TestDownloadStreamsStdin(t *testing.T) {
 	dir := t.TempDir()
@@ -398,7 +398,7 @@ func TestDownloadStreamsStdin(t *testing.T) {
 	}
 }
 
-// -o 只需读取两条判断:第二条存在时报错,不读完整个 stdin(计划 #8)。
+// -o 只需读取两条判断：第二条存在时报错，不读完整个 stdin。
 func TestDownloadOStopsAfterSecondRecord(t *testing.T) {
 	dir := t.TempDir()
 	// 大量后续行;-o 模式不应处理它们。

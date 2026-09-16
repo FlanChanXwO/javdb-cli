@@ -51,7 +51,7 @@ internal/cli/result/                    # 纯结果投影与过滤（movie/magne
 internal/cli/entity/                    # 六实体查询用例 Execute
 internal/common/{jsonx,scalar,atomicfile}/ # 转换与原子 no-replace 文件原语（根目录无包）
 internal/cli/commands/{auth,config}/    # 认证与配置命令域
-internal/cli/commands/{search,detail,comments,magnets,download,tags,browse}/  # 影片目录命令域
+internal/cli/commands/{search,detail,comments,magnets,assets,tags,browse}/    # 影片目录命令域
 internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
 internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
 internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）
@@ -105,9 +105,6 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 
 真实 API 抽查会使用本机账号且可能改变 token、写入 tag cache 或访问远程状态；它不是默认回归。
 仅在用户明确授权、凭据来源清楚且不会输出 secret 时再运行。
-
-assets 域的真实 E2E（list、TS/MP4 remux、资源占用）见
-[PR #47 E2E 实测报告](e2e-pr47.md);番号以 `NUMBER` 占位,不落具体影片。
 
 ## Release-note 工具
 
@@ -240,7 +237,7 @@ JAVDB_RELEASE_ED25519_PRIVATE_KEYS="[\"$seed\"]" go run ./scripts/sign-release -
 v0.6.1 是发布桥：交付签名清单更新器、把 `publish` job 绑定受保护的 `release`
 environment；旧兼容阶段已经结束，当前版本使用根 `--version`，并继续发布兼容
 `checksums.txt`，保证 v0.6.0 可直接
-验证并安装后续版本。创建 v0.6.1 tag
+验证并安装后续版本。v0.6.1 的精确 bridge commit 记录在 goal-1 完成记录中；创建 v0.6.1 tag
 必须由维护者明确授权。
 
 ## CI 与发布

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Layer B demux 契约(input.md 计划 #24/#26/#34/#39):
+// Layer B demux 契约：
 // TS → PES → H.264 Annex-B(AVCC 化)与 AAC ADTS(raw 帧 + ASC);
 // 时间戳来自 PES(90kHz);不支持的 codec 明确失败;timed ID3 丢弃。
 
@@ -187,7 +187,7 @@ func TestLayerBRejectsTimestampRegression(t *testing.T) {
 	}
 }
 
-// ---- 计划 #13:PES 时间戳与长度修正 ----
+// ---- PES 时间戳与长度修正 ----
 
 // PTS-only PES 不能设置 HasDTS;DTS=PTS 但 HasDTS=false。
 func TestParsePESPTSOnlyHasNoDTSFlag(t *testing.T) {
@@ -227,7 +227,7 @@ func TestParsePESRejectsTruncatedPacketLength(t *testing.T) {
 	}
 }
 
-// ---- 计划 #14:ADTS 解析修正 ----
+// ---- ADTS 解析修正 ----
 
 // freqIdx=13..15 是保留值,必须拒绝而非越界 panic。
 func TestParseADTSRejectsReservedFrequencyIndex(t *testing.T) {

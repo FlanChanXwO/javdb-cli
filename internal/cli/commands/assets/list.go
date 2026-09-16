@@ -90,7 +90,7 @@ func filterAssets(assets []javdb.MovieAsset, descs []string, typeFilter string) 
 }
 
 // selectAssets 应用 1-based selector;无 selector 时原样返回全部。
-// assetCount 是过滤后资产总数:range 在展开前先校验上界(计划 #9)。
+// assetCount 是过滤后资产总数，range 在展开前先校验上界。
 func selectAssets(assets []javdb.MovieAsset, descs []string, selector string) ([]javdb.MovieAsset, []string, error) {
 	selected, err := parseAssetSelector(selector, len(assets))
 	if err != nil {

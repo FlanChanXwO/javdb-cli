@@ -5,7 +5,7 @@ import (
 	"sort"
 )
 
-// MP4 mux(input.md 计划 #26/#35/#38/#39):纯容器级 remux,不转码。
+// MP4 mux 仅执行容器级 remux，不进行转码。
 // 结构固定 ftyp → moov → mdat(Fast Start);时间轴以每个 track 的首个
 // 时间戳为零基准,90kHz(视频)与采样率(音频)。
 // moov 是纯元数据(O(samples));样本数据本体走 spool,内存不随视频长度线性增长(#36)。
@@ -13,17 +13,17 @@ import (
 const mp4VideoTimescale = 90000
 
 // mp4MovieTimescale 是 movie 层的独立固定时间基;tkhd/mvhd duration
-// 必须换算到它,不能直接用视频 90k 或音频采样率时间(计划 #22)。
+// 必须换算到它，不能直接用视频 90k 或音频采样率时间。
 const mp4MovieTimescale = 1000
 
-// mp4 track ID 唯一分配(计划 #22):禁止音视频共用 track ID 1。
+// mp4 track ID 必须唯一，禁止音视频共用 track ID 1。
 const (
 	mp4VideoTrackID = 1
 	mp4AudioTrackID = 2
 	mp4NextTrackID  = 3
 )
 
-// mp4ChunkInterleaveSeconds 是 A/V chunk 交错的目标准(计划 #25):
+// mp4ChunkInterleaveSeconds 是 A/V chunk 交错的目标准：
 // 约 0.5～1 秒,无需 per-sample 超细粒度。
 const mp4ChunkInterleaveSeconds = 1.0
 
@@ -66,7 +66,7 @@ func planVideoTrack(video *h264Track) (*mp4TrackMeta, error) {
 		return nil, fmt.Errorf("parse SPS: %w", err)
 	}
 	// MP4 中省略 stss 表示全部 sample 都是同步样本;完全没有可确认的
-	// sync sample 时拒绝生成 MP4,不伪造全部可 seek(计划 #23)。
+	// sync sample 时拒绝生成 MP4，不伪造全部可 seek。
 	syncCount := 0
 	for _, s := range video.Samples {
 		if s.Sync {
@@ -175,7 +175,7 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 		return nil, fmt.Errorf("mp4 requires a video track with samples")
 	}
 	// mdat 偏移与 moov 尺寸都是 32-bit 字段;可能溢出时明确拒绝,
-	// 不产生损坏的容器(计划 #26)。
+	// 不产生损坏的容器。
 	const maxBoxOffset = int64(0xFFFFFFFF)
 	// stco 偏移是 32-bit:mdat 数据区末尾(含全部样本)溢出时拒绝。
 	var mdatPayload int64
@@ -191,7 +191,7 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 		return nil, fmt.Errorf("mdat payload exceeds 32-bit MP4 bounds (start %d, payload %d)", mdatStart, mdatPayload)
 	}
 	// movie duration 在 movie timescale 下取音视频时长最大值;
-	// mdhd duration 用各自 media timescale,tkhd/mvhd 换算到 movie timescale(计划 #22)。
+	// mdhd duration 使用各自的 media timescale，tkhd/mvhd 换算到 movie timescale。
 	videoMovieDur := u64ScaleToMovieTimescale(video.Duration, video.Timescale)
 	var audioMovieDur uint64
 	if audio != nil && len(audio.Samples) > 0 {
@@ -341,7 +341,7 @@ func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 // 与可选 stss(sync)。
 // 时间戳以首样本为零基准(track 内时间从 0 开始)。
 // ISO BMFF 每个 stts/ctts entry 必须为 {sample_count, sample_delta/offset};
-// 末样本 delta 由倒数第二样本 delta 推导(计划 #19/#20)。
+// 末样本 delta 由倒数第二样本 delta 推导。
 func buildVideoTimingBoxes(samples []mp4SampleMeta) (stts, ctts, stss []byte, err error) {
 	deltas, _, err := videoSampleDurations(samples)
 	if err != nil {
@@ -497,7 +497,7 @@ func buildRLE32Signed(values []int64, signed bool) ([]byte, error) {
 	for _, e := range entries {
 		payload = append(payload, mp4U32(e.count))
 		if signed {
-			// version 1:signed 32-bit offset(计划 #20)。
+			// version 1 使用 signed 32-bit offset。
 			payload = append(payload, mp4U32(uint32(int32(e.value))))
 		} else {
 			payload = append(payload, mp4U32(uint32(e.value)))
@@ -511,9 +511,9 @@ func buildRLE32Signed(values []int64, signed bool) ([]byte, error) {
 }
 
 func buildSTSC(samples []mp4SampleMeta) []byte {
-	// mdat 布局是 chunk 级 A/V interleave(计划 #25):每个 chunk 含同一 track
-	// 的连续样本,stsc 描述 chunk 映射。interleave 计划在 buildMDATChunks
-	// 中产生,这里按 per-track 单 chunk 表示(交错的分配在 chunk 表里)。
+	// mdat 布局是 chunk 级 A/V interleave：每个 chunk 含同一 track
+	// 的连续样本，stsc 描述 chunk 映射。interleave 由 buildMDATChunks
+	// 产生，这里按 per-track 单 chunk 表示（交错的分配在 chunk 表里）。
 	return mp4FullBox("stsc", 0, 0, mp4U32(1), mp4U32(1), mp4U32(1), mp4U32(1))
 }
 
@@ -526,7 +526,7 @@ func buildSTSZ(samples []mp4SampleMeta) []byte {
 }
 
 // buildSTCO 的 chunk 偏移指向各 track 在 mdat 数据区内的位置:
-// mdat 按 A/V chunk 交错存放(计划 #25),每个 chunk 是同一 track 的一组连续
+// mdat 按 A/V chunk 交错存放，每个 chunk 是同一 track 的一组连续
 // 样本,stco 逐 chunk 指向。samples 的 Offset 是 chunk 内首样本的 spool 物理位置。
 func buildSTCO(samples []mp4SampleMeta) []byte {
 	entries := make([][]byte, 0, len(samples))
@@ -542,7 +542,7 @@ func buildDINF() []byte {
 }
 
 // unitMatrix 是 transform matrix 的单位阵(36 字节);
-// 中间对角项 d = 0x00010000 必须存在(计划 #21)。
+// 中间对角项 d = 0x00010000 必须存在。
 func unitMatrix() []byte {
 	m := make([]byte, 36)
 	m[0], m[1], m[2], m[3] = 0, 0x01, 0x00, 0x00        // a = 0x00010000
@@ -554,7 +554,7 @@ func unitMatrix() []byte {
 // buildAVCC 把参数集打包成 avcC(configuration record)。
 // 不假定 paramSets[0]=唯一 SPS、paramSets[1]=唯一 PPS:分别收集
 // SPS[] 与 PPS[],正确填写 numOfSequenceParameterSets/
-// numOfPictureParameterSets(计划 #24)。
+// numOfPictureParameterSets。
 func buildAVCC(paramSets [][]byte) ([]byte, error) {
 	var spsList, ppsList [][]byte
 	for _, ps := range paramSets {
@@ -647,7 +647,7 @@ func parseSPSDimensions(sps []byte) (uint16, uint16, error) {
 		if err := r.skipBits(1); err != nil { // qpprime_y_zero_transform_bypass
 			return 0, 0, err
 		}
-		// seq_scaling_matrix_present_flag 是 1 bit,不是 Exp-Golomb(计划 #16);
+		// seq_scaling_matrix_present_flag 是 1 bit，不是 Exp-Golomb；
 		// 每一个 seq_scaling_list_present_flag 同样是 1 bit,只有 flag=1
 		// 时才进入对应 scaling list parser。
 		scalingPresent, err := r.readBit()
@@ -820,7 +820,7 @@ func buildMP4(video *h264Track, audio *aacTrack) ([]byte, error) {
 		return nil, err
 	}
 	mdatStart := int64(len(ftyp) + len(moov) + 8)
-	// 交错 chunk 表与内存 mdat:与 spool 路径共享同一交错逻辑(计划 #25)。
+	// 交错 chunk 表与内存 mdat 使用与 spool 路径相同的交错逻辑。
 	videoChunks, audioChunks := interleaveSamples(videoMeta, audioMeta, mdatStart)
 	moov, err = buildMoov(videoMeta, audioMeta, mdatStart)
 	if err != nil {

@@ -21,7 +21,7 @@ import (
 )
 
 // FetchContext 是 client 提供给媒体解码器的原始资源读取回调。
-// context 贯穿全部媒体请求(计划 #44):取消时立即停止网络与工作。
+// context 贯穿全部媒体请求，取消时立即停止网络与媒体处理。
 type FetchContext func(ctx context.Context, url string) (io.ReadCloser, error)
 
 // MediaEndpoint 提供图片与 HLS 预览媒体的下载 capability。
@@ -72,7 +72,7 @@ func DownloadImage(ctx context.Context, fetch FetchContext, sourceURL, target st
 
 // DownloadHLS 下载一个已结束的 HLS 播放列表到 target,输出格式由后缀决定:
 // .ts 保留 Transport Stream(解密+校验后的拼接流);.mp4 输出 Fast Start MP4;
-// 其余后缀明确拒绝,不做转码(计划 #17/#18/#25)。
+// 其余后缀明确拒绝，不做转码。
 func DownloadHLS(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
 	switch strings.ToLower(filepath.Ext(target)) {
 	case ".ts":
@@ -162,7 +162,7 @@ type hlsMediaPlaylist struct {
 }
 
 // maxSegmentAttempts 是单个 segment 的最大尝试次数。
-// 依据 input.md 计划 #32 的明文要求(损坏 segment 重试同一 segment,至多 3 次)。
+// 损坏的 segment 重试同一 segment，至多 3 次。
 const maxSegmentAttempts = 3
 
 // downloadTS 产出保留 Transport Stream 的 .ts:每个 segment 通过 Layer A 与
@@ -194,7 +194,7 @@ func downloadTS(ctx context.Context, fetch FetchContext, playlistURL, target str
 	}, validateTSOutput)
 }
 
-// downloadMP4 走 spool 管线产出 Fast Start MP4(计划 #35/#36)。
+// downloadMP4 走 spool 管线产出 Fast Start MP4。
 func downloadMP4(ctx context.Context, fetch FetchContext, playlistURL, target string) (int64, error) {
 	playlist, err := fetchHLSMediaPlaylist(ctx, fetch, playlistURL)
 	if err != nil {
@@ -807,7 +807,7 @@ func removePKCS7Padding(data []byte) ([]byte, error) {
 
 // publishMediaFile 把媒体原子发布到 path:先写入同目录唯一临时文件,
 // 全部写入并通过 validate 后以 no-replace 硬链接发布。
-// 最终路径已存在时绝不覆盖(计划 #41/#42);失败时清理临时文件,不留半成品。
+// 最终路径已存在时绝不覆盖；失败时清理临时文件，不留半成品。
 func publishMediaFile(path string, write func(io.Writer) (int64, error), validate func(path string) error) (written int64, err error) {
 	if strings.TrimSpace(path) == "" {
 		return 0, fmt.Errorf("output path is required")
@@ -820,7 +820,7 @@ func publishMediaFile(path string, write func(io.Writer) (int64, error), validat
 	if !info.IsDir() {
 		return 0, fmt.Errorf("output directory is not a directory")
 	}
-	// 临时文件用 os.CreateTemp 保证唯一(计划 #27):并发或上次异常残留时
+	// 临时文件用 os.CreateTemp 保证唯一：并发或上次异常残留时
 	// 不会与固定 target.part 名冲突。CreateTemp 位于同一目录,保证同一文件
 	// 系统,支持原子发布。
 	tmpFile, err := os.CreateTemp(dir, ".mediadl-*.part")
@@ -853,12 +853,12 @@ func publishMediaFile(path string, write func(io.Writer) (int64, error), validat
 			return written, errors.Join(err, removeTemp())
 		}
 	}
-	// 真 no-replace 发布(计划 #28):LinkNoReplace 在目标已存在时由操作系统
+	// 真 no-replace 发布：LinkNoReplace 在目标已存在时由操作系统
 	// 原子返回 ErrExist，不依赖“先检查再 rename”(TOCTOU)。
 	if err = atomicfile.LinkNoReplace(tmp, path); err != nil {
 		return written, errors.Join(fmt.Errorf("publish media file: %w", err), removeTemp())
 	}
-	// 链接成功后删除临时文件;删除失败不能静默吞掉(计划 #29)。
+	// 链接成功后删除临时文件；删除失败不能静默吞掉。
 	if err = removeTemp(); err != nil {
 		return 0, fmt.Errorf("remove media temp file after publish: %w", err)
 	}

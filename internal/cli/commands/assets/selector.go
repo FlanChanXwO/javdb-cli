@@ -12,7 +12,7 @@ import (
 // 可混用("1,3-5"、"1 3-5")。空输入返回 nil 表示不选择(即全部)。
 // 重叠编号去重,结果按编号升序,即当前列表顺序。
 // 编号不是长期资产 ID,只是过滤后列表的当前位置。
-// assetCount 是过滤后资产总数:range 在展开前先校验上界(计划 #9),
+// assetCount 是过滤后资产总数，range 在展开前先校验上界，
 // 防止 "1-1000000000" 在知道资产数量前分配巨大 slice。
 func parseAssetSelector(input string, assetCount int) ([]int, error) {
 	tokens := strings.FieldsFunc(input, func(r rune) bool { return r == ' ' || r == ',' || r == '\t' })
@@ -38,7 +38,7 @@ func parseAssetSelector(input string, assetCount int) ([]int, error) {
 }
 
 // parseSelectorToken 解析单个编号或闭区间 token。
-// 解析 start/end 后先结合 assetCount 校验,再展开(计划 #9)。
+// 解析 start/end 后先结合 assetCount 校验，再展开。
 func parseSelectorToken(token string, assetCount int) ([]int, error) {
 	invalid := fmt.Errorf("invalid selector %q", token)
 	if before, after, found := strings.Cut(token, "-"); found {
@@ -47,7 +47,7 @@ func parseSelectorToken(token string, assetCount int) ([]int, error) {
 		if errStart != nil || errEnd != nil || start < 1 || end < start {
 			return nil, invalid
 		}
-		// 结合资产数校验后再展开(计划 #9):
+		// 结合资产数校验后再展开：
 		// 禁止在不知道资产数量时展开巨大 range。
 		if start > assetCount {
 			return nil, fmt.Errorf("asset number %d out of range (1-%d)", start, assetCount)

@@ -17,14 +17,14 @@ import (
 	javdb "github.com/FlanChanXwO/javdb-cli/sdk"
 )
 
-// stdinLineLimit 是 stdin 单行记录的明确上限(计划 #8):64 KiB。
+// stdinLineLimit 是 stdin 单行记录的明确上限：64 KiB。
 const stdinLineLimit = 64 * 1024
 
 // NewDownload builds the `assets download` pipe consumer.
-// 输入是 `assets list` 的 TYPE<TAB>URL 记录流,流式逐条处理(计划 #8):
+// 输入是 `assets list` 的 TYPE<TAB>URL 记录流，流式逐条处理：
 // scan → parse → download → next,不缓存全部记录。
-// -d/-o 与默认命名遵循 input.md 计划 #13-#16/#42-#43:失败不落盘、绝不覆盖已有文件。
-// stdout 只输出最终路径(计划 #7),不再输出 saved/bytes 装饰。
+// -d/-o 与默认命名在失败时不落盘，并且绝不覆盖已有文件。
+// stdout 只输出最终路径，不输出 saved/bytes 装饰。
 func NewDownload(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Command {
 	var dir, out string
 
@@ -50,7 +50,7 @@ func NewDownload(options *invocation.RootOptions, streams *invocation.Streams) *
 	return cmd
 }
 
-// downloadAssetsStream 流式处理 stdin 的 TYPE<TAB>URL 记录(计划 #8):
+// downloadAssetsStream 流式处理 stdin 的 TYPE<TAB>URL 记录：
 // 逐条 scan → parse → download → next,不缓存全部记录。
 // -o 只需要读取第一条,再尝试读取第二条:存在第二条则报错,无需读完整个 stdin。
 func downloadAssetsStream(ctx context.Context, c *javdb.Client, streams *invocation.Streams, dir, out string) error {
@@ -76,7 +76,7 @@ func downloadAssetsStream(ctx context.Context, c *javdb.Client, streams *invocat
 			return err
 		}
 		if out != "" {
-			// -o 模式只需要读取第一条,再尝试读取第二条(计划 #8):
+			// -o 模式只需要读取第一条，再尝试读取第二条：
 			// 存在第二条则报错,无需把整个 stdin 读完。
 			if firstRecord != nil {
 				return fmt.Errorf("assets download: -o requires exactly one asset, got more")
@@ -146,7 +146,7 @@ func downloadAutoNamed(ctx context.Context, c *javdb.Client, record assetRecord,
 		}
 		return target, nil
 	case "image":
-		// 临时文件名唯一(计划 #27):os.MkdirTemp 生成一次性目录,
+		// os.MkdirTemp 生成一次性目录以保证临时文件名唯一，
 		// 下载产物发布到目录内唯一路径,无并发/残留冲突。
 		tmpDir, err := os.MkdirTemp(dir, ".assets-download-")
 		if err != nil {

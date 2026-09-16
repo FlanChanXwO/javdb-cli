@@ -163,7 +163,8 @@ with one raw data block per ADTS frame. Only channel configurations 1 (mono)
 and 2 (stereo) are remuxed; extra tracks or unsupported AAC profiles, block
 counts, or channel configurations fail explicitly. Timed ID3 is ignored in MP4.
 TS publication validates the media structure and video timeline
-while preserving ADTS bytes without the MP4 profile/block restrictions.
+while preserving ADTS bytes without the MP4
+profile/block/channel-configuration restrictions.
 
 ## Reverse image search
 

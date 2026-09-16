@@ -34,7 +34,7 @@ func TestMovieAssetShapeContainsOnlyTypeAndURL(t *testing.T) {
 
 // 资产契约:MovieAsset 只有 Type("image"/"video")与 URL 两个字段;
 // 序列顺序固定 thumbnail → cover(若详情提供)→ preview_images[](large_url 优先)→ preview video;
-// 详情中缺失的项直接跳过(input.md 计划 #2/#4/#5)。
+// 详情中缺失的项直接跳过。
 
 func TestMovieAssetsFromDetailOrdersAllAssetKinds(t *testing.T) {
 	got := MovieAssetsFromDetail(map[string]any{

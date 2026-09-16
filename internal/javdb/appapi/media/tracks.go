@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// H.264/AAC track 化与 Layer B 媒体完整性(input.md 计划 #24/#26/#34/#39)。
+// H.264/AAC track 化与 Layer B 媒体完整性校验。
 // 只做容器级转换(Annex-B→AVCC、ADTS→raw+ASC),不解码像素/PCM。
 
 // h264Sample 是一个 AVCC 帧(4 字节大端长度前缀的 NALU 序列)。
@@ -43,7 +43,7 @@ var aacFrequencies = [13]int{
 }
 
 // aacFrequency 把 sampling_frequency_index 转成 Hz;
-// index 13..15 是保留值,不查表,避免越界 panic(计划 #14)。
+// index 13..15 是保留值，不查表以避免越界 panic。
 func aacFrequency(freqIdx byte) (int, error) {
 	if int(freqIdx) >= len(aacFrequencies) {
 		return 0, fmt.Errorf("reserved ADTS sampling_frequency_index %d", freqIdx)
@@ -170,7 +170,7 @@ func parseADTS(data []byte) (payload []byte, freqIdx byte, channels byte, consum
 		return nil, 0, 0, 0, fmt.Errorf("reserved ADTS sampling_frequency_index %d", freqIdx)
 	}
 	// channel_configuration:byte2 最低 1 bit 是高位,byte3 最高 2 bit 是低位。
-	// 旧实现把高位左移 1 位,channel >= 4 会被错误解析(计划 #14)。
+	// 高位必须左移 2 位，否则 channel >= 4 会被错误解析。
 	channels = (data[2]&0x01)<<2 | data[3]>>6
 	length := int(data[3]&0x03)<<11 | int(data[4])<<3 | int(data[5])>>5
 	if length < 7 || length > len(data) {
@@ -195,7 +195,7 @@ var codecNames = map[uint16]string{
 }
 
 // validateMediaStream 是 Layer B 入口:拆流、分类 codec、校验媒体模型。
-// 任一检查失败即拒绝进入 MP4 finalize(input.md 计划 #29/#34)。
+// 任一检查失败即拒绝进入 MP4 finalize。
 func validateMediaStream(data []byte) error {
 	if len(data)%tsPacketSize != 0 {
 		return fmt.Errorf("TS segment size %d is not %d-byte aligned", len(data), tsPacketSize)

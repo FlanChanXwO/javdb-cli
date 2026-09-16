@@ -125,7 +125,8 @@ remux 生成——无 ffmpeg、无转码；`.ts` 保留解密后的 MPEG-TS。�
 MP4 每段要求恰好一个 H.264 PID、至多一个 AAC-LC PID，且每个 ADTS 帧只有一个 raw data block；
 只重封装 channel_configuration 1（mono）和 2（stereo），多轨、不支持的 AAC profile、block 数或
 channel configuration 会明确失败。MP4 忽略 timed ID3。
-TS 发布前校验媒体结构和视频时间轴，保留 ADTS 原文，不套用 MP4 的 profile/block 限制。
+TS 发布前校验媒体结构和视频时间轴，保留 ADTS 原文，不套用 MP4 的
+profile/block/channel configuration 限制。
 
 ## 以图搜番
 

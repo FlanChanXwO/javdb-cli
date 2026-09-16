@@ -127,7 +127,7 @@ func parsePMTTypes(payload []byte) (map[uint16]byte, error) {
 	}
 	types := map[uint16]byte{}
 	// body 前 9 字节:program_number(2)+version(1)+序号(2)+PCR_PID(2)+info_length(2)。
-	// 访问 section[10]/[11] 前必须证明 section 足够长(计划 #15)。
+	// 访问 section[10]/[11] 前必须证明 section 足够长。
 	if len(section) < 12 {
 		return nil, fmt.Errorf("PMT header truncated")
 	}
@@ -140,7 +140,7 @@ func parsePMTTypes(payload []byte) (map[uint16]byte, error) {
 		entryPID := (uint16(section[pos+1]&0x1F) << 8) | uint16(section[pos+2])
 		types[entryPID] = section[pos]
 		esLen := (int(section[pos+3]&0x0F) << 8) | int(section[pos+4])
-		// ES_info_length 跳出 section 末尾是 malformed TS,显式拒绝(计划 #15)。
+		// ES_info_length 跳出 section 末尾是 malformed TS，必须显式拒绝。
 		if pos+5+esLen > end {
 			return nil, fmt.Errorf("PMT ES_info_length %d out of bounds", esLen)
 		}
@@ -164,7 +164,7 @@ func parsePESFrame(pes []byte) (demuxedFrame, error) {
 		return demuxedFrame{}, fmt.Errorf("PES header truncated")
 	}
 	// PES_packet_length 声称的包体长度大于实际重组长度时,说明流被截断:
-	// 继续解析会把 0xFF stuffing 或下一包内容当成 ES,必须显式拒绝(计划 #13)。
+	// 继续解析会把 0xFF stuffing 或下一包内容当成 ES，必须显式拒绝。
 	if pesLen := int(pes[4])<<8 | int(pes[5]); pesLen > 0 && 6+pesLen > len(pes) {
 		return demuxedFrame{}, fmt.Errorf("PES packet truncated: header claims %d bytes, got %d", pesLen, len(pes)-6)
 	}
@@ -178,7 +178,7 @@ func parsePESFrame(pes []byte) (demuxedFrame, error) {
 		pos += 5
 	}
 	// 只有显式包含 DTS(flags=11xx)时才设置 HasDTS;PTS-only 时
-	// DTS 复用 PTS 便于下游计算,但 HasDTS 保持 false(计划 #13)。
+	// DTS 复用 PTS 便于下游计算，但 HasDTS 保持 false。
 	if flags&0xC0 == 0xC0 {
 		if pos+5 > len(pes) {
 			return demuxedFrame{}, fmt.Errorf("PES DTS truncated")

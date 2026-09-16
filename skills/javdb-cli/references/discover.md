@@ -16,4 +16,4 @@
 每个阶段先检查退出码；API 返回错误、空结果或认证失败均应如实呈现，而不是更换主机、代理、账号或关键字来“补救”。
 
 媒体下载边界：MP4 每段仅支持一个 H.264 PID 和至多一个 AAC-LC PID（每 ADTS 帧一个 raw data block），只重封装 channel_configuration 1（mono）和 2（stereo）；多轨或其他 AAC profile/block/channel configuration 明确失败；timed ID3 不写入 MP4。
-TS 发布前校验媒体结构与视频时间轴，ADTS 原文保留，不套用 MP4 的 profile/block 限制。
+TS 发布前校验媒体结构与视频时间轴，ADTS 原文保留，不套用 MP4 的 profile/block/channel configuration 限制。

@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-// MP4 契约(input.md 计划 #35/#38/#40/#59/#60):
+// MP4 契约：
 // ISO BMFF,ftyp → moov → mdat(Fast Start),avc1/mp4a 轨,sample table 完整;
 // Layer C 对最终文件重新解析,任何不一致拒绝发布。
 
@@ -173,7 +173,7 @@ func TestDownloadMP4IgnoresStaleFixedSpool(t *testing.T) {
 	}
 }
 
-// ---- ctx 贯穿(input.md #44):取消立即停止工作且不落盘 ----
+// ---- ctx 贯穿：取消立即停止工作且不落盘 ----
 
 func TestDownloadMovieAssetContextCancelled(t *testing.T) {
 	server := hlsMP4Server(t)
@@ -325,7 +325,7 @@ func hlsFetchFrom(base string) FetchContext {
 	})
 }
 
-// ---- 计划 #16:High Profile SPS scaling matrix 是 1-bit flag ----
+// ---- High Profile SPS scaling matrix 是 1-bit flag ----
 
 // seq_scaling_matrix_present_flag 是 1 bit(readBit),不是 Exp-Golomb;
 // 每一个 seq_scaling_list_present_flag 同样是 1 bit。
