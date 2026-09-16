@@ -247,7 +247,7 @@ javdb config set auto_relogin true
 
 磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
 需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
-`javdb assets download` 会将选定的媒体资源写入明确指定的新本地路径，stdout 每行只输出最终路径。MP4 支持单 H.264 视频轨和至多一条 AAC-LC 音轨；校验边界见[媒体契约](docs/zh-CN/cli-reference.md#本地影片资源)。
+`javdb assets download` 会将选定的媒体资源写入明确指定的新本地路径，stdout 每行只输出最终路径。MP4 支持单 H.264 视频轨和至多一条 mono/stereo AAC-LC 音轨；校验边界见[媒体契约](docs/zh-CN/cli-reference.md#本地影片资源)。
 `javdb assets list --json/--ndjson` 只输出 `type` 与 `url`，列出资产不会下载或 probe 媒体内容。
 它们不会下载完整影片或磁力目标，也绝不会替换已有文件。
 

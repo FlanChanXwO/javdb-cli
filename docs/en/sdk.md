@@ -151,8 +151,9 @@ no transcoding; any other extension returns
 explicitly. Context cancellation stops every stage and leaves no output file.
 
 MP4 requires exactly one H.264 PID and at most one AAC-LC PID per segment,
-with one raw data block per ADTS frame;
-extra tracks or unsupported AAC profiles/block counts fail explicitly. Timed ID3 is ignored in MP4.
+with one raw data block per ADTS frame. Only channel configurations 1 (mono)
+and 2 (stereo) are remuxed; extra tracks or unsupported AAC profiles, block
+counts, or channel configurations fail explicitly. Timed ID3 is ignored in MP4.
 TS publication validates the media structure and video timeline
 while preserving ADTS bytes without the MP4 profile/block restrictions.
 

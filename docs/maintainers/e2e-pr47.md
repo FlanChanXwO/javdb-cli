@@ -1,6 +1,6 @@
 # PR #47 媒体验收记录
 
-本轮验证日期为 2026-09-17，本轮容器/校验修复的代码版本为 `3305e1a`，已合入 `main` 的
+本轮验证日期为 2026-09-17，本轮容器/校验修复的代码版本为 `4e6d097`，已合入 `main` 的
 `bd2798a`（#46）。后续本页的证据更新不改变被测生产代码。环境为 macOS
 `darwin/arm64`、Go `go1.26.3`、ffmpeg/ffprobe `8.1.1`。
 ffmpeg/ffprobe 仅是独立验收工具，不属于 CLI 运行时依赖。
@@ -97,13 +97,15 @@ MB 使用十进制 1,000,000 bytes。
 - `python3 -m pre_commit run --all-files`（pre-commit 4.6.0）
 - tracked Go files 的 gofmt、`git diff --check`、受影响 Go 文件的 LSP 诊断。
 
-本轮四项回归均先实际执行 Red，再执行 Green：修正已有单位矩阵测试，并检查最终
+本轮五项回归均先实际执行 Red，再执行 Green：修正已有单位矩阵测试，并检查最终
 `tkhd`；同配置的多 H.264 / 多 AAC PID 被 MP4 拒绝；Layer A 合法但 Annex-B/ADTS
 损坏的 TS 被拒绝，目标与临时文件无残留；AAC-LC 单 raw data block 通过，其他
-profile / 多 block 的 MP4 明确失败且无残留，TS 仍原样保存。
+profile / 多 block 的 MP4 明确失败且无残留，`channel_configuration=0` 的 MP4
+明确失败而 1/2 通过，TS 仍原样保存。
 
-支持边界来自当前 muxer 的单轨、ASC=AAC-LC 和每帧 1024 samples 假设，目的是避免
-静默合轨与错误 codec 配置/时长；只收窄不支持的 MP4 输入，不增加大小或数量配额。
+支持边界来自当前 muxer 的单轨、ASC=AAC-LC、mono/stereo channel configuration
+和每帧 1024 samples 假设，目的是避免静默合轨与错误 codec 配置/时长；只收窄不支持
+的 MP4 输入，不增加大小或数量配额。
 旧的 4,200 segment 数量回归夹具重复时间戳；启用 TS Layer B 后已改为每段递增，
 段数和字节数断言保持不变。该校验不替代完整 codec 解码，真实媒体仍由 ffmpeg 独立验收。
 

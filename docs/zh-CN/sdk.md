@@ -131,7 +131,8 @@ id/index/role 等元数据。
 明确失败。context 取消会中断所有阶段且不留下输出文件。
 
 MP4 每段要求恰好一个 H.264 PID、至多一个 AAC-LC PID，且每个 ADTS 帧只有一个 raw data block；
-多轨、不支持的 AAC profile 或 block 数会明确失败。MP4 忽略 timed ID3。
+只重封装 channel_configuration 1（mono）和 2（stereo），多轨、不支持的 AAC profile、block 数或
+channel configuration 会明确失败。MP4 忽略 timed ID3。
 TS 发布前校验媒体结构和视频时间轴，保留 ADTS 原文，不套用 MP4 的 profile/block 限制。
 
 `MovieAssetsFromDetail` / `MovieAssetDescriptions` 把已取得的详情 map 映射为同一资产序列与仅用于
