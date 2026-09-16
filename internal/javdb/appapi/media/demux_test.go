@@ -255,14 +255,37 @@ func TestParseADTSChannelConfiguration(t *testing.T) {
 	}
 }
 
-// muxer 只明确支持 mono/stereo:channel configuration > 2 必须拒绝,
-// 不能产生错误的 MP4。
+// muxer 只明确支持 mono/stereo:channel configuration 0 或 > 2 必须拒绝，
+// 不能产生错误的 MP4；合法的 1/2 应继续通过。
 func TestParseAACTrackRejectsMoreThanStereo(t *testing.T) {
-	// channel config 4(byte2&1=1,byte3>>6=0)。
-	data := []byte{0xFF, 0xF1, 0x53, 0x00, 0x01, 0x40, 0x00, 0x21, 0x10, 0x30}
-	_, err := parseAACTrack(demuxedStream{streamType: streamTypeAAC, frames: []demuxedFrame{{ES: data, PTS: 90000}}})
-	if err == nil || !strings.Contains(err.Error(), "channel") {
-		t.Fatalf("error = %v, want channel configuration rejection", err)
+	for _, tc := range []struct {
+		name     string
+		channels byte
+		wantErr  bool
+	}{
+		{name: "unspecified", channels: 0, wantErr: true},
+		{name: "mono", channels: 1},
+		{name: "stereo", channels: 2},
+		{name: "unsupported_multichannel", channels: 4, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := adtsFrame()
+			data[2] = (data[2] & 0xFE) | (tc.channels >> 2)
+			data[3] = (data[3] & 0x3F) | (tc.channels&0x03)<<6
+			track, err := parseAACTrack(demuxedStream{streamType: streamTypeAAC, frames: []demuxedFrame{{ES: data, PTS: 90000}}})
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "channel") {
+					t.Fatalf("error = %v, want channel configuration rejection", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseAACTrack: %v", err)
+			}
+			if track.Channels != int(tc.channels) {
+				t.Fatalf("channels = %d, want %d", track.Channels, tc.channels)
+			}
+		})
 	}
 }
 

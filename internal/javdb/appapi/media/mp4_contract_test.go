@@ -839,15 +839,18 @@ func TestAACRemuxBoundaries(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
 		profile, blocks byte
+		channels        byte
 		wantError       string
 	}{
-		{"lc_one_block", 1, 0, ""},
-		{"non_lc", 0, 0, "unsupported ADTS profile"},
-		{"multiple_blocks", 1, 1, "raw data blocks"},
+		{name: "lc_one_block", profile: 1, channels: 2},
+		{name: "non_lc", profile: 0, channels: 2, wantError: "unsupported ADTS profile"},
+		{name: "multiple_blocks", profile: 1, blocks: 1, channels: 2, wantError: "raw data blocks"},
+		{name: "unspecified_channels", profile: 1, channels: 0, wantError: "unsupported ADTS channel configuration"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			adts := adtsFrame()
-			adts[2] = (adts[2] & 0x3F) | tc.profile<<6
+			adts[2] = (adts[2] & 0x3E) | tc.profile<<6 | (tc.channels >> 2)
+			adts[3] = (adts[3] & 0x3F) | (tc.channels&0x03)<<6
 			adts[6] = (adts[6] & 0xFC) | tc.blocks
 			segment := validTSSegment()
 			copy(segment[4*188:], tsPacket(audioPID, true, 3, pesBytes(0xC0, 90000, 0, false, adts)))

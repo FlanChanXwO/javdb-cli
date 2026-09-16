@@ -144,7 +144,7 @@ func walkAACFrame(frame demuxedFrame, consume func(*aacTrack, aacSample) error) 
 		if err != nil {
 			return err
 		}
-		if channels > 2 {
+		if channels == 0 || channels > 2 {
 			return fmt.Errorf("unsupported ADTS channel configuration %d: only mono/stereo can be remuxed", channels)
 		}
 		track := &aacTrack{Config: []byte{2<<3 | freqIdx>>1, freqIdx<<7 | channels<<3}, SampleRate: sampleRate, Channels: int(channels)}
