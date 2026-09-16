@@ -1,9 +1,66 @@
 package settings
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestResolveAssetProbeDefaults(t *testing.T) {
+	resolved, err := ResolveAssetProbe(Defaults())
+	if err != nil {
+		t.Fatalf("ResolveAssetProbe() error = %v", err)
+	}
+	if !resolved.Enabled || resolved.Concurrency != DefaultAssetProbeConcurrency {
+		t.Fatalf("ResolveAssetProbe() = %+v, want enabled with concurrency %d", resolved, DefaultAssetProbeConcurrency)
+	}
+}
+
+func TestResolveAssetProbeExplicitValues(t *testing.T) {
+	enabled := false
+	concurrency := 8
+	resolved, err := ResolveAssetProbe(Settings{Assets: AssetsSettings{Probe: AssetProbeSettings{
+		Enabled:     &enabled,
+		Concurrency: &concurrency,
+	}}})
+	if err != nil {
+		t.Fatalf("ResolveAssetProbe() error = %v", err)
+	}
+	if resolved.Enabled || resolved.Concurrency != concurrency {
+		t.Fatalf("ResolveAssetProbe() = %+v, want disabled with concurrency %d", resolved, concurrency)
+	}
+}
+
+func TestResolveAssetProbeRejectsNonPositiveConcurrency(t *testing.T) {
+	for _, concurrency := range []int{0, -1} {
+		t.Run(fmt.Sprintf("concurrency=%d", concurrency), func(t *testing.T) {
+			if _, err := ResolveAssetProbe(Settings{Assets: AssetsSettings{Probe: AssetProbeSettings{
+				Concurrency: &concurrency,
+			}}}); err == nil {
+				t.Fatalf("ResolveAssetProbe() accepted concurrency %d", concurrency)
+			}
+		})
+	}
+}
+
+func TestLoadFileAssetProbePreservesSparseDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[assets.probe]\nenabled = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile() error = %v", err)
+	}
+	resolved, err := ResolveAssetProbe(loaded)
+	if err != nil {
+		t.Fatalf("ResolveAssetProbe() error = %v", err)
+	}
+	if resolved.Enabled || resolved.Concurrency != DefaultAssetProbeConcurrency {
+		t.Fatalf("ResolveAssetProbe() = %+v, want disabled with default concurrency", resolved)
+	}
+}
 
 func TestDefaultsUseAutoHost(t *testing.T) {
 	if got := Defaults().Host; got != HostAuto {

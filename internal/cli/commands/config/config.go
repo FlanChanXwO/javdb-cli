@@ -25,6 +25,8 @@ type configKey struct {
 // knownConfigKeys 是 config.toml 支持的键集合。未知键必须先报错，再决定是否
 // 创建或读取配置，避免把无效命令的副作用落盘。
 var knownConfigKeys = map[string]configKey{
+	"assets.probe.enabled":           {kind: "bool"},
+	"assets.probe.concurrency":       {kind: "int"},
 	"host":                           {kind: "string"},
 	"https_proxy":                    {kind: "string"},
 	"proxy":                          {kind: "string"},
@@ -83,6 +85,8 @@ var displayConfigKeys = []string{
 	"https_proxy",
 	"auto_relogin",
 	"lang",
+	"assets.probe.enabled",
+	"assets.probe.concurrency",
 	"reverse_search.default_source",
 	"reverse_search.cache",
 	"reverse_search.cache_ttl",
@@ -130,6 +134,9 @@ func New(streams *invocation.Streams) *cobra.Command {
 			value, err := parseKeyValue(args[0], args[1])
 			if err != nil {
 				return err
+			}
+			if args[0] == "assets.probe.concurrency" && value.(int) <= 0 {
+				return fmt.Errorf("assets.probe.concurrency must be positive, got %d", value)
 			}
 			if err := paths.EnsureDefaultConfigFile(); err != nil {
 				return err
@@ -325,6 +332,15 @@ func printAll(streams *invocation.Streams, cfg settings.Settings) {
 
 func lookupKey(cfg settings.Settings, key string) (string, error) {
 	switch key {
+	case "assets.probe.enabled", "assets.probe.concurrency":
+		resolved, err := settings.ResolveAssetProbe(cfg)
+		if err != nil {
+			return "", err
+		}
+		if key == "assets.probe.enabled" {
+			return strconv.FormatBool(resolved.Enabled), nil
+		}
+		return strconv.Itoa(resolved.Concurrency), nil
 	case "host":
 		return cfg.Host, nil
 	case "https_proxy", "proxy":

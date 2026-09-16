@@ -132,6 +132,79 @@ func TestConfigSetInvalidHostValueErrorsWithoutCreating(t *testing.T) {
 	}
 }
 
+func TestConfigAssetProbeDefaultsAndRoundTrip(t *testing.T) {
+	home := isolateHome(t)
+
+	out, _, err := executeConfig(t, "get", "assets.probe.enabled")
+	if err != nil {
+		t.Fatalf("get default enabled: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "true" {
+		t.Fatalf("default enabled = %q, want true", got)
+	}
+	out, _, err = executeConfig(t, "get", "assets.probe.concurrency")
+	if err != nil {
+		t.Fatalf("get default concurrency: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "4" {
+		t.Fatalf("default concurrency = %q, want 4", got)
+	}
+
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read default config: %v", err)
+	}
+	if strings.Contains(string(data), "[assets.probe]") {
+		t.Fatalf("default config unexpectedly contains [assets.probe]:\n%s", data)
+	}
+
+	if _, _, err := executeConfig(t, "set", "assets.probe.concurrency", "8"); err != nil {
+		t.Fatalf("set concurrency: %v", err)
+	}
+	out, _, err = executeConfig(t, "get", "assets.probe.concurrency")
+	if err != nil {
+		t.Fatalf("get explicit concurrency: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "8" {
+		t.Fatalf("explicit concurrency = %q, want 8", got)
+	}
+	if _, _, err := executeConfig(t, "unset", "assets.probe.concurrency"); err != nil {
+		t.Fatalf("unset concurrency: %v", err)
+	}
+	out, _, err = executeConfig(t, "get", "assets.probe.concurrency")
+	if err != nil {
+		t.Fatalf("get reset concurrency: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "4" {
+		t.Fatalf("reset concurrency = %q, want 4", got)
+	}
+
+	if _, _, err := executeConfig(t, "set", "assets.probe.enabled", "false"); err != nil {
+		t.Fatalf("set enabled: %v", err)
+	}
+	out, _, err = executeConfig(t, "get", "assets.probe.enabled")
+	if err != nil {
+		t.Fatalf("get explicit enabled: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "false" {
+		t.Fatalf("explicit enabled = %q, want false", got)
+	}
+}
+
+func TestConfigAssetProbeRejectsNonPositiveConcurrencyBeforeCreating(t *testing.T) {
+	home := isolateHome(t)
+	for _, value := range []string{"0", "-1"} {
+		if _, _, err := executeConfig(t, "set", "assets.probe.concurrency", value); err == nil {
+			t.Fatalf("set concurrency accepted %s", value)
+		}
+	}
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid concurrency created config: %v", err)
+	}
+}
+
 func TestConfigReverseSearchScalarRoundTrip(t *testing.T) {
 	isolateHome(t)
 	out, _, err := executeConfig(t, "set", "reverse_search.retries", "5")

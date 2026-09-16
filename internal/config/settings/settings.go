@@ -33,14 +33,21 @@ type Settings struct {
 	Lang          string                `toml:"lang,omitempty"`
 	DeviceUUID    string                `toml:"device_uuid,omitempty"` // optional override; else file/device_uuid
 	ReverseSearch ReverseSearchSettings `toml:"reverse_search"`
+	Assets        AssetsSettings        `toml:"assets"`
 }
 
 // Defaults returns baseline settings.
 func Defaults() Settings {
+	assetProbeEnabled := true
+	assetProbeConcurrency := DefaultAssetProbeConcurrency
 	return Settings{
 		Host:        HostAuto,
 		AutoRelogin: false,
 		Lang:        "en",
+		Assets: AssetsSettings{Probe: AssetProbeSettings{
+			Enabled:     &assetProbeEnabled,
+			Concurrency: &assetProbeConcurrency,
+		}},
 	}
 }
 
