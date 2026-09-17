@@ -248,7 +248,12 @@ javdb config set auto_relogin true
 磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
 需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
 `javdb assets download` 会将选定的媒体资源写入明确指定的新本地路径，stdout 每行只输出最终路径。MP4 支持单 H.264 视频轨和至多一条 mono/stereo AAC-LC 音轨；校验边界见[媒体契约](docs/zh-CN/cli-reference.md#本地影片资源)。
-`javdb assets list --json/--ndjson` 只输出 `type` 与 `url`，列出资产不会下载或 probe 媒体内容。
+`javdb assets list` 会在过滤与 selector 后执行有界并发的流式元数据 probe。JSON/NDJSON 始终输出
+`type` 与 `url`，并在可用时增加图片 `width`/`height` 与预览视频 `duration`（整数秒）；TTY 增加
+紧凑的 `SIZE`/`DURATION` 列。管道输出仍严格为 `TYPE<TAB>URL`，可直接交给 `assets download`。
+probe 默认启用，可用 `javdb config get/set assets.probe.enabled` 与
+`assets.probe.concurrency`（默认 `4`）查看或调整。单项 probe 失败只省略元数据，单个媒体请求自身
+超时同样如此；只有父 context 被取消或到期才会让命令失败。
 它们不会下载完整影片或磁力目标，也绝不会替换已有文件。
 
 ## 文档

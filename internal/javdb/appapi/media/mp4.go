@@ -1,6 +1,7 @@
 package media
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -16,6 +17,8 @@ const mp4VideoTimescale = 90000
 // 必须换算到它，不能直接用视频 90k 或音频采样率时间。
 const mp4MovieTimescale = 1000
 
+var errSPSTruncated = errors.New("SPS truncated")
+
 // mp4 track ID 必须唯一，禁止音视频共用 track ID 1。
 const (
 	mp4VideoTrackID = 1
@@ -27,9 +30,11 @@ const (
 // 约 0.5～1 秒,无需 per-sample 超细粒度。
 const mp4ChunkInterleaveSeconds = 1.0
 
-// mp4SampleMeta 记录单个样本的时间戳与它的两个位置:
-// Offset 是样本在最终 mdat 数据区内的位置(interleave 后,stco 使用);
-// SpoolOffset 是样本在 spool 文件内的物理位置(数据拷贝使用)。
+// mp4SampleMeta 记录单个样本的时间戳与它的两个位置：
+// Offset 是 interleave 后样本在最终 mdat 数据区内的物理绝对位置（调试与
+// 布局核对用；stco 由 mp4Chunk.offset 生成，不再从样本读取）；
+// SpoolOffset 是样本在 spool 文件内的物理位置（数据拷贝使用）。
+// 注意 sample ≠ chunk：一个 chunk 是同一 track 的连续一组样本。
 type mp4SampleMeta struct {
 	Offset      int64
 	SpoolOffset int64
@@ -170,9 +175,20 @@ func buildFTYP() []byte {
 
 // buildMoov 构造完整 moov(含 sample table)。
 // mdatStart 是 mdat 数据区在最终文件中的绝对偏移,stco 直接写最终值,无需回填。
-func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
+// videoChunks/audioChunks 是 interleaveSamples 产出的唯一 chunk layout:
+// stsc/stco 与 mdat writer 消费同一份结果。
+func buildMoov(video, audio *mp4TrackMeta, videoChunks, audioChunks []mp4Chunk, mdatStart int64) ([]byte, error) {
 	if video == nil || len(video.Samples) == 0 {
 		return nil, fmt.Errorf("mp4 requires a video track with samples")
+	}
+	if err := validateChunkLayout(video, videoChunks); err != nil {
+		return nil, err
+	}
+	includeAudio := audio != nil && len(audio.Samples) > 0
+	if includeAudio {
+		if err := validateChunkLayout(audio, audioChunks); err != nil {
+			return nil, err
+		}
 	}
 	// mdat 偏移与 moov 尺寸都是 32-bit 字段;可能溢出时明确拒绝,
 	// 不产生损坏的容器。
@@ -205,19 +221,38 @@ func buildMoov(video, audio *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 		return nil, fmt.Errorf("MP4 version-0 duration exceeds 32-bit bounds")
 	}
 	mvhd := buildMovieHeader(uint32(movieDuration))
-	videoTrak, err := buildVideoTrak(video, mdatStart)
+	videoTrak, err := buildVideoTrak(video, videoChunks, mdatStart)
 	if err != nil {
 		return nil, err
 	}
 	traks := [][]byte{videoTrak}
-	if audio != nil && len(audio.Samples) > 0 {
-		audioTrak, err := buildAudioTrak(audio, mdatStart)
+	if includeAudio {
+		audioTrak, err := buildAudioTrak(audio, audioChunks, mdatStart)
 		if err != nil {
 			return nil, err
 		}
 		traks = append(traks, audioTrak)
 	}
 	return mp4Box("moov", mvhd, flatten(traks)), nil
+}
+
+// validateChunkLayout 证明 chunk layout 恰好覆盖 track 的全部样本:
+// 丢样本或重复样本都会让 stsc/stco 与 mdat 不一致。
+func validateChunkLayout(meta *mp4TrackMeta, chunks []mp4Chunk) error {
+	if len(chunks) == 0 {
+		return fmt.Errorf("track has no mdat chunks")
+	}
+	covered := 0
+	for _, chunk := range chunks {
+		if len(chunk.samples) == 0 {
+			return fmt.Errorf("chunk layout contains an empty chunk")
+		}
+		covered += len(chunk.samples)
+	}
+	if covered != len(meta.Samples) {
+		return fmt.Errorf("chunk layout covers %d samples, track has %d", covered, len(meta.Samples))
+	}
+	return nil
 }
 
 // buildMovieHeader 构造 ISO BMFF version-0 mvhd。
@@ -263,7 +298,7 @@ func u64ScaleToMovieTimescale(duration uint64, mediaTimescale uint32) uint64 {
 	return duration * mp4MovieTimescale / uint64(mediaTimescale)
 }
 
-func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
+func buildVideoTrak(meta *mp4TrackMeta, chunks []mp4Chunk, mdatStart int64) ([]byte, error) {
 	duration := u64ScaleToMovieTimescale(meta.Duration, meta.Timescale)
 	avcC, err := buildAVCC(meta.ParamSets)
 	if err != nil {
@@ -300,7 +335,7 @@ func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	if ctts != nil {
 		boxes = append(boxes, ctts)
 	}
-	boxes = append(boxes, buildSTSC(meta.Samples), buildSTSZ(meta.Samples), buildSTCO(meta.Samples))
+	boxes = append(boxes, buildSTSC(chunks), buildSTSZ(meta.Samples), buildSTCO(chunks))
 	stbl := mp4Box("stbl", boxes...)
 	media := mp4Box("minf",
 		mp4FullBox("vmhd", 0, 1, mp4U16(0), mp4U16(0), mp4U16(0), mp4U16(0)),
@@ -312,7 +347,7 @@ func buildVideoTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	return mp4Box("trak", tkhd, md), nil
 }
 
-func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
+func buildAudioTrak(meta *mp4TrackMeta, chunks []mp4Chunk, mdatStart int64) ([]byte, error) {
 	duration := u64ScaleToMovieTimescale(meta.Duration, meta.Timescale)
 	esds := buildESDS(meta.ASC)
 	mp4a := mp4Box("mp4a",
@@ -326,7 +361,7 @@ func buildAudioTrak(meta *mp4TrackMeta, mdatStart int64) ([]byte, error) {
 	stsd := mp4FullBox("stsd", 0, 0, mp4U32(1), mp4a)
 	// 音频 sample duration 固定 1024(AAC-LC frame):所有样本 RLE 成单 entry。
 	stts := buildRLE32Constant(uint32(len(meta.Samples)), 1024)
-	stbl := mp4Box("stbl", stsd, stts, buildSTSC(meta.Samples), buildSTSZ(meta.Samples), buildSTCO(meta.Samples))
+	stbl := mp4Box("stbl", stsd, stts, buildSTSC(chunks), buildSTSZ(meta.Samples), buildSTCO(chunks))
 	media := mp4Box("minf",
 		mp4FullBox("smhd", 0, 0, mp4U16(0), mp4U16(0)),
 		buildDINF(), stbl)
@@ -510,13 +545,30 @@ func buildRLE32Signed(values []int64, signed bool) ([]byte, error) {
 	return mp4FullBox("ctts", version, 0, mp4U32(uint32(len(entries))), flatten(payload)), nil
 }
 
-func buildSTSC(samples []mp4SampleMeta) []byte {
-	// mdat 布局是 chunk 级 A/V interleave：每个 chunk 含同一 track
-	// 的连续样本，stsc 描述 chunk 映射。interleave 由 buildMDATChunks
-	// 产生，这里按 per-track 单 chunk 表示（交错的分配在 chunk 表里）。
-	return mp4FullBox("stsc", 0, 0, mp4U32(1), mp4U32(1), mp4U32(1), mp4U32(1))
+// buildSTSC 把真实 chunk layout 压缩为 samples_per_chunk 的 RLE entry:
+// first_chunk 指向 RLE 区间起点,samples_per_chunk 是该区间每个 chunk 的样本数
+// (来自 len(chunk.samples),而不是 1)。sample_description_index 恒为 1。
+func buildSTSC(chunks []mp4Chunk) []byte {
+	type entry struct {
+		firstChunk      uint32
+		samplesPerChunk uint32
+	}
+	var entries []entry
+	for index, chunk := range chunks {
+		count := uint32(len(chunk.samples))
+		if len(entries) > 0 && entries[len(entries)-1].samplesPerChunk == count {
+			continue
+		}
+		entries = append(entries, entry{firstChunk: uint32(index + 1), samplesPerChunk: count})
+	}
+	payload := make([][]byte, 0, len(entries))
+	for _, e := range entries {
+		payload = append(payload, mp4U32(e.firstChunk), mp4U32(e.samplesPerChunk), mp4U32(1))
+	}
+	return mp4FullBox("stsc", 0, 0, mp4U32(uint32(len(entries))), flatten(payload))
 }
 
+// buildSTSZ 是 per-sample 表:样本 ≠ chunk,这里仍逐样本列出大小。
 func buildSTSZ(samples []mp4SampleMeta) []byte {
 	entries := make([][]byte, 0, len(samples))
 	for _, s := range samples {
@@ -525,15 +577,14 @@ func buildSTSZ(samples []mp4SampleMeta) []byte {
 	return mp4FullBox("stsz", 0, 0, mp4U32(0), mp4U32(uint32(len(samples))), flatten(entries))
 }
 
-// buildSTCO 的 chunk 偏移指向各 track 在 mdat 数据区内的位置:
-// mdat 按 A/V chunk 交错存放，每个 chunk 是同一 track 的一组连续
-// 样本,stco 逐 chunk 指向。samples 的 Offset 是 chunk 内首样本的 spool 物理位置。
-func buildSTCO(samples []mp4SampleMeta) []byte {
-	entries := make([][]byte, 0, len(samples))
-	for _, s := range samples {
-		entries = append(entries, mp4U32(uint32(s.Offset)))
+// buildSTCO 为每个真实 chunk 写一个 entry:entry N 是第 N 个当前 track chunk
+// 在最终 mdat 数据区内的起始绝对偏移。禁止每 sample 一个 entry。
+func buildSTCO(chunks []mp4Chunk) []byte {
+	entries := make([][]byte, 0, len(chunks))
+	for _, chunk := range chunks {
+		entries = append(entries, mp4U32(uint32(chunk.offset)))
 	}
-	return mp4FullBox("stco", 0, 0, mp4U32(uint32(len(samples))), flatten(entries))
+	return mp4FullBox("stco", 0, 0, mp4U32(uint32(len(chunks))), flatten(entries))
 }
 
 func buildDINF() []byte {
@@ -814,15 +865,18 @@ func buildMP4(video *h264Track, audio *aacTrack) ([]byte, error) {
 		}
 	}
 	ftyp := buildFTYP()
-	// 先用占位 mdatStart 求 moov 尺寸,再用真实偏移重建。
-	moov, err := buildMoov(videoMeta, audioMeta, int64(len(ftyp))+1<<20)
+	// 两阶段构造：chunk grouping(样本分组)不依赖 mdatStart，只有 stco 数值依赖它。
+	// 因此第一遍用占位偏移即可得到最终 moov 尺寸，第二遍再写真实偏移。
+	placeholderStart := int64(len(ftyp)) + 1<<20
+	videoChunks, audioChunks := interleaveSamples(videoMeta, audioMeta, placeholderStart)
+	moov, err := buildMoov(videoMeta, audioMeta, videoChunks, audioChunks, placeholderStart)
 	if err != nil {
 		return nil, err
 	}
 	mdatStart := int64(len(ftyp) + len(moov) + 8)
 	// 交错 chunk 表与内存 mdat 使用与 spool 路径相同的交错逻辑。
-	videoChunks, audioChunks := interleaveSamples(videoMeta, audioMeta, mdatStart)
-	moov, err = buildMoov(videoMeta, audioMeta, mdatStart)
+	videoChunks, audioChunks = interleaveSamples(videoMeta, audioMeta, mdatStart)
+	moov, err = buildMoov(videoMeta, audioMeta, videoChunks, audioChunks, mdatStart)
 	if err != nil {
 		return nil, err
 	}
@@ -865,7 +919,7 @@ type bitReader struct {
 func (r *bitReader) readBit() (uint64, error) {
 	bytePos := r.pos / 8
 	if bytePos >= len(r.data) {
-		return 0, fmt.Errorf("SPS truncated")
+		return 0, errSPSTruncated
 	}
 	bit := (r.data[bytePos] >> (7 - uint(r.pos%8))) & 1
 	r.pos++

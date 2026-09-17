@@ -286,8 +286,16 @@ local state and should be used deliberately. `javdb assets download` writes
 selected media assets to explicit new local paths and outputs only the final
 path per line. MP4 supports one H.264 track and at most one mono/stereo AAC-LC track;
 see the [media contract](docs/en/cli-reference.md#local-movie-assets) for validation boundaries.
-`javdb assets list --json/--ndjson` exposes
-`type` and `url` only; listing does not download or probe the media payloads.
+`javdb assets list` performs best-effort streaming metadata probes after
+filtering and selectors. JSON/NDJSON always expose `type` and `url`, adding
+available image `width`/`height` and preview-video `duration` (integer
+seconds); TTY adds compact `SIZE`/`DURATION` columns. Pipe output remains
+strictly `TYPE<TAB>URL` for `assets download`. Probing is enabled by default
+and uses a bounded worker pool; inspect or disable it with
+`javdb config get/set assets.probe.enabled` and
+`assets.probe.concurrency` (default `4`). A failed individual probe only
+omits metadata, including a media request that times out on its own; cancelling
+or expiring the parent context still fails the call.
 They never download a full movie or magnet target and never replace an existing
 file.
 

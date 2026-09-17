@@ -43,10 +43,10 @@ func TestRenderDetailWritesGraphLines(t *testing.T) {
 	var out bytes.Buffer
 	renderDetail(&out, map[string]any{
 		"number": "SSIS-001", "id": "x1", "title": "T", "score": float64(8),
-		"release_date": "2026-01-02", "magnets_count": float64(3),
+		"release_date": "2026-01-02", "duration": float64(130), "magnets_count": float64(3),
 		"actors": []any{map[string]any{"id": "a1", "name": "山手"}},
 	})
-	for _, want := range []string{"番号\tSSIS-001", "id\tx1", "标题\tT", "评分\t8", "日期\t2026-01-02", "磁力数\t3", "演员\ta1\t山手"} {
+	for _, want := range []string{"番号\tSSIS-001", "id\tx1", "标题\tT", "评分\t8", "日期\t2026-01-02", "时长\t130 分钟", "磁力数\t3", "演员\ta1\t山手"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("detail output missing %q:\n%s", want, out.String())
 		}

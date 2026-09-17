@@ -38,7 +38,7 @@ func TestNewHelp(t *testing.T) {
 func TestWriteRankedPrefixesRank(t *testing.T) {
 	var out, errb bytes.Buffer
 	if err := writeRanked(&out, &errb, []map[string]any{
-		{"ranking": float64(3), "number": "N3", "id": "i3", "title": "T3", "release_date": "2026-03-04"},
+		{"ranking": float64(3), "number": "N3", "id": "i3", "title": "T3", "release_date": "2026-03-04", "duration": float64(130)},
 		{"ranking": float64(4), "number": "N4", "id": "i4", "title": "T4"},
 	}); err != nil {
 		t.Fatal(err)

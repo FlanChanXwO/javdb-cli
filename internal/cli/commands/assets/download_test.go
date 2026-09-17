@@ -319,7 +319,7 @@ func TestListPipeIntoDownload(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
 	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
-	server := newListServer(t)
+	server, _ := newListServer(t)
 	defer server.Close()
 
 	// list:非 TTY 输出 TYPE<TAB>URL。

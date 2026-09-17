@@ -24,8 +24,8 @@ javdb config set KEY VALUE
 javdb config unset KEY
 ```
 
-支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`，以及
-`reverse_search` 标量（`reverse_search.default_source`、
+支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`、
+`assets.probe.enabled`、`assets.probe.concurrency`，以及 `reverse_search` 标量（`reverse_search.default_source`、
 `reverse_search.cache`、`reverse_search.cache_ttl`、`reverse_search.retries`、
 `reverse_search.retry_wait`、`reverse_search.request_timeout`）。默认关闭
 `auto_relogin`；显式开启后，过期 JWT 才可能使用默认账号已保存的密码重登一次。
@@ -96,6 +96,10 @@ best 规则取前 N）。文本模式输出磁力 URI；`--ndjson` 输出 `kind=
 每页 `20` 条；需要其他**单页**时传入任意正数 `--page` 与 `--limit`。`--json` 会保留该页
 上游返回的完整评论对象。
 
+人类可读的 `search` 影片行在上游提供正数时追加例如 `130m` 的正片时长；JSON/NDJSON 保留上游
+的 `duration` 字段。人类可读的 `detail` 输出显示 `时长 130 分钟`。这里的正片时长与
+`assets list` 探测的预览资产 `duration` 不同，后者单位为整数秒。
+
 ## 本地影片资源
 
 ```bash
@@ -109,9 +113,26 @@ javdb assets download [-d DIR] [-o PATH]
 `1 3 5`）；重叠编号去重并保持列表顺序；`0`、`4-1`、`1-` 与非数字 token 明确失败，越界编号
 会给出有效范围。缺省 selector 表示列出该类型的全部资产。
 
-TTY 下输出带人类描述的编号表格；管道输出为每行一条 `TYPE<TAB>URL` 记录；`--json` 输出单个
-JSON 数组、`--ndjson` 每行一个 JSON 对象。机器输出严格只含 `type` 与 `url`，列出资产不会
-读取媒体内容。编号只是当前列表的位置，不是长期资产 ID。
+媒体元数据 probe 默认启用，只会对过滤与 selector 后剩余的资产发起额外的流式请求。
+可用 `config get/set` 查看或调整有效配置：
+
+```bash
+javdb config get assets.probe.enabled       # 默认 true
+javdb config get assets.probe.concurrency   # 默认 4
+javdb config set assets.probe.enabled false
+javdb config set assets.probe.concurrency 8
+```
+
+`assets.probe.concurrency` 必须为正数。probe 使用有界 worker pool，单个资产失败时只缺少对应字段，
+不增加 `probe_error`；单个媒体请求自身超时同样只影响该资产，只有父 context 取消或到期才会使
+命令失败。图片报告 `width`/`height`，
+预览视频另报告 `duration`（整数秒）。不会从 URL、文件名、Content-Length、bitrate 或正片时长猜测值。
+
+TTY 下输出带人类描述、`SIZE` 与 `DURATION` 列的编号表格，未知值显示 `-`；管道输出即使执行
+probe，仍严格为每行一条 `TYPE<TAB>URL` 记录。`--json` 输出单个 JSON 数组、`--ndjson` 每行一个
+JSON 对象；机器对象始终含 `type` 与 `url`，并在可用时增加 `width`、`height` 与视频 `duration`
+（整数秒）。禁用 probe 时 JSON/NDJSON 不含这些可选字段，TTY 显示 `-`。编号只是当前列表的位置，
+不是长期资产 ID。
 
 `assets download` 从 stdin 消费 `assets list` 输出的 `TYPE<TAB>URL` 记录，逐条流式处理，
 不缓存全部输入。`-d DIR`（默认
