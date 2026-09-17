@@ -263,15 +263,18 @@ func (s *mp4Spooler) finalize() error {
 // chunk(约 1 秒)，样本从 spool 按交错顺序拷出，stco 指向交错后的绝对位置。
 func writeMP4Body(spool *mp4Spooler, out io.Writer) (int64, error) {
 	ftyp := buildFTYP()
-	// moov 尺寸与 stco 取值无关:先用占位求尺寸，再用真实 mdatStart 重建。
-	moov, err := buildMoov(spool.video, spool.audio, int64(len(ftyp))+1<<20)
+	// 两阶段构造：chunk grouping 与 stsc 不依赖 mdatStart，而是 stco 数值依赖；
+	// 先用占位偏移求 moov 尺寸，再用真实 mdatStart 重建同一份 chunk layout。
+	placeholderStart := int64(len(ftyp)) + 1<<20
+	videoChunks, audioChunks := interleaveSamples(spool.video, spool.audio, placeholderStart)
+	moov, err := buildMoov(spool.video, spool.audio, videoChunks, audioChunks, placeholderStart)
 	if err != nil {
 		return 0, err
 	}
 	mdatStart := int64(len(ftyp) + len(moov) + 8)
 	// 交错 chunk 表：重分配每个样本在 mdat 数据区内的绝对 Offset。
-	videoChunks, audioChunks := interleaveSamples(spool.video, spool.audio, mdatStart)
-	moov, err = buildMoov(spool.video, spool.audio, mdatStart)
+	videoChunks, audioChunks = interleaveSamples(spool.video, spool.audio, mdatStart)
+	moov, err = buildMoov(spool.video, spool.audio, videoChunks, audioChunks, mdatStart)
 	if err != nil {
 		return 0, err
 	}
@@ -319,7 +322,8 @@ type mp4Chunk struct {
 
 // interleaveSamples 按 chunk 级 A/V interleave 重分配样本的
 // mdat Offset：视频按 GOP(以 sync sample 边界)、音频按约 1 秒时间窗口，
-// 按时间顺序交错。stco 指向交错后的绝对位置，样本顺序由 chunk 表决定。
+// 按时间顺序交错。返回值是唯一 chunk layout：stco/stsc 由它生成，
+// mdat writer 按同一份 chunk 顺序拷贝数据，两端不会出现分叉。
 func interleaveSamples(video, audio *mp4TrackMeta, mdatStart int64) (videoChunks, audioChunks []mp4Chunk) {
 	if video == nil {
 		return nil, nil
@@ -379,8 +383,8 @@ func interleaveSamples(video, audio *mp4TrackMeta, mdatStart int64) (videoChunks
 			meta, p = audio, &audioPending[ref.index]
 		}
 		chunk := mp4Chunk{offset: offset, video: ref.isVideo}
-		// 重分配每个样本的 Offset 为交错后的绝对位置(写回 meta.Samples,
-		// buildSTCO 从 meta.Samples 读取)。
+		// 重分配每个样本的 Offset 为交错后的绝对位置（调试/核对用；
+		// stco 由 chunk.offset 生成，不再从样本 Offset 读取）。
 		for _, idx := range p.indexes {
 			meta.Samples[idx].Offset = offset
 			chunk.samples = append(chunk.samples, meta.Samples[idx])
