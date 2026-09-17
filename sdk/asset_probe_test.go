@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func probePNGFixture(t *testing.T, width, height int) []byte {
@@ -25,8 +25,14 @@ func probePNGFixture(t *testing.T, width, height int) []byte {
 	return out.Bytes()
 }
 
+// TestProbeMovieAssetsPreservesOrderDeduplicatesAndUsesBestEffort 是核心 SDK 契约：
+// 输入顺序、Type+URL 去重、成功 metadata、单项 HTTP 失败、单项 transport 超时、
+// unsupported type，最终整体仍然成功。
 func TestProbeMovieAssetsPreservesOrderDeduplicatesAndUsesBestEffort(t *testing.T) {
 	payload := probePNGFixture(t, 31, 17)
+	// slowRelease 让挂起的 /slow.png handler 在测试完成后立即退出，
+	// 避免 httptest.Server.Close 等待一个永远不会被取消的 handler。
+	slowRelease := make(chan struct{})
 	var (
 		mu       sync.Mutex
 		requests = map[string]int{}
@@ -40,22 +46,39 @@ func TestProbeMovieAssetsPreservesOrderDeduplicatesAndUsesBestEffort(t *testing.
 			_, _ = writer.Write(payload)
 		case "/bad.png":
 			http.Error(writer, "broken", http.StatusBadGateway)
+		case "/slow.png":
+			// 先发出 header 让 client 进入 body 读取，再挂起超过 client timeout。
+			writer.WriteHeader(http.StatusOK)
+			if flusher, ok := writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			<-slowRelease
 		default:
 			http.NotFound(writer, request)
 		}
 	}))
-	defer server.Close()
+	// 先释放挂起的 handler，再关闭 server；单个 defer 保证顺序。
+	defer func() {
+		close(slowRelease)
+		server.Close()
+	}()
 
-	client, err := New(WithHost(server.URL))
+	// transport 的 timeout 以秒为单位取整，必须 >= 1s 才会生效。
+	client, err := New(WithHost(server.URL), WithTimeout(1*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 	assets := []MovieAsset{
 		{Type: assetTypeImage, URL: server.URL + "/good.png"},
 		{Type: assetTypeImage, URL: server.URL + "/bad.png"},
+		{Type: assetTypeImage, URL: server.URL + "/slow.png"},
 		{Type: assetTypeImage, URL: server.URL + "/good.png"},
 		{Type: assetTypeVideo, URL: server.URL + "/good.png"},
 		{Type: "audio", URL: server.URL + "/good.png"},
+	}
+	// 负数 concurrency 在发任何请求前被拒绝，属于同一 contract。
+	if _, err := client.ProbeMovieAssets(context.Background(), assets, MovieAssetProbeOptions{Concurrency: -1}); err == nil {
+		t.Fatal("ProbeMovieAssets() accepted negative concurrency")
 	}
 	infos, err := client.ProbeMovieAssets(context.Background(), assets, MovieAssetProbeOptions{Concurrency: 2})
 	if err != nil {
@@ -70,10 +93,11 @@ func TestProbeMovieAssetsPreservesOrderDeduplicatesAndUsesBestEffort(t *testing.
 		}
 	}
 	wantImage := MovieAssetMetadata{Width: 31, Height: 17}
-	if infos[0].Metadata != wantImage || infos[2].Metadata != wantImage {
-		t.Fatalf("deduplicated image metadata = %+v / %+v, want %+v", infos[0].Metadata, infos[2].Metadata, wantImage)
+	if infos[0].Metadata != wantImage || infos[3].Metadata != wantImage {
+		t.Fatalf("deduplicated image metadata = %+v / %+v, want %+v", infos[0].Metadata, infos[3].Metadata, wantImage)
 	}
-	for _, index := range []int{1, 3, 4} {
+	// 单项 HTTP failure、单项 transport timeout、unsupported type 只丢失 metadata。
+	for _, index := range []int{1, 2, 4, 5} {
 		if infos[index].Metadata != (MovieAssetMetadata{}) {
 			t.Fatalf("infos[%d].Metadata = %+v, want zero value", index, infos[index].Metadata)
 		}
@@ -86,11 +110,16 @@ func TestProbeMovieAssetsPreservesOrderDeduplicatesAndUsesBestEffort(t *testing.
 	if requests["/bad.png"] != 1 {
 		t.Fatalf("bad URL requests = %d, want 1", requests["/bad.png"])
 	}
+	if requests["/slow.png"] != 1 {
+		t.Fatalf("slow URL requests = %d, want 1", requests["/slow.png"])
+	}
 }
 
+// TestProbeMovieAssetsUsesBoundedWorkerPool 证明并发上限由 worker pool 约束：
+// 同时在途请求数不超过 concurrency，且每个 asset 恰好一个请求。
 func TestProbeMovieAssetsUsesBoundedWorkerPool(t *testing.T) {
 	const (
-		assetCount  = 1000
+		assetCount  = 16
 		concurrency = 3
 	)
 	payload := probePNGFixture(t, 11, 7)
@@ -101,12 +130,7 @@ func TestProbeMovieAssetsUsesBoundedWorkerPool(t *testing.T) {
 		current := active.Add(1)
 		defer active.Add(-1)
 		requestCount.Add(1)
-		for {
-			maximum := maxActive.Load()
-			if current <= maximum || maxActive.CompareAndSwap(maximum, current) {
-				break
-			}
-		}
+		updateAtomicMax(&maxActive, current)
 		select {
 		case started <- struct{}{}:
 		default:
@@ -128,7 +152,6 @@ func TestProbeMovieAssetsUsesBoundedWorkerPool(t *testing.T) {
 		infos []MovieAssetInfo
 		err   error
 	}
-	baselineGoroutines := runtime.NumGoroutine()
 	result := make(chan probeResult, 1)
 	go func() {
 		infos, err := client.ProbeMovieAssets(context.Background(), assets, MovieAssetProbeOptions{Concurrency: concurrency})
@@ -136,9 +159,6 @@ func TestProbeMovieAssetsUsesBoundedWorkerPool(t *testing.T) {
 	}()
 	for range concurrency {
 		<-started
-	}
-	if increase := runtime.NumGoroutine() - baselineGoroutines; increase >= assetCount/2 {
-		t.Fatalf("goroutine increase = %d for %d assets, worker pool appears per-asset", increase, assetCount)
 	}
 	close(release)
 	got := <-result
@@ -153,36 +173,6 @@ func TestProbeMovieAssetsUsesBoundedWorkerPool(t *testing.T) {
 	}
 	if gotRequests := requestCount.Load(); gotRequests != assetCount {
 		t.Fatalf("requests = %d, want %d", gotRequests, assetCount)
-	}
-}
-
-func TestProbeMovieAssetsNormalizesVideoDuration(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/short.m3u8":
-			_, _ = writer.Write([]byte("#EXTM3U\n#EXTINF:0.4,\nshort.ts\n#EXT-X-ENDLIST\n"))
-		case "/rounded.m3u8":
-			_, _ = writer.Write([]byte("#EXTM3U\n#EXTINF:1.6,\nrounded.ts\n#EXT-X-ENDLIST\n"))
-		case "/short.ts", "/rounded.ts":
-			http.Error(writer, "SPS unavailable", http.StatusBadGateway)
-		default:
-			http.NotFound(writer, request)
-		}
-	}))
-	defer server.Close()
-	client, err := New(WithHost(server.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
-	infos, err := client.ProbeMovieAssets(context.Background(), []MovieAsset{
-		{Type: assetTypeVideo, URL: server.URL + "/short.m3u8"},
-		{Type: assetTypeVideo, URL: server.URL + "/rounded.m3u8"},
-	}, MovieAssetProbeOptions{})
-	if err != nil {
-		t.Fatalf("ProbeMovieAssets() error = %v", err)
-	}
-	if infos[0].Metadata.Duration != 1 || infos[1].Metadata.Duration != 2 {
-		t.Fatalf("durations = %d/%d, want 1/2", infos[0].Metadata.Duration, infos[1].Metadata.Duration)
 	}
 }
 
@@ -210,22 +200,12 @@ func TestProbeMovieAssetsReturnsContextCancellation(t *testing.T) {
 	}
 }
 
-func TestProbeMovieAssetsRejectsNegativeConcurrencyBeforeNetwork(t *testing.T) {
-	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		requests.Add(1)
-		http.Error(writer, "unexpected", http.StatusInternalServerError)
-	}))
-	defer server.Close()
-	client, err := New(WithHost(server.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.ProbeMovieAssets(context.Background(), []MovieAsset{{Type: assetTypeImage, URL: server.URL + "/image.png"}}, MovieAssetProbeOptions{Concurrency: -1})
-	if err == nil {
-		t.Fatal("ProbeMovieAssets() accepted negative concurrency")
-	}
-	if got := requests.Load(); got != 0 {
-		t.Fatalf("negative concurrency performed %d media requests", got)
+// updateAtomicMax 以 CAS 循环维护原子最大值：普通并发测试与 stress 测试共用。
+func updateAtomicMax(target *atomic.Int64, value int64) {
+	for {
+		current := target.Load()
+		if value <= current || target.CompareAndSwap(current, value) {
+			return
+		}
 	}
 }

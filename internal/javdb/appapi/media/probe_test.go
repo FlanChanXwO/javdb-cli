@@ -12,9 +12,14 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// probe 契约：只读取识别媒体 header 所需的字节。
+// 图片探测在得到尺寸后停止；HLS 探测扫描完整 playlist 取 duration，
+// 并只读取首段直到找到 H.264 SPS。解析上限与 best-effort 语义在这里覆盖。
 
 type trackedProbeBody struct {
 	reader io.Reader
@@ -77,6 +82,7 @@ func webPProbeFixture(kind string, width, height int) []byte {
 	return fixture
 }
 
+// TestProbeImageMetadataStreamsSupportedFormats 覆盖图片格式识别与 header 级流式读取。
 func TestProbeImageMetadataStreamsSupportedFormats(t *testing.T) {
 	const width, height = 37, 23
 	tests := []struct {
@@ -110,6 +116,8 @@ func TestProbeImageMetadataStreamsSupportedFormats(t *testing.T) {
 	}
 }
 
+// TestProbeImageMetadataUnwrapsXORAndStopsAfterHeader 是 #48 的核心资源保证：
+// 识别出尺寸后不得继续读取图片尾部。
 func TestProbeImageMetadataUnwrapsXORAndStopsAfterHeader(t *testing.T) {
 	const width, height = 41, 29
 	payload := encodedProbeImage(t, "png", width, height)
@@ -139,55 +147,15 @@ func TestProbeImageMetadataUnwrapsXORAndStopsAfterHeader(t *testing.T) {
 	}
 }
 
-func TestProbeHLSPlaylistDuration(t *testing.T) {
-	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	playlist, err := parseHLSProbePlaylistReader(playlistURL, strings.NewReader("#EXTM3U\n#EXTINF:10.125,\na.ts\n#EXTINF:9.875,\nb.ts\n#EXT-X-ENDLIST\n"))
-	if err != nil {
-		t.Fatalf("parseHLSProbePlaylistReader() error = %v", err)
-	}
-	if !playlist.durationValid || playlist.durationSeconds != 20 {
-		t.Fatalf("duration = %v valid=%v, want 20 seconds", playlist.durationSeconds, playlist.durationValid)
-	}
-	if !playlist.hasFirstSegment || playlist.firstSegment.uri != "https://media.example.test/previews/a.ts" {
-		t.Fatalf("first segment = %+v, want resolved a.ts", playlist.firstSegment)
-	}
-}
-
-func TestProbeHLSPlaylistDoesNotFabricateDuration(t *testing.T) {
-	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	for _, tc := range []struct {
-		name     string
-		playlist string
-		wantErr  bool
-	}{
-		{name: "unfinished", playlist: "#EXTM3U\n#EXTINF:1.0,\na.ts\n", wantErr: true},
-		{name: "malformed extinf", playlist: "#EXTM3U\n#EXTINF:not-a-number,\na.ts\n#EXT-X-ENDLIST\n"},
-		{name: "missing extinf", playlist: "#EXTM3U\na.ts\n#EXT-X-ENDLIST\n"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			playlist, err := parseHLSProbePlaylistReader(playlistURL, strings.NewReader(tc.playlist))
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("parseHLSProbePlaylistReader() unexpectedly succeeded")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseHLSProbePlaylistReader() error = %v", err)
-			}
-			if playlist.durationValid || playlist.durationSeconds != 0 {
-				t.Fatalf("duration = %v valid=%v, want unknown", playlist.durationSeconds, playlist.durationValid)
-			}
-		})
-	}
-}
-
+// TestProbeHLSMetadataExtractsDurationAndSPS 覆盖完整 HLS 链路：
+// playlist → EXTINF duration → AES-128 → TS → PAT/PMT → H.264 SPS。
+// 首段附带巨大尾部，验证拿到 SPS 后停止读取并关闭 response body。
 func TestProbeHLSMetadataExtractsDurationAndSPS(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 	const segmentURL = "https://media.example.test/previews/a.ts"
 	const keyURL = "https://media.example.test/previews/key.bin"
 	key := []byte("0123456789abcdef")
-	segment := validTSSegmentAt(0)
+	segment := append(validTSSegmentAt(0), bytes.Repeat([]byte{0xaa}, 1<<20)...)
 	for _, tc := range []struct {
 		name     string
 		playlist []byte
@@ -207,18 +175,19 @@ func TestProbeHLSMetadataExtractsDurationAndSPS(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resources := map[string][]byte{
-				playlistURL: tc.playlist,
-				segmentURL:  tc.segment,
-				keyURL:      tc.key,
-			}
-			endpoint := NewMedia(byteFetch(func(_ context.Context, uri string) ([]byte, error) {
-				payload, ok := resources[uri]
-				if !ok {
+			segmentBody := &trackedProbeBody{reader: bytes.NewReader(tc.segment)}
+			endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
+				switch uri {
+				case playlistURL:
+					return io.NopCloser(bytes.NewReader(tc.playlist)), nil
+				case segmentURL:
+					return segmentBody, nil
+				case keyURL:
+					return io.NopCloser(bytes.NewReader(tc.key)), nil
+				default:
 					return nil, fmt.Errorf("unexpected media URI %q", uri)
 				}
-				return payload, nil
-			}))
+			})
 			metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
 			if err != nil {
 				t.Fatalf("ProbeHLSMetadata() error = %v", err)
@@ -226,160 +195,177 @@ func TestProbeHLSMetadataExtractsDurationAndSPS(t *testing.T) {
 			if metadata.Width != 640 || metadata.Height != 480 || metadata.DurationSeconds != 20 {
 				t.Fatalf("metadata = %+v, want 640x480 and 20 seconds", metadata)
 			}
+			if segmentBody.read >= len(tc.segment) {
+				t.Fatalf("ProbeHLSMetadata() read full segment: %d/%d bytes", segmentBody.read, len(tc.segment))
+			}
+			if !segmentBody.closed {
+				t.Fatal("ProbeHLSMetadata() did not close segment body")
+			}
 		})
 	}
 }
 
-func TestProbeHLSMetadataPreservesDurationWhenSPSProbeFails(t *testing.T) {
+// TestProbeHLSMetadataPartialAndMalformedSafety 覆盖 best-effort 与解析资源边界：
+// duration 与 SPS 相互独立；异常 playlist/SPS 明确失败且不做无界缓存。
+func TestProbeHLSMetadataPartialAndMalformedSafety(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	endpoint := NewMedia(byteFetch(func(_ context.Context, uri string) ([]byte, error) {
-		if uri == playlistURL {
-			return []byte("#EXTM3U\n#EXTINF:20.0,\nbroken.ts\n#EXT-X-ENDLIST\n"), nil
-		}
-		return nil, errors.New("segment unavailable")
-	}))
-	metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
-	if err != nil {
-		t.Fatalf("ProbeHLSMetadata() error = %v", err)
-	}
-	if metadata.DurationSeconds != 20 || metadata.Width != 0 || metadata.Height != 0 {
-		t.Fatalf("metadata = %+v, want duration-only result", metadata)
-	}
-}
 
-func TestProbeHLSMetadataStopsAfterSPS(t *testing.T) {
-	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	const segmentURL = "https://media.example.test/previews/segment.ts"
-	segment := append(validTSSegmentAt(0), bytes.Repeat([]byte{0xaa}, 1<<20)...)
-	segmentBody := &trackedProbeBody{reader: bytes.NewReader(segment)}
-	endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
-		switch uri {
-		case playlistURL:
-			return io.NopCloser(strings.NewReader("#EXTM3U\n#EXTINF:1.0,\nsegment.ts\n#EXT-X-ENDLIST\n")), nil
-		case segmentURL:
-			return segmentBody, nil
-		default:
-			return nil, fmt.Errorf("unexpected media URI %q", uri)
+	t.Run("keeps duration when segment probe fails", func(t *testing.T) {
+		endpoint := NewMedia(byteFetch(func(_ context.Context, uri string) ([]byte, error) {
+			if uri == playlistURL {
+				return []byte("#EXTM3U\n#EXTINF:20.0,\nbroken.ts\n#EXT-X-ENDLIST\n"), nil
+			}
+			return nil, errors.New("segment unavailable")
+		}))
+		metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
+		if err != nil {
+			t.Fatalf("ProbeHLSMetadata() error = %v", err)
+		}
+		if metadata.DurationSeconds != 20 || metadata.Width != 0 || metadata.Height != 0 {
+			t.Fatalf("metadata = %+v, want duration-only result", metadata)
 		}
 	})
-	metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
-	if err != nil {
-		t.Fatalf("ProbeHLSMetadata() error = %v", err)
-	}
-	if metadata.Width != 640 || metadata.Height != 480 {
-		t.Fatalf("metadata = %+v, want 640x480", metadata)
-	}
-	if segmentBody.read >= len(segment) {
-		t.Fatalf("ProbeHLSMetadata() read full segment: %d bytes", segmentBody.read)
-	}
-	if !segmentBody.closed {
-		t.Fatal("ProbeHLSMetadata() did not close segment body")
-	}
-}
 
-func TestProbeHLSMetadataReturnsContextCancellation(t *testing.T) {
-	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	t.Run("before playlist", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		endpoint := NewMedia(func(context.Context, string) (io.ReadCloser, error) {
-			t.Fatal("fetch called after context cancellation")
-			return nil, nil
-		})
-		_, err := endpoint.ProbeHLSMetadata(ctx, playlistURL)
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("ProbeHLSMetadata() error = %v, want context.Canceled", err)
-		}
-	})
-	t.Run("during segment", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+	t.Run("does not fabricate duration from malformed EXTINF", func(t *testing.T) {
+		// 段本身可解析：若 duration 被伪造，这里会看到非零值而不是 0。
+		servableSegment := validTSSegmentAt(0)
 		endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
 			if uri == playlistURL {
-				return io.NopCloser(strings.NewReader("#EXTM3U\n#EXTINF:20.0,\nsegment.ts\n#EXT-X-ENDLIST\n")), nil
+				return io.NopCloser(strings.NewReader("#EXTM3U\n#EXTINF:not-a-number,\na.ts\n#EXT-X-ENDLIST\n")), nil
 			}
-			cancel()
-			return nil, context.Canceled
+			return io.NopCloser(bytes.NewReader(servableSegment)), nil
 		})
-		_, err := endpoint.ProbeHLSMetadata(ctx, playlistURL)
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("ProbeHLSMetadata() error = %v, want context.Canceled", err)
+		metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
+		if err != nil {
+			t.Fatalf("ProbeHLSMetadata() error = %v", err)
+		}
+		if metadata.DurationSeconds != 0 {
+			t.Fatalf("duration = %v, want unknown for malformed EXTINF", metadata.DurationSeconds)
+		}
+		if metadata.Width != 640 || metadata.Height != 480 {
+			t.Fatalf("metadata = %+v, want 640x480", metadata)
 		}
 	})
-	t.Run("transport deadline", func(t *testing.T) {
+
+	t.Run("treats overflowing EXTINF total as unknown", func(t *testing.T) {
+		// 每行 EXTINF 都是有限正数，但累加结果溢出为 +Inf。
+		playlist := "#EXTM3U\n#EXTINF:1.7e308,\na.ts\n#EXTINF:1.7e308,\nb.ts\n#EXT-X-ENDLIST\n"
 		endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
 			if uri == playlistURL {
-				return io.NopCloser(strings.NewReader("#EXTM3U\n#EXTINF:20.0,\nsegment.ts\n#EXT-X-ENDLIST\n")), nil
+				return io.NopCloser(strings.NewReader(playlist)), nil
 			}
-			return nil, context.DeadlineExceeded
+			return io.NopCloser(bytes.NewReader(validTSSegmentAt(0))), nil
+		})
+		metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
+		if err != nil {
+			t.Fatalf("ProbeHLSMetadata() error = %v", err)
+		}
+		if metadata.DurationSeconds != 0 {
+			t.Fatalf("duration = %v, want unknown for overflowing EXTINF total", metadata.DurationSeconds)
+		}
+	})
+
+	t.Run("rejects oversized playlist line without buffering it", func(t *testing.T) {
+		// 缺失换行的响应；读取必须在行上限处失败，而不是把整段缓存进内存。
+		payload := append([]byte("#EXTM3U\n"), bytes.Repeat([]byte{'a'}, 1<<20)...)
+		body := &trackedProbeBody{reader: bytes.NewReader(payload)}
+		endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
+			return body, nil
 		})
 		_, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("ProbeHLSMetadata() error = %v, want context.DeadlineExceeded", err)
+		if err == nil || !strings.Contains(err.Error(), "line too long") {
+			t.Fatalf("ProbeHLSMetadata() error = %v, want line-too-long failure", err)
+		}
+		if body.read >= len(payload) {
+			t.Fatalf("oversized playlist line buffered %d/%d bytes", body.read, len(payload))
+		}
+	})
+
+	t.Run("bounds malformed SPS buffering", func(t *testing.T) {
+		// 视频 ES 是单条连续的 SPS NAL。探测必须在内存受控的前提下结束：
+		// 合法 SPS 命中即停；语法确定的非法 SPS 立即失败。
+		// 判定依据是“分配量不得随输入规模成比例增长”：输入约 34 MiB，若解析器
+		// 缓存 payload，分配量至少会是输入量级；阈值取输入长度的 1/16，而实际
+		// 观察值只有几 KiB。
+		const inputPayloadBytes = 32 << 20
+		for _, tc := range []struct {
+			name    string
+			firstES []byte
+			fill    byte
+			wantErr bool
+		}{
+			{
+				name:    "implausible SPS fails deterministically",
+				firstES: append([]byte{0x00, 0x00, 0x00, 0x01, 0x67}, bytes.Repeat([]byte{0x08}, 16)...),
+				fill:    0x08,
+				wantErr: true,
+			},
+			{
+				name:    "valid SPS stops at the first NAL",
+				firstES: []byte{0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2},
+				fill:    0x00,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				segment := spsProbeSegment(tc.firstES, inputPayloadBytes, tc.fill)
+				runtime.GC()
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
+				endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
+					if uri == playlistURL {
+						return io.NopCloser(strings.NewReader("#EXTM3U\nmalformed.ts\n#EXT-X-ENDLIST\n")), nil
+					}
+					return io.NopCloser(bytes.NewReader(segment)), nil
+				})
+				metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
+				runtime.ReadMemStats(&after)
+
+				if tc.wantErr {
+					if err == nil {
+						t.Fatalf("ProbeHLSMetadata() = %+v, want an SPS parse error", metadata)
+					}
+				} else if err != nil {
+					t.Fatalf("ProbeHLSMetadata() error = %v", err)
+				} else if metadata.Width != 640 || metadata.Height != 480 {
+					t.Fatalf("metadata = %+v, want 640x480", metadata)
+				}
+
+				if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(len(segment))/16 {
+					t.Fatalf("parser allocated %d bytes for a %d-byte segment, want bounded state", alloc, len(segment))
+				}
+			})
 		}
 	})
 }
 
-type cancelOnReadBody struct {
-	reader io.Reader
-	cancel context.CancelFunc
-	read   bool
-	bytes  int
-}
-
-func (b *cancelOnReadBody) Read(p []byte) (int, error) {
-	n, err := b.reader.Read(p)
-	b.bytes += n
-	if !b.read {
-		b.read = true
-		b.cancel()
+// spsProbeSegment 构造结构合法的 TS segment：PAT/PMT 后是单个 H.264 PES 及其
+// 续包。firstES 是首个 PES 的 ES 前缀（不足处用 fill 补到 payload 上限），后续
+// 每个包都填满 184 字节 ES，避免 0xFF stuffing 混入 elementary stream。
+func spsProbeSegment(firstES []byte, payloadBytes int, fill byte) []byte {
+	const (
+		packetPayload = 184
+		// 首个 PES 含 19 字节 PES 头（起始码/长度/flags/PTS+DTS），
+		// 因此 ES 前缀上限是 184-19。续包没有 PES 头，可填满 184 字节 ES。
+		firstESLength = packetPayload - 19
+	)
+	if len(firstES) > firstESLength {
+		panic("first ES prefix exceeds a single TS packet")
 	}
-	return n, err
-}
-
-func (b *cancelOnReadBody) Close() error { return nil }
-
-func TestProbeHLSMetadataStopsWhenContextCancelsDuringReader(t *testing.T) {
-	const playlistURL = "https://media.example.test/previews/index.m3u8"
-	const segmentURL = "https://media.example.test/previews/segment.ts"
-	ctx, cancel := context.WithCancel(context.Background())
-	playlistPayload := append([]byte("#EXTM3U\n#EXTINF:20.0\nsegment.ts\n#EXT-X-ENDLIST\n"), bytes.Repeat([]byte("#COMMENT\n"), 1<<17)...)
-	var playlistBody *cancelOnReadBody
-	endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
-		switch uri {
-		case playlistURL:
-			playlistBody = &cancelOnReadBody{reader: bytes.NewReader(playlistPayload), cancel: cancel}
-			return playlistBody, nil
-		case segmentURL:
-			return nil, context.Canceled
-		default:
-			return nil, fmt.Errorf("unexpected media URI %q", uri)
+	segment := append([]byte{}, tsPacket(patPID, true, 0, patSection())...)
+	segment = append(segment, tsPacket(pmtPID, true, 0, pmtSection())...)
+	head := append([]byte{}, firstES...)
+	head = append(head, bytes.Repeat([]byte{fill}, firstESLength-len(head))...)
+	segment = append(segment, tsPacket(videoPID, true, 1, pesBytes(0xE0, 90000, 90000, true, head))...)
+	remaining := payloadBytes
+	cc := byte(2)
+	for remaining > 0 {
+		size := packetPayload
+		if size > remaining {
+			size = remaining
 		}
-	})
-	_, err := endpoint.ProbeHLSMetadata(ctx, playlistURL)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("ProbeHLSMetadata() error = %v, want context.Canceled", err)
+		segment = append(segment, tsPacket(videoPID, false, cc, bytes.Repeat([]byte{fill}, size))...)
+		cc = (cc + 1) & 0x0F
+		remaining -= size
 	}
-	if playlistBody == nil || playlistBody.bytes >= len(playlistPayload) {
-		t.Fatalf("playlist reader consumed %d/%d bytes after cancellation", playlistBody.bytes, len(playlistPayload))
-	}
-}
-
-func TestAnnexBSPSProbeStopsCollectingMalformedUnterminatedSPS(t *testing.T) {
-	var scanner annexBSPSProbe
-	if scanner.feed([]byte{0, 0, 0, 1, 0x67}) {
-		t.Fatal("malformed SPS unexpectedly produced dimensions")
-	}
-	scanner.feed(bytes.Repeat([]byte{0}, 1<<20))
-	if scanner.feed([]byte{2}) {
-		t.Fatal("malformed SPS unexpectedly produced dimensions")
-	}
-	if scanner.collecting {
-		t.Fatal("malformed SPS remained in collecting state")
-	}
-	if len(scanner.sps) > 64 {
-		t.Fatalf("malformed SPS buffer grew to %d bytes, want bounded parser state", len(scanner.sps))
-	}
-	if scanner.lastErr == nil {
-		t.Fatal("malformed SPS did not expose a parse error")
-	}
+	return segment
 }

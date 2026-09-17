@@ -190,6 +190,30 @@ func TestConfigAssetProbeDefaultsAndRoundTrip(t *testing.T) {
 	if got := strings.TrimSpace(out.String()); got != "false" {
 		t.Fatalf("explicit enabled = %q, want false", got)
 	}
+	// 手写/半量配置（只写 enabled）必须继续返回默认 concurrency。
+	out, _, err = executeConfig(t, "get", "assets.probe.concurrency")
+	if err != nil {
+		t.Fatalf("get sparse concurrency: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "4" {
+		t.Fatalf("sparse concurrency = %q, want default 4", got)
+	}
+}
+
+// TestConfigGetRejectsInvalidProbeConfig 无参数 config get 不得静默隐藏损坏的配置。
+func TestConfigGetRejectsInvalidProbeConfig(t *testing.T) {
+	home := isolateHome(t)
+	configDir := filepath.Join(home, ".javdb-cli")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("[assets.probe]\nconcurrency = 0\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	_, _, err := executeConfig(t, "get")
+	if err == nil || !strings.Contains(err.Error(), "assets.probe.concurrency must be positive") {
+		t.Fatalf("config get error = %v, want invalid concurrency", err)
+	}
 }
 
 func TestConfigAssetProbeRejectsNonPositiveConcurrencyBeforeCreating(t *testing.T) {

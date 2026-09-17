@@ -240,8 +240,7 @@ func newGet(streams *invocation.Streams) *cobra.Command {
 					return err
 				}
 				if streams.InIsTerminal {
-					printAll(streams, cfg)
-					return nil
+					return printAll(streams, cfg)
 				}
 			}
 			return runner.Execute(streams, args, asNDJSON, asJSON)
@@ -320,14 +319,19 @@ func redactSensitiveValue(key, value string) string {
 	return "***"
 }
 
-func printAll(streams *invocation.Streams, cfg settings.Settings) {
+// printAll 按 displayConfigKeys 顺序打印全部有效配置。任一键解析失败都会
+// 原样返回错误，不能把损坏的配置（例如 concurrency = 0）伪装成“该项不存在”。
+func printAll(streams *invocation.Streams, cfg settings.Settings) error {
 	for _, key := range displayConfigKeys {
 		value, err := lookupKey(cfg, key)
 		if err != nil {
-			continue
+			return err
 		}
-		fmt.Fprintf(streams.Out, "%s=%s\n", key, value)
+		if _, err := fmt.Fprintf(streams.Out, "%s=%s\n", key, value); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func lookupKey(cfg settings.Settings, key string) (string, error) {

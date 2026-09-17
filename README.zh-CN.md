@@ -252,8 +252,8 @@ javdb config set auto_relogin true
 `type` 与 `url`，并在可用时增加图片 `width`/`height` 与预览视频 `duration`（整数秒）；TTY 增加
 紧凑的 `SIZE`/`DURATION` 列。管道输出仍严格为 `TYPE<TAB>URL`，可直接交给 `assets download`。
 probe 默认启用，可用 `javdb config get/set assets.probe.enabled` 与
-`assets.probe.concurrency`（默认 `4`）查看或调整。单项 probe 失败只省略元数据；取消或 deadline
-错误仍会如实报告。
+`assets.probe.concurrency`（默认 `4`）查看或调整。单项 probe 失败只省略元数据，单个媒体请求自身
+超时同样如此；只有父 context 被取消或到期才会让命令失败。
 它们不会下载完整影片或磁力目标，也绝不会替换已有文件。
 
 ## 文档

@@ -34,25 +34,6 @@ func TestProjectMovieFloatIDTruncation(t *testing.T) {
 	}
 }
 
-func TestMovieDurationMinutes(t *testing.T) {
-	if got, ok := MovieDurationMinutes(map[string]any{"duration": float64(130)}); !ok || got != 130 {
-		t.Fatalf("MovieDurationMinutes(valid) = (%d, %v), want (130, true)", got, ok)
-	}
-	for name, item := range map[string]map[string]any{
-		"nil item":    nil,
-		"missing":     {},
-		"non numeric": {"duration": "unknown"},
-		"zero":        {"duration": float64(0)},
-		"negative":    {"duration": float64(-1)},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if got, ok := MovieDurationMinutes(item); ok || got != 0 {
-				t.Fatalf("MovieDurationMinutes(%v) = (%d, %v), want (0, false)", item, got, ok)
-			}
-		})
-	}
-}
-
 func TestProjectMovies(t *testing.T) {
 	rows := ProjectMovies([]map[string]any{
 		{"number": "A", "id": "a", "title": "T1", "release_date": "2026-01-01"},

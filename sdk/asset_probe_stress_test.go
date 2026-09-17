@@ -125,15 +125,6 @@ func runProbeStressCase(t *testing.T, assetCount, concurrency int) probeStressRe
 	}
 }
 
-func updateAtomicMax(target *atomic.Int64, value int64) {
-	for {
-		current := target.Load()
-		if value <= current || target.CompareAndSwap(current, value) {
-			return
-		}
-	}
-}
-
 func updateAtomicMaxUint(target *atomic.Uint64, value uint64) {
 	for {
 		current := target.Load()

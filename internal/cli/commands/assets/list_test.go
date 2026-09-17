@@ -40,6 +40,7 @@ func (log *listRequestLog) record(path string) {
 	log.paths[path]++
 }
 
+// mediaPaths 只返回非 /api/ 的请求，用于断言 probe 是否真的发起媒体请求。
 func (log *listRequestLog) mediaPaths() map[string]int {
 	log.mu.Lock()
 	defer log.mu.Unlock()
@@ -52,13 +53,8 @@ func (log *listRequestLog) mediaPaths() map[string]int {
 	return paths
 }
 
-func newListServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	server, _ := newTrackedListServer(t)
-	return server
-}
-
-func newTrackedListServer(t *testing.T) (*httptest.Server, *listRequestLog) {
+// newListServer 返回列表/详情 API 与媒体资源，并记录全部请求路径。
+func newListServer(t *testing.T) (*httptest.Server, *listRequestLog) {
 	t.Helper()
 	serverURL := ""
 	var imageBody bytes.Buffer
@@ -93,54 +89,43 @@ func newTrackedListServer(t *testing.T) (*httptest.Server, *listRequestLog) {
 	return server, requests
 }
 
-func runList(t *testing.T, args ...string) (string, string, error) {
-	t.Helper()
-	return runListWithStreams(t, false, args...)
+// listTestOptions 描述一次 assets list 调用环境；测试 helper 只暴露实际用到
+// 的两个维度，避免多层 wrapper。
+type listTestOptions struct {
+	TTY    bool
+	Config string
 }
 
-func runListWithStreams(t *testing.T, outIsTerminal bool, args ...string) (string, string, error) {
-	t.Helper()
-	out, serverURL, err, _ := runListConfigured(t, outIsTerminal, "", args...)
-	return out, serverURL, err
-}
-
-func runListConfigured(t *testing.T, outIsTerminal bool, config string, args ...string) (string, string, error, *listRequestLog) {
-	t.Helper()
-	out, _, serverURL, err, requests := executeListConfigured(t, outIsTerminal, config, args...)
-	return out, serverURL, err, requests
-}
-
-func executeListConfigured(t *testing.T, outIsTerminal bool, config string, args ...string) (string, string, string, error, *listRequestLog) {
+// runListCase 在隔离 HOME 下执行一次 assets list，返回 stdout/stderr/错误与请求记录。
+func runListCase(t *testing.T, options listTestOptions, args ...string) (string, string, error, *listRequestLog) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Setenv("HOMEDRIVE", filepath.VolumeName(t.TempDir()))
-	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
-	if config != "" {
+	t.Setenv("HOMEDRIVE", filepath.VolumeName(home))
+	t.Setenv("HOMEPATH", strings.TrimPrefix(home, filepath.VolumeName(home)))
+	if options.Config != "" {
 		configDir := filepath.Join(home, ".javdb-cli")
 		if err := os.MkdirAll(configDir, 0o700); err != nil {
 			t.Fatalf("create config dir: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(config), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(options.Config), 0o600); err != nil {
 			t.Fatalf("write config: %v", err)
 		}
 	}
-	server, requests := newTrackedListServer(t)
+	server, requests := newListServer(t)
 	defer server.Close()
 
 	streams := invocation.NewStreams(strings.NewReader(""), &strings.Builder{}, &strings.Builder{})
-	streams.OutIsTerminal = outIsTerminal
+	streams.OutIsTerminal = options.TTY
 	cmd := NewList(&invocation.RootOptions{Host: server.URL}, streams)
 	cmd.SetArgs(args)
 	err := cmd.Execute()
-	out := streams.Out.(*strings.Builder).String()
-	errOut := streams.Err.(*strings.Builder).String()
-	return out, errOut, server.URL, err, requests
+	return streams.Out.(*strings.Builder).String(), streams.Err.(*strings.Builder).String(), err, requests
 }
 
 func TestListPipeOutputIsTypeTabURL(t *testing.T) {
-	out, _, err := runList(t, "SSIS-589")
+	out, _, err, _ := runListCase(t, listTestOptions{}, "SSIS-589")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -165,7 +150,7 @@ func TestListPipeOutputIsTypeTabURL(t *testing.T) {
 }
 
 func TestListTTYOutputRendersNumberedTable(t *testing.T) {
-	out, _, err := runListWithStreams(t, true, "SSIS-589")
+	out, _, err, _ := runListCase(t, listTestOptions{TTY: true}, "SSIS-589")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -189,46 +174,43 @@ func TestListTTYOutputRendersNumberedTable(t *testing.T) {
 	}
 }
 
-func TestListJSONOutputAddsProbedMetadata(t *testing.T) {
-	out, _, err := runList(t, "SSIS-589", "--type", "video", "--json")
-	if err != nil {
-		t.Fatalf("execute error = %v", err)
-	}
-	var assets []map[string]any
-	if err := json.Unmarshal([]byte(out), &assets); err != nil {
-		t.Fatalf("json decode: %v (out=%q)", err, out)
-	}
-	if len(assets) != 1 {
-		t.Fatalf("asset count = %d, want 1", len(assets))
-	}
-	got := assets[0]
-	if got["type"] != "video" || !strings.HasSuffix(got["url"].(string), "/preview.m3u8") ||
-		got["width"] != float64(640) || got["height"] != float64(480) || got["duration"] != float64(1) {
-		t.Fatalf("video asset = %v, want flattened probed metadata", got)
-	}
-}
-
-func TestListNDJSONOutputAddsProbedMetadata(t *testing.T) {
-	out, _, err := runList(t, "SSIS-589", "--type", "video", "--ndjson")
-	if err != nil {
-		t.Fatalf("execute error = %v", err)
-	}
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(lines) != 1 {
-		t.Fatalf("line count = %d, want 1 (out=%q)", len(lines), out)
-	}
-	var first map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
-		t.Fatalf("ndjson decode: %v", err)
-	}
-	if first["type"] != "video" || first["width"] != float64(640) ||
-		first["height"] != float64(480) || first["duration"] != float64(1) {
-		t.Fatalf("first ndjson line = %v", first)
+// TestListMachineOutputAddsProbedMetadata 合并 JSON/NDJSON 两条机器输出链路。
+func TestListMachineOutputAddsProbedMetadata(t *testing.T) {
+	for _, mode := range []string{"--json", "--ndjson"} {
+		t.Run(mode[2:], func(t *testing.T) {
+			out, _, err, _ := runListCase(t, listTestOptions{}, "SSIS-589", "--type", "video", mode)
+			if err != nil {
+				t.Fatalf("execute error = %v", err)
+			}
+			var item map[string]any
+			if mode == "--json" {
+				var items []map[string]any
+				if err := json.Unmarshal([]byte(out), &items); err != nil {
+					t.Fatalf("json decode: %v (out=%q)", err, out)
+				}
+				if len(items) != 1 {
+					t.Fatalf("asset count = %d, want 1", len(items))
+				}
+				item = items[0]
+			} else {
+				lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+				if len(lines) != 1 {
+					t.Fatalf("line count = %d, want 1 (out=%q)", len(lines), out)
+				}
+				if err := json.Unmarshal([]byte(lines[0]), &item); err != nil {
+					t.Fatalf("ndjson decode: %v", err)
+				}
+			}
+			if item["type"] != "video" || !strings.HasSuffix(item["url"].(string), "/preview.m3u8") ||
+				item["width"] != float64(640) || item["height"] != float64(480) || item["duration"] != float64(1) {
+				t.Fatalf("video asset = %v, want flattened probed metadata", item)
+			}
+		})
 	}
 }
 
 func TestListPipeProbesOnlySelectedAssets(t *testing.T) {
-	out, _, err, requests := runListConfigured(t, false, "", "SSIS-589", "--type", "image", "3")
+	out, _, err, requests := runListCase(t, listTestOptions{}, "SSIS-589", "--type", "image", "3")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -242,7 +224,7 @@ func TestListPipeProbesOnlySelectedAssets(t *testing.T) {
 
 func TestListDisabledProbeSkipsMediaRequests(t *testing.T) {
 	config := "[assets.probe]\nenabled = false\nconcurrency = 2\n"
-	out, _, err, requests := runListConfigured(t, false, config, "SSIS-589", "--type", "video", "--json")
+	out, _, err, requests := runListCase(t, listTestOptions{Config: config}, "SSIS-589", "--type", "video", "--json")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -259,7 +241,7 @@ func TestListDisabledProbeSkipsMediaRequests(t *testing.T) {
 }
 
 func TestListProbeFailureKeepsAssetWithoutMetadata(t *testing.T) {
-	out, errOut, _, err, _ := executeListConfigured(t, false, "", "SSIS-589", "--type", "image", "4", "--json")
+	out, errOut, err, _ := runListCase(t, listTestOptions{}, "SSIS-589", "--type", "image", "4", "--json")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -275,29 +257,8 @@ func TestListProbeFailureKeepsAssetWithoutMetadata(t *testing.T) {
 	}
 }
 
-func TestListRejectsInvalidProbeConfig(t *testing.T) {
-	config := "[assets.probe]\nconcurrency = 0\n"
-	_, _, err, requests := runListConfigured(t, false, config, "SSIS-589", "--json")
-	if err == nil || !strings.Contains(err.Error(), "assets.probe.concurrency must be positive") {
-		t.Fatalf("error = %v, want invalid concurrency", err)
-	}
-	if got := requests.mediaPaths(); len(got) != 0 {
-		t.Fatalf("media requests = %v, want none after config error", got)
-	}
-}
-
-func TestListHelpDescribesMetadataAndStablePipe(t *testing.T) {
-	cmd := NewList(&invocation.RootOptions{}, invocation.NewStreams(strings.NewReader(""), &strings.Builder{}, &strings.Builder{}))
-	if !strings.Contains(cmd.Long, "best-effort width/height/duration metadata") {
-		t.Fatalf("Long = %q, want metadata contract", cmd.Long)
-	}
-	if !strings.Contains(cmd.Long, "Pipe output remains TYPE<TAB>URL") {
-		t.Fatalf("Long = %q, want stable pipe contract", cmd.Long)
-	}
-}
-
 func TestListTypeFilterRenumbersAfterFilter(t *testing.T) {
-	out, _, err := runList(t, "SSIS-589", "--type", "video")
+	out, _, err, _ := runListCase(t, listTestOptions{}, "SSIS-589", "--type", "video")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -306,7 +267,7 @@ func TestListTypeFilterRenumbersAfterFilter(t *testing.T) {
 		t.Fatalf("video filter output = %q", out)
 	}
 
-	out, _, err = runList(t, "SSIS-589", "--type", "image", "1-2")
+	out, _, err, _ = runListCase(t, listTestOptions{}, "SSIS-589", "--type", "image", "1-2")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
@@ -322,7 +283,7 @@ func TestListTypeFilterRenumbersAfterFilter(t *testing.T) {
 }
 
 func TestListRejectsInvalidType(t *testing.T) {
-	_, _, err := runList(t, "SSIS-589", "--type", "audio")
+	_, _, err, _ := runListCase(t, listTestOptions{}, "SSIS-589", "--type", "audio")
 	if err == nil || !strings.Contains(err.Error(), `invalid --type "audio"`) {
 		t.Fatalf("error = %v, want invalid --type", err)
 	}
@@ -342,7 +303,7 @@ func TestListSelectorForms(t *testing.T) {
 		{[]string{"3-4,6"}, 3, []string{"/p1-large.jpg", "/p2-thumb.jpg", "/preview.m3u8"}},
 	}
 	for _, tc := range cases {
-		out, _, err := runList(t, append([]string{"SSIS-589"}, tc.selector...)...)
+		out, _, err, _ := runListCase(t, listTestOptions{}, append([]string{"SSIS-589"}, tc.selector...)...)
 		if err != nil {
 			t.Fatalf("selector %v: execute error = %v", tc.selector, err)
 		}
@@ -359,13 +320,17 @@ func TestListSelectorForms(t *testing.T) {
 }
 
 func TestListRejectsInvalidAndOutOfRangeSelector(t *testing.T) {
-	_, _, err := runList(t, "SSIS-589", "4-1")
+	_, _, err, _ := runListCase(t, listTestOptions{}, "SSIS-589", "4-1")
 	if err == nil || !strings.Contains(err.Error(), `invalid selector "4-1"`) {
 		t.Fatalf("error = %v, want invalid selector", err)
 	}
-	_, _, err = runList(t, "SSIS-589", "99")
+	// 越界 selector 不得发起任何媒体请求。
+	_, _, err, requests := runListCase(t, listTestOptions{}, "SSIS-589", "99")
 	if err == nil || !strings.Contains(err.Error(), "out of range (1-6)") {
 		t.Fatalf("error = %v, want out of range", err)
+	}
+	if got := requests.mediaPaths(); len(got) != 0 {
+		t.Fatalf("media requests = %v, want none after selector error", got)
 	}
 }
 

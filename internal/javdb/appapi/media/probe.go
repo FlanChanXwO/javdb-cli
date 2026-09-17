@@ -80,9 +80,9 @@ func (e *MediaEndpoint) ProbeHLSMetadata(ctx context.Context, playlistURL string
 		return ProbeMetadata{}, err
 	}
 	if probeErr != nil {
-		if errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
-			return ProbeMetadata{}, probeErr
-		}
+		// 只有父 ctx 真正结束才放弃；这里是上面的 ctx.Err() 检查之后的代码，
+		// 因此单项 transport 超时（即使错误本身包装了 context.DeadlineExceeded）
+		// 一律按 best-effort 处理，不影响已经确定的 duration。
 		if playlist.durationValid {
 			return metadata, nil
 		}
@@ -286,9 +286,44 @@ func probeWebPChunkDimensions(kind string, reader io.Reader, size int64) (width,
 	return width, height, true, nil
 }
 
+// maxHLSProbeLineBytes 是单行 HLS playlist 的解析上限。合法行（标签、EXTINF、
+// 密钥 URI、分片 URI）远小于该值；超长行只可能来自缺失换行的异常响应，
+// 若不加限制 bufio 会为单行持续扩容直到读完全部响应。该上限属于 parser 的
+// 内存安全实现细节，不是用户可配置项，也不截断合法内容。
+const maxHLSProbeLineBytes = 64 << 10
+
+// errHLSProbeLineTooLong 表示单行 HLS playlist 超过解析上限。
+var errHLSProbeLineTooLong = errors.New("HLS playlist line too long")
+
+// readHLSProbeLine 读取一行，同时把单行长度限制在 maxHLSProbeLineBytes 内。
+// 用 ReadSlice 而不是 ReadString：缓冲区被填满时不会为超长行扩容，
+// 拼接只在累计长度未越界的范围内进行，随后立即以明确的错误失败。
+// 返回的错误可能是 io.EOF，由调用方保持原有的行处理语义。
+func readHLSProbeLine(reader *bufio.Reader) (string, error) {
+	var line []byte
+	for {
+		chunk, err := reader.ReadSlice('\n')
+		line = append(line, chunk...)
+		if len(line) > maxHLSProbeLineBytes {
+			return "", fmt.Errorf("%w: exceeds %d bytes", errHLSProbeLineTooLong, maxHLSProbeLineBytes)
+		}
+		switch {
+		case err == nil:
+			return string(line), nil
+		case errors.Is(err, bufio.ErrBufferFull):
+			// 行尚未结束，继续读取；累计长度已由上面的检查约束。
+			continue
+		case errors.Is(err, io.EOF):
+			return string(line), io.EOF
+		default:
+			return "", err
+		}
+	}
+}
+
 func parseHLSProbePlaylistReader(playlistURL string, raw io.Reader) (hlsProbePlaylist, error) {
 	reader := bufio.NewReader(raw)
-	firstLine, err := reader.ReadString('\n')
+	firstLine, err := readHLSProbeLine(reader)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return hlsProbePlaylist{}, err
 	}
@@ -376,7 +411,7 @@ func parseHLSProbePlaylistReader(playlistURL string, raw io.Reader) (hlsProbePla
 		return nil
 	}
 	for {
-		rawLine, readErr := reader.ReadString('\n')
+		rawLine, readErr := readHLSProbeLine(reader)
 		if len(rawLine) > 0 {
 			if err := processLine(rawLine); err != nil {
 				return hlsProbePlaylist{}, err
@@ -396,6 +431,12 @@ func parseHLSProbePlaylistReader(playlistURL string, raw io.Reader) (hlsProbePla
 		return hlsProbePlaylist{}, fmt.Errorf("HLS playlist has no media segments")
 	}
 	if pendingEXTINF {
+		durationValid = false
+	}
+	// 每段 EXTINF 都已校验为有限正数，唯一可能的越界来源是累加溢出；
+	// 一旦累加值不再是有限正数就把 duration 视为 unknown，交给调用方
+	// 按 best-effort 处理，不做任何 float→int 的错误降级。
+	if durationValid && (math.IsNaN(durationTotal) || math.IsInf(durationTotal, 0) || durationTotal <= 0) {
 		durationValid = false
 	}
 	if durationValid {

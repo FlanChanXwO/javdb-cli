@@ -125,8 +125,8 @@ for that page.
 
 Human-readable `search` rows append a movie duration such as `130m` when the
 source provides a positive duration in minutes; JSON/NDJSON preserve the
-upstream `duration` field. Human-readable `detail` output shows the same value
-as `时长 130 分钟` (the label follows the selected language). This feature-film
+upstream `duration` field. Human-readable `detail` output prints that value with
+the fixed label `时长 130 分钟`; the label is not localized. This feature-film
 duration is distinct from preview-asset `duration`, which `assets list` reports
 in integer seconds.
 
@@ -159,8 +159,9 @@ javdb config set assets.probe.concurrency 8
 
 `assets.probe.concurrency` must be positive. The probe uses a bounded worker
 pool and best-effort metadata: an individual failure leaves fields absent and
-does not add a `probe_error` field. Context cancellation or deadline errors
-remain command errors. Image metadata reports `width`/`height`; preview video
+does not add a `probe_error` field. A media request that times out on its own
+only drops that asset's fields; cancelling or expiring the parent context still
+fails the whole command. Image metadata reports `width`/`height`; preview video
 metadata reports those fields plus `duration` in integer seconds. Values are
 never inferred from URLs, file names, content length, bitrate, or movie duration.
 

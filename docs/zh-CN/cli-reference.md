@@ -124,7 +124,8 @@ javdb config set assets.probe.concurrency 8
 ```
 
 `assets.probe.concurrency` 必须为正数。probe 使用有界 worker pool，单个资产失败时只缺少对应字段，
-不增加 `probe_error`；context 取消或 deadline 错误仍会使命令失败。图片报告 `width`/`height`，
+不增加 `probe_error`；单个媒体请求自身超时同样只影响该资产，只有父 context 取消或到期才会使
+命令失败。图片报告 `width`/`height`，
 预览视频另报告 `duration`（整数秒）。不会从 URL、文件名、Content-Length、bitrate 或正片时长猜测值。
 
 TTY 下输出带人类描述、`SIZE` 与 `DURATION` 列的编号表格，未知值显示 `-`；管道输出即使执行

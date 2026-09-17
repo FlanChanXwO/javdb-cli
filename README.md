@@ -294,7 +294,8 @@ strictly `TYPE<TAB>URL` for `assets download`. Probing is enabled by default
 and uses a bounded worker pool; inspect or disable it with
 `javdb config get/set assets.probe.enabled` and
 `assets.probe.concurrency` (default `4`). A failed individual probe only
-omits metadata, while cancellation/deadline errors remain visible.
+omits metadata, including a media request that times out on its own; cancelling
+or expiring the parent context still fails the call.
 They never download a full movie or magnet target and never replace an existing
 file.
 

@@ -2,7 +2,6 @@ package javdb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -102,7 +101,9 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 					}
 					metadata, err := c.probeMovieAsset(workerContext, job.asset)
 					if err != nil {
-						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						// 只有父 ctx 真正结束才中止整批：单项媒体 transport 自身超时也会返回
+						// context.DeadlineExceeded，但那时父 ctx 仍然有效，必须按 best-effort 跳过。
+						if ctx.Err() != nil {
 							errorOnce.Do(func() {
 								contextErr = err
 								cancel()
@@ -127,6 +128,26 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 	return infos, nil
 }
 
+// normalizeProbeDuration 把 probe 得到的浮点秒数转换成公开的整数秒。
+// NaN/Inf、≤ 0、以及超出 int 可表示范围的数值一律视为 duration unknown，
+// 避免 float→int 的未定义降级产生虚假时长；>0 但不足 1 秒的片段向上取整为 1。
+func normalizeProbeDuration(seconds float64) int {
+	if math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 {
+		return 0
+	}
+	rounded := math.Round(seconds)
+	// float64(math.MaxInt) 会向上舍入到 MaxInt+1，所以用 >= 把整个边界带
+	// 都归入 unknown，避免 int(rounded) 在边界上溢出成负值。
+	if rounded >= float64(math.MaxInt) {
+		return 0
+	}
+	duration := int(rounded)
+	if duration < 1 {
+		return 1
+	}
+	return duration
+}
+
 func (c *Client) probeMovieAsset(ctx context.Context, asset MovieAsset) (MovieAssetMetadata, error) {
 	var (
 		width       int
@@ -149,9 +170,5 @@ func (c *Client) probeMovieAsset(ctx context.Context, asset MovieAsset) (MovieAs
 	default:
 		return MovieAssetMetadata{}, nil
 	}
-	duration := int(math.Round(durationRaw))
-	if durationRaw > 0 && duration < 1 {
-		duration = 1
-	}
-	return MovieAssetMetadata{Width: width, Height: height, Duration: duration}, nil
+	return MovieAssetMetadata{Width: width, Height: height, Duration: normalizeProbeDuration(durationRaw)}, nil
 }

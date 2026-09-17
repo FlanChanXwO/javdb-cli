@@ -161,8 +161,9 @@ profile/block/channel-configuration restrictions.
 `ProbeMovieAssets(ctx, assets, options)` probes selected image and preview-video
 assets with a fixed worker pool, preserving input order and deduplicating by
 `Type + URL`. `MovieAssetProbeOptions.Concurrency == 0` uses the default `4`;
-negative values are rejected. Metadata is best-effort per asset, while context
-cancellation and deadlines fail the whole call. Image dimensions are reported
+negative values are rejected. Metadata is best-effort per asset, including a
+media request that times out on its own; cancelling or expiring the caller's
+context fails the whole call. Image dimensions are reported
 as `Width`/`Height`; preview-video `Duration` is an integer number of seconds,
 rounded from the HLS duration. The method streams headers/segments and does not
 download complete image or video payloads.
