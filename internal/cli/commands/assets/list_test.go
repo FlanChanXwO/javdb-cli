@@ -149,27 +149,36 @@ func TestListPipeOutputIsTypeTabURL(t *testing.T) {
 	}
 }
 
+// TestListTTYOutputRendersNumberedTable 只锁定用户可观察的列与取值，
+// 不锁定空格 padding：表格布局不是稳定机器协议。
 func TestListTTYOutputRendersNumberedTable(t *testing.T) {
 	out, _, err, _ := runListCase(t, listTestOptions{TTY: true}, "SSIS-589")
 	if err != nil {
 		t.Fatalf("execute error = %v", err)
 	}
-	wantLines := []string{
-		"#  TYPE   SIZE       DURATION  DESCRIPTION",
-		"1  image  13x7       -         thumbnail",
-		"2  image  13x7       -         cover",
-		"3  image  13x7       -         preview 1",
-		"4  image  -          -         preview 2",
-		"5  image  13x7       -         preview 3",
-		"6  video  640x480    1s        preview",
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 7 {
+		t.Fatalf("line count = %d, want 1 header + 6 assets (out=%q)", len(lines), out)
 	}
-	gotLines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(gotLines) != len(wantLines) {
-		t.Fatalf("line count = %d, want %d (out=%q)", len(gotLines), len(wantLines), out)
+	for _, column := range []string{"#", "TYPE", "SIZE", "DURATION", "DESCRIPTION"} {
+		if !strings.Contains(lines[0], column) {
+			t.Fatalf("header = %q, want %s column", lines[0], column)
+		}
 	}
-	for i := range wantLines {
-		if gotLines[i] != wantLines[i] {
-			t.Fatalf("line %d:\n got  = %q\n want = %q", i+1, gotLines[i], wantLines[i])
+	// 每行必须同时包含类型、尺寸、时长与描述。
+	wantRows := [][4]string{
+		{"image", "13x7", "-", "thumbnail"},
+		{"image", "13x7", "-", "cover"},
+		{"image", "13x7", "-", "preview 1"},
+		{"image", "-", "-", "preview 2"},
+		{"image", "13x7", "-", "preview 3"},
+		{"video", "640x480", "1s", "preview"},
+	}
+	for index, want := range wantRows {
+		for _, field := range want {
+			if !strings.Contains(lines[index+1], field) {
+				t.Fatalf("row %d = %q, want %q", index+1, lines[index+1], field)
+			}
 		}
 	}
 }

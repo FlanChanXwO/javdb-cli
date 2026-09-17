@@ -40,7 +40,7 @@ type movieAssetProbeJob struct {
 }
 
 // ProbeMovieAssets 以固定 worker pool 探测媒体元数据，保持输入顺序并按 Type+URL 去重。
-// 单项媒体错误保留零值并继续；context 取消或截止时间会终止整个调用。
+// 单项媒体错误保留零值并继续；父 context 取消或截止时间会终止整个调用。
 func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, options MovieAssetProbeOptions) ([]MovieAssetInfo, error) {
 	concurrency := options.Concurrency
 	if concurrency < 0 {
@@ -48,6 +48,10 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 	}
 	if concurrency == 0 {
 		concurrency = settings.DefaultAssetProbeConcurrency
+	}
+	// 已取消的调用无需先构建完整 job/index 结构。
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	infos := make([]MovieAssetInfo, len(assets))
@@ -73,19 +77,13 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 		return infos, nil
 	}
 
-	workerContext, cancel := context.WithCancel(ctx)
-	defer cancel()
 	jobQueue := make(chan movieAssetProbeJob, len(jobs))
 	for _, job := range jobs {
 		jobQueue <- job
 	}
 	close(jobQueue)
 
-	var (
-		workers    sync.WaitGroup
-		contextErr error
-		errorOnce  sync.Once
-	)
+	var workers sync.WaitGroup
 	workerCount := min(concurrency, len(jobs))
 	workers.Add(workerCount)
 	for range workerCount {
@@ -93,22 +91,17 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 			defer workers.Done()
 			for {
 				select {
-				case <-workerContext.Done():
+				case <-ctx.Done():
 					return
 				case job, ok := <-jobQueue:
 					if !ok {
 						return
 					}
-					metadata, err := c.probeMovieAsset(workerContext, job.asset)
+					metadata, err := c.probeMovieAsset(ctx, job.asset)
 					if err != nil {
-						// 只有父 ctx 真正结束才中止整批：单项媒体 transport 自身超时也会返回
-						// context.DeadlineExceeded，但那时父 ctx 仍然有效，必须按 best-effort 跳过。
-						if ctx.Err() != nil {
-							errorOnce.Do(func() {
-								contextErr = err
-								cancel()
-							})
-						}
+						// 单项失败始终 best-effort：媒体 transport 自身超时也会返回
+						// context.DeadlineExceeded，此时父 ctx 仍有效。
+						// 父 context 失败已由下面的 ctx.Err() 统一返回。
 						continue
 					}
 					for _, index := range job.indexes {
@@ -121,9 +114,6 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 	workers.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if contextErr != nil {
-		return nil, contextErr
 	}
 	return infos, nil
 }

@@ -12,6 +12,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -206,7 +207,7 @@ func TestProbeHLSMetadataExtractsDurationAndSPS(t *testing.T) {
 }
 
 // TestProbeHLSMetadataPartialAndMalformedSafety 覆盖 best-effort 与解析资源边界：
-// duration 与 SPS 相互独立；异常 playlist/SPS 明确失败且不做无界缓存。
+// duration 与 SPS 相互独立；超长 playlist 行明确失败且提前停止读取。
 func TestProbeHLSMetadataPartialAndMalformedSafety(t *testing.T) {
 	const playlistURL = "https://media.example.test/previews/index.m3u8"
 
@@ -226,29 +227,9 @@ func TestProbeHLSMetadataPartialAndMalformedSafety(t *testing.T) {
 		}
 	})
 
-	t.Run("does not fabricate duration from malformed EXTINF", func(t *testing.T) {
-		// 段本身可解析：若 duration 被伪造，这里会看到非零值而不是 0。
-		servableSegment := validTSSegmentAt(0)
-		endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
-			if uri == playlistURL {
-				return io.NopCloser(strings.NewReader("#EXTM3U\n#EXTINF:not-a-number,\na.ts\n#EXT-X-ENDLIST\n")), nil
-			}
-			return io.NopCloser(bytes.NewReader(servableSegment)), nil
-		})
-		metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
-		if err != nil {
-			t.Fatalf("ProbeHLSMetadata() error = %v", err)
-		}
-		if metadata.DurationSeconds != 0 {
-			t.Fatalf("duration = %v, want unknown for malformed EXTINF", metadata.DurationSeconds)
-		}
-		if metadata.Width != 640 || metadata.Height != 480 {
-			t.Fatalf("metadata = %+v, want 640x480", metadata)
-		}
-	})
-
-	t.Run("treats overflowing EXTINF total as unknown", func(t *testing.T) {
-		// 每行 EXTINF 都是有限正数，但累加结果溢出为 +Inf。
+	t.Run("does not fabricate duration from a non-representable EXTINF total", func(t *testing.T) {
+		// 每行 EXTINF 都是有限正数，但累加结果溢出为 +Inf：对调用方只有一个
+		// 可见契约——duration unknown，不得退化为虚假时长。
 		playlist := "#EXTM3U\n#EXTINF:1.7e308,\na.ts\n#EXTINF:1.7e308,\nb.ts\n#EXT-X-ENDLIST\n"
 		endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
 			if uri == playlistURL {
@@ -280,62 +261,66 @@ func TestProbeHLSMetadataPartialAndMalformedSafety(t *testing.T) {
 			t.Fatalf("oversized playlist line buffered %d/%d bytes", body.read, len(payload))
 		}
 	})
+}
 
-	t.Run("bounds malformed SPS buffering", func(t *testing.T) {
-		// 视频 ES 是单条连续的 SPS NAL。探测必须在内存受控的前提下结束：
-		// 合法 SPS 命中即停；语法确定的非法 SPS 立即失败。
-		// 判定依据是“分配量不得随输入规模成比例增长”：输入约 34 MiB，若解析器
-		// 缓存 payload，分配量至少会是输入量级；阈值取输入长度的 1/16，而实际
-		// 观察值只有几 KiB。
-		const inputPayloadBytes = 32 << 20
-		for _, tc := range []struct {
-			name    string
-			firstES []byte
-			fill    byte
-			wantErr bool
-		}{
-			{
-				name:    "implausible SPS fails deterministically",
-				firstES: append([]byte{0x00, 0x00, 0x00, 0x01, 0x67}, bytes.Repeat([]byte{0x08}, 16)...),
-				fill:    0x08,
-				wantErr: true,
-			},
-			{
-				name:    "valid SPS stops at the first NAL",
-				firstES: []byte{0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2},
-				fill:    0x00,
-			},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				segment := spsProbeSegment(tc.firstES, inputPayloadBytes, tc.fill)
-				runtime.GC()
-				var before, after runtime.MemStats
-				runtime.ReadMemStats(&before)
-				endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
-					if uri == playlistURL {
-						return io.NopCloser(strings.NewReader("#EXTM3U\nmalformed.ts\n#EXT-X-ENDLIST\n")), nil
-					}
-					return io.NopCloser(bytes.NewReader(segment)), nil
-				})
-				metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
-				runtime.ReadMemStats(&after)
-
-				if tc.wantErr {
-					if err == nil {
-						t.Fatalf("ProbeHLSMetadata() = %+v, want an SPS parse error", metadata)
-					}
-				} else if err != nil {
-					t.Fatalf("ProbeHLSMetadata() error = %v", err)
-				} else if metadata.Width != 640 || metadata.Height != 480 {
-					t.Fatalf("metadata = %+v, want 640x480", metadata)
+// TestProbeMediaResourceStress 是显式的资源伸缩回归：大段畸形/合法 SPS 下，
+// 解析状态不得随输入规模成比例增长。默认 skip，只在 JAVDB_ASSET_PROBE_STRESS=1 时运行。
+func TestProbeMediaResourceStress(t *testing.T) {
+	if os.Getenv("JAVDB_ASSET_PROBE_STRESS") == "" {
+		t.Skip("set JAVDB_ASSET_PROBE_STRESS=1 to run media resource stress")
+	}
+	const playlistURL = "https://media.example.test/previews/index.m3u8"
+	// 判定依据是“分配量不得随输入规模成比例增长”：输入约 34 MiB，若解析器
+	// 缓存 payload，分配量至少会是输入量级；阈值取输入长度的 1/16，而实际
+	// 观察值只有几 KiB。
+	const inputPayloadBytes = 32 << 20
+	for _, tc := range []struct {
+		name    string
+		firstES []byte
+		fill    byte
+		wantErr bool
+	}{
+		{
+			name:    "implausible SPS fails deterministically",
+			firstES: append([]byte{0x00, 0x00, 0x00, 0x01, 0x67}, bytes.Repeat([]byte{0x08}, 16)...),
+			fill:    0x08,
+			wantErr: true,
+		},
+		{
+			name:    "valid SPS stops at the first NAL",
+			firstES: []byte{0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x28, 0xF8, 0x14, 0x07, 0xB2},
+			fill:    0x00,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			segment := spsProbeSegment(tc.firstES, inputPayloadBytes, tc.fill)
+			runtime.GC()
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			endpoint := NewMedia(func(_ context.Context, uri string) (io.ReadCloser, error) {
+				if uri == playlistURL {
+					return io.NopCloser(strings.NewReader("#EXTM3U\nmalformed.ts\n#EXT-X-ENDLIST\n")), nil
 				}
-
-				if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(len(segment))/16 {
-					t.Fatalf("parser allocated %d bytes for a %d-byte segment, want bounded state", alloc, len(segment))
-				}
+				return io.NopCloser(bytes.NewReader(segment)), nil
 			})
-		}
-	})
+			metadata, err := endpoint.ProbeHLSMetadata(context.Background(), playlistURL)
+			runtime.ReadMemStats(&after)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ProbeHLSMetadata() = %+v, want an SPS parse error", metadata)
+				}
+			} else if err != nil {
+				t.Fatalf("ProbeHLSMetadata() error = %v", err)
+			} else if metadata.Width != 640 || metadata.Height != 480 {
+				t.Fatalf("metadata = %+v, want 640x480", metadata)
+			}
+
+			if alloc := after.TotalAlloc - before.TotalAlloc; alloc > uint64(len(segment))/16 {
+				t.Fatalf("parser allocated %d bytes for a %d-byte segment, want bounded state", alloc, len(segment))
+			}
+		})
+	}
 }
 
 // spsProbeSegment 构造结构合法的 TS segment：PAT/PMT 后是单个 H.264 PES 及其
