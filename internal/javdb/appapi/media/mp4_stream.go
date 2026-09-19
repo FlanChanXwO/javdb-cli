@@ -422,7 +422,7 @@ func copySamplesFromSpool(spool *mp4Spooler, samples []mp4SampleMeta, out io.Wri
 
 // validateMP4File 重新打开最终文件解析 box 树:
 // ftyp → moov → mdat 顺序、avc1/mp4a 轨、duration>0、样本>0、
-// stco/stss 越界、stsz 总和与 mdat 一致。通过才允许发布。
+// stsc→stco→stsz 一致性、stco 越界、stsz 总和与 mdat 一致。通过才允许发布。
 func validateMP4File(path string) (err error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -494,6 +494,9 @@ func validateMP4File(path string) (err error) {
 		stszOff         int64
 		stszCnt         int64
 		stszSampleSize  uint32
+		stscSeen        bool
+		stscOff         int64
+		stscCnt         uint32
 		stcoSeen        bool
 		stcoOff         int64
 		stcoCnt         int64
@@ -625,6 +628,24 @@ func validateMP4File(path string) (err error) {
 			current.stszOff = ref.off
 			current.stszSampleSize = beU32(moov[ref.off+12 : ref.off+16])
 			current.stszCnt = int64(beU32(moov[ref.off+16 : ref.off+20]))
+		case "stsc":
+			if current == nil || ref.off+16 > int64(len(moov)) {
+				return fmt.Errorf("stsc is outside a track or truncated")
+			}
+			if current.stscSeen {
+				return fmt.Errorf("track %d has duplicate stsc tables", current.trackID)
+			}
+			stscBoxSize := int64(beU32(moov[ref.off : ref.off+4]))
+			if stscBoxSize < 16 || ref.off+stscBoxSize > int64(len(moov)) {
+				return fmt.Errorf("stsc box is truncated")
+			}
+			stscEntryCount := beU32(moov[ref.off+12 : ref.off+16])
+			if uint64(stscEntryCount) > uint64((stscBoxSize-16)/12) {
+				return fmt.Errorf("track %d stsc entries (%d) exceed box bounds", current.trackID, stscEntryCount)
+			}
+			current.stscSeen = true
+			current.stscOff = ref.off
+			current.stscCnt = stscEntryCount
 		case "stco":
 			if current == nil || ref.off+16 > int64(len(moov)) {
 				return fmt.Errorf("stco is outside a track or truncated")
@@ -665,6 +686,71 @@ func validateMP4File(path string) (err error) {
 		}
 		if !table.stcoSeen {
 			return fmt.Errorf("track %d missing stco chunk table", table.trackID)
+		}
+		if !table.stscSeen {
+			return fmt.Errorf("track %d missing stsc chunk mapping", table.trackID)
+		}
+		if table.stscCnt == 0 {
+			return fmt.Errorf("track %d stsc has no entries", table.trackID)
+		}
+		var expandedChunks, expandedSamples uint64
+		var previousFirstChunk uint32
+		for i := uint32(0); i < table.stscCnt; i++ {
+			pos := table.stscOff + 16 + int64(i)*12
+			if pos+12 > int64(len(moov)) {
+				return fmt.Errorf("track %d stsc entries truncated", table.trackID)
+			}
+			firstChunk := beU32(moov[pos : pos+4])
+			samplesPerChunk := beU32(moov[pos+4 : pos+8])
+			sampleDescriptionIndex := beU32(moov[pos+8 : pos+12])
+			if i == 0 {
+				if firstChunk != 1 {
+					return fmt.Errorf("track %d stsc first_chunk %d != 1", table.trackID, firstChunk)
+				}
+			} else if firstChunk <= previousFirstChunk {
+				return fmt.Errorf("track %d stsc first_chunk %d is not increasing", table.trackID, firstChunk)
+			}
+			if samplesPerChunk == 0 {
+				return fmt.Errorf("track %d stsc has zero samples_per_chunk", table.trackID)
+			}
+			if sampleDescriptionIndex != 1 {
+				return fmt.Errorf("track %d stsc sample_description_index %d != 1", table.trackID, sampleDescriptionIndex)
+			}
+			if firstChunk == 0 || int64(firstChunk) > table.stcoCnt {
+				return fmt.Errorf("track %d stsc first_chunk %d exceeds stco chunk count %d", table.trackID, firstChunk, table.stcoCnt)
+			}
+			lastChunk := uint64(table.stcoCnt)
+			if i+1 < table.stscCnt {
+				nextFirstChunk := beU32(moov[pos+12 : pos+16])
+				if nextFirstChunk <= firstChunk {
+					return fmt.Errorf("track %d stsc first_chunk %d is not increasing", table.trackID, nextFirstChunk)
+				}
+				if nextFirstChunk == 0 || int64(nextFirstChunk) > table.stcoCnt {
+					return fmt.Errorf("track %d stsc first_chunk %d exceeds stco chunk count %d", table.trackID, nextFirstChunk, table.stcoCnt)
+				}
+				lastChunk = uint64(nextFirstChunk - 1)
+			}
+			chunkCount := lastChunk - uint64(firstChunk) + 1
+			if expandedChunks > ^uint64(0)-chunkCount {
+				return fmt.Errorf("track %d stsc chunk count overflows", table.trackID)
+			}
+			expandedChunks += chunkCount
+			perChunk := uint64(samplesPerChunk)
+			if chunkCount != 0 && perChunk > ^uint64(0)/chunkCount {
+				return fmt.Errorf("track %d stsc sample count overflows", table.trackID)
+			}
+			sampleCount := chunkCount * perChunk
+			if expandedSamples > ^uint64(0)-sampleCount {
+				return fmt.Errorf("track %d stsc sample count overflows", table.trackID)
+			}
+			expandedSamples += sampleCount
+			previousFirstChunk = firstChunk
+		}
+		if expandedChunks != uint64(table.stcoCnt) {
+			return fmt.Errorf("track %d stsc expands to %d chunks, stco has %d", table.trackID, expandedChunks, table.stcoCnt)
+		}
+		if expandedSamples != uint64(table.stszCnt) {
+			return fmt.Errorf("track %d stsc expands to %d samples, stsz has %d", table.trackID, expandedSamples, table.stszCnt)
 		}
 	}
 	videoOK = sampleEntryKinds["avc1"]

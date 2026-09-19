@@ -236,8 +236,8 @@ func buildMoov(video, audio *mp4TrackMeta, videoChunks, audioChunks []mp4Chunk, 
 	return mp4Box("moov", mvhd, flatten(traks)), nil
 }
 
-// validateChunkLayout 证明 chunk layout 恰好覆盖 track 的全部样本:
-// 丢样本或重复样本都会让 stsc/stco 与 mdat 不一致。
+// validateChunkLayout 只校验 chunk 非空且覆盖 track 的全部样本；
+// 最终 MP4 的 stsc/stco 与 mdat 字节布局由 Layer C 重新解析校验。
 func validateChunkLayout(meta *mp4TrackMeta, chunks []mp4Chunk) error {
 	if len(chunks) == 0 {
 		return fmt.Errorf("track has no mdat chunks")
