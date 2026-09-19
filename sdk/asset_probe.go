@@ -58,6 +58,9 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 	jobs := make([]movieAssetProbeJob, 0, len(assets))
 	jobIndexes := make(map[movieAssetProbeKey]int, len(assets))
 	for index, asset := range assets {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		infos[index].Asset = asset
 		if asset.Type != assetTypeImage && asset.Type != assetTypeVideo {
 			continue
@@ -77,14 +80,9 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 		return infos, nil
 	}
 
-	jobQueue := make(chan movieAssetProbeJob, len(jobs))
-	for _, job := range jobs {
-		jobQueue <- job
-	}
-	close(jobQueue)
-
 	var workers sync.WaitGroup
 	workerCount := min(concurrency, len(jobs))
+	jobQueue := make(chan movieAssetProbeJob, workerCount)
 	workers.Add(workerCount)
 	for range workerCount {
 		go func() {
@@ -111,7 +109,26 @@ func (c *Client) ProbeMovieAssets(ctx context.Context, assets []MovieAsset, opti
 			}
 		}()
 	}
+	var feedErr error
+	for _, job := range jobs {
+		if err := ctx.Err(); err != nil {
+			feedErr = err
+			break
+		}
+		select {
+		case <-ctx.Done():
+			feedErr = ctx.Err()
+		case jobQueue <- job:
+		}
+		if feedErr != nil {
+			break
+		}
+	}
+	close(jobQueue)
 	workers.Wait()
+	if feedErr != nil {
+		return nil, feedErr
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
