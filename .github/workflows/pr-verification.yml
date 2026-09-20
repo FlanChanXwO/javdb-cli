@@ -193,7 +193,7 @@ jobs:
           }
           remove_reaction() {
             local subject_id
-            subject_id=$(reaction_subject "$1")
+            subject_id=$(reaction_subject "$1") || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
@@ -426,7 +426,7 @@ jobs:
           }
           remove_reaction() {
             local subject_id
-            subject_id=$(reaction_subject "$1")
+            subject_id=$(reaction_subject "$1") || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
