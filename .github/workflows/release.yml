@@ -115,9 +115,41 @@ jobs:
           args+=(--audit "$RUNNER_TEMP/release-notes-audit.json")
           go run ./scripts/releasenotes "${args[@]}"
 
+  resolve_platforms:
+    name: Resolve release platform matrices
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.release.outputs.matrix }}
+      container: ${{ steps.container.outputs.matrix }}
+      homebrew: ${{ steps.homebrew.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve release platforms
+        id: release
+        shell: bash
+        run: go run ./tools/platformmatrix --capability release --github-output "$GITHUB_OUTPUT"
+      - name: Resolve container platforms
+        id: container
+        shell: bash
+        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+      - name: Resolve Homebrew platforms
+        id: homebrew
+        shell: bash
+        run: go run ./tools/platformmatrix --capability homebrew --github-output "$GITHUB_OUTPUT"
+
   build:
     name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: validate
+    needs: [validate, resolve_platforms]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -129,26 +161,7 @@ jobs:
       GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -171,15 +184,14 @@ jobs:
 
       - name: Check Go formatting
         shell: bash
-        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+        run: test -z "$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
 
       - name: Test Go sources
         shell: bash
         run: go test ./... -count=1
 
       - name: Test Go sources with the race detector
-        # Go 1.26 不支持 windows/arm64 race；其余原生目标保留该质量门。
-        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        if: contains(matrix.capabilities, 'race')
         shell: bash
         run: go test -race ./... -count=1
 
@@ -191,46 +203,10 @@ jobs:
         shell: bash
         run: sh scripts/test-package-release.sh
 
-      - name: Build, package, and smoke the versioned binary
-        shell: bash
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p dist smoke
-          binary='dist/javdb'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary='dist/javdb.exe'
-          fi
-          release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
-          test -n "$release_date"
-          sh scripts/build-release.sh \
-            --version "$VERSION" \
-            --release-date "$release_date" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --output "$binary"
-          sh scripts/package-release.sh \
-            --binary "$binary" \
-            --version "$VERSION" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --output-dir dist
-          archive="dist/javdb-cli_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
-          smoked_binary='smoke/javdb'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            7z x "${archive}.zip" -osmoke
-            smoked_binary='smoke/javdb.exe'
-          else
-            tar -xzf "${archive}.tar.gz" -C smoke
-          fi
-          # 公开版本契约是根 --version 文本。
-          "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
-          grep -F "javdb version ${VERSION} (" "$RUNNER_TEMP/javdb-version.txt"
-
   # 在全新 runner 上从同一不可变 tag 重建。测试 job 的临时状态不会进入发布产物。
   build_production:
     name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
-    # 既要等待六个平台验证完成，也要直接读取 validate 产出的规范版本号。
-    needs: [validate, build]
+    needs: [validate, resolve_platforms, build]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -241,32 +217,7 @@ jobs:
       GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            artifact: darwin-amd64
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            artifact: darwin-arm64
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            artifact: linux-amd64
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            artifact: linux-arm64
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            artifact: windows-amd64
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            artifact: windows-arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -280,7 +231,7 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Rebuild and package only the immutable release source
+      - name: Build and package only the immutable release source
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
@@ -306,6 +257,24 @@ jobs:
             --version "$VERSION" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --output-dir dist
+
+      - name: Smoke the exact production package
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p smoke
+          archive="dist/javdb-cli_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          smoked_binary='smoke/javdb'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            7z x "${archive}.zip" -osmoke
+            smoked_binary='smoke/javdb.exe'
+          else
+            tar -xzf "${archive}.tar.gz" -C smoke
+          fi
+          test -f "$smoked_binary"
+          "$smoked_binary" --version | grep -F "javdb version ${VERSION} ("
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -338,7 +307,7 @@ jobs:
 
   prepare_release:
     name: Prepare release materials
-    needs: [validate, verify_release_source, release_notes_audit]
+    needs: [validate, verify_release_source, release_notes_audit, build_container]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -347,59 +316,24 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
           cache: false
-
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-release-darwin-amd64
+          pattern: verified-release-*
           path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-darwin-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-arm64
-          path: dist
-
-      - name: Prepare checksums for the exact release asset set
+          merge-multiple: true
+      - name: Require the complete registry-defined release artifact set
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
-          : > dist/checksums.txt
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
-            goos="${target%/*}"
-            goarch="${target#*/}"
-            ext=tar.gz
-            if [ "$goos" = windows ]; then
-              ext=zip
-            fi
-            archive="javdb-cli_${VERSION}_${goos}_${goarch}.${ext}"
-            test -f "dist/$archive"
-            sha=$(sha256sum "dist/$archive" | awk '{print $1}')
-            printf '%s  %s\n' "$sha" "$archive" >> dist/checksums.txt
-          done
-          test "$(find dist -maxdepth 1 -type f -name 'javdb-cli_*' | wc -l | tr -d ' ')" = 6
+          go run ./tools/release verify-artifact-set --dir dist --version "$VERSION"
+          go run ./tools/release checksums --dir dist --version "$VERSION" --output dist/checksums.txt
           test -s dist/checksums.txt
-          cat dist/checksums.txt
 
       - name: Render release notes
         shell: bash
@@ -420,12 +354,21 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  approve_release:
+    name: Approve release publication
+    needs: [prepare_release, verify_homebrew_formula]
+    runs-on: ubuntu-24.04
+    environment: release-approval
+    permissions: {}
+    steps:
+      - name: Approve the already prepared release
+        shell: bash
+        run: echo "Release materials are prepared and verified."
+
   publish:
     name: Publish release and container images
-    needs: [validate, prepare_release, build_container, verify_homebrew_formula]
+    needs: [validate, approve_release, prepare_release, build_container, verify_homebrew_formula]
     runs-on: ubuntu-24.04
-    # 所有构建、打包、checksums、容器与 Homebrew 安装验证都在此 gate 前完成。
-    # environment 只承担一次最终人工放行，并提供发布所需受保护 secrets。
     environment: release
     permissions:
       contents: write
@@ -443,28 +386,9 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-release-darwin-amd64
+          pattern: verified-release-*
           path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-darwin-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-arm64
-          path: dist
+          merge-multiple: true
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: prepared-release-metadata
@@ -477,12 +401,9 @@ jobs:
           cp prepared/release/release-notes.md release/release-notes.md
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-container-linux-amd64
+          pattern: verified-container-*
           path: containers
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-container-linux-arm64
-          path: containers
+          merge-multiple: true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -496,6 +417,7 @@ jobs:
           JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}
         run: |
           set -euo pipefail
+          go run ./tools/release verify-artifact-set --dir dist --version "$VERSION"
           release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
           test -n "$release_date"
           go run ./scripts/sign-release \
@@ -537,8 +459,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker load --input containers/javdb-cli-linux-amd64.tar
-          docker load --input containers/javdb-cli-linux-arm64.tar
+          go run ./tools/release verify-container-set --dir containers
+          for archive in containers/javdb-cli-*.tar; do
+            docker load --input "$archive"
+          done
 
       - name: Log in to the GHCR
         uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
@@ -554,29 +478,32 @@ jobs:
           username: flanchanxwo
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Tag and push per-architecture images
+      - name: Publish registry-defined container images and manifests
         shell: bash
         run: |
           set -euo pipefail
-          for goarch in amd64 arm64; do
-            image="javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker tag "$image" "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker tag "$image" "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
-            docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"
+          : > "$RUNNER_TEMP/ghcr-container-refs"
+          : > "$RUNNER_TEMP/dockerhub-container-refs"
+          for archive in containers/javdb-cli-*.tar; do
+            artifact=$(basename "$archive" .tar)
+            artifact="${artifact#javdb-cli-}"
+            image="javdb-cli:${RELEASE_TAG}-${artifact}"
+            ghcr_ref="ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-${artifact}"
+            dockerhub_ref="flanchanxwo/javdb-cli:${RELEASE_TAG}-${artifact}"
+            docker tag "$image" "$ghcr_ref"
+            docker push "$ghcr_ref"
+            docker tag "$image" "$dockerhub_ref"
+            docker push "$dockerhub_ref"
+            printf '%s\n' "$ghcr_ref" >> "$RUNNER_TEMP/ghcr-container-refs"
+            printf '%s\n' "$dockerhub_ref" >> "$RUNNER_TEMP/dockerhub-container-refs"
           done
-
-      - name: Publish the versioned multi-architecture manifests
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" \
-            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-            "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+          mapfile -t ghcr_refs < "$RUNNER_TEMP/ghcr-container-refs"
+          mapfile -t dockerhub_refs < "$RUNNER_TEMP/dockerhub-container-refs"
+          test "${#ghcr_refs[@]}" -gt 0
+          test "${#ghcr_refs[@]}" = "${#dockerhub_refs[@]}"
+          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" "${ghcr_refs[@]}"
           docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
-          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" \
-            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-            "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" "${dockerhub_refs[@]}"
           docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"
 
       - name: Promote latest only for the newest stable tag
@@ -590,13 +517,11 @@ jobs:
             | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
             | sort -V | tail -n 1)
           if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
-            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" \
-              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-              "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            mapfile -t ghcr_refs < "$RUNNER_TEMP/ghcr-container-refs"
+            mapfile -t dockerhub_refs < "$RUNNER_TEMP/dockerhub-container-refs"
+            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" "${ghcr_refs[@]}"
             docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
-            docker manifest create "flanchanxwo/javdb-cli:latest" \
-              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-amd64" \
-              "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-arm64"
+            docker manifest create "flanchanxwo/javdb-cli:latest" "${dockerhub_refs[@]}"
             docker manifest push "flanchanxwo/javdb-cli:latest"
           else
             printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
@@ -669,22 +594,13 @@ jobs:
 
   build_container:
     name: Build container ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: [validate, build]
+    needs: [validate, resolve_platforms, build]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            artifact: linux-amd64
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            artifact: linux-arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.container) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -810,31 +726,14 @@ jobs:
           retention-days: 1
 
   verify_homebrew_formula:
-    name: Verify Homebrew on ${{ matrix.os }}/${{ matrix.arch }}
-    needs: render_homebrew_formula
+    name: Verify Homebrew on ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: [render_homebrew_formula, resolve_platforms]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            os: darwin
-            arch: amd64
-            artifact: darwin-amd64
-          - runner: macos-15
-            os: darwin
-            arch: arm64
-            artifact: darwin-arm64
-          - runner: ubuntu-22.04
-            os: linux
-            arch: amd64
-            artifact: linux-amd64
-          - runner: ubuntu-22.04-arm
-            os: linux
-            arch: arm64
-            artifact: linux-arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.homebrew) }}
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -854,12 +753,12 @@ jobs:
           test "$formula_name" = javdb-cli
           test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/javdb-cli.rb | LC_ALL=C sort)"
           version="${RELEASE_TAG#v}"
-          archive="javdb-cli_${version}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz"
+          archive="javdb-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           test -f "release-assets/$archive"
           public_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$archive"
           grep -F "url \"$public_url\"" staging-formula/javdb-cli.rb >/dev/null
           cp staging-formula/javdb-cli.rb staging-formula/javdb-cli-verify.rb
-          if [ '${{ matrix.os }}' = linux ]; then
+          if [ '${{ matrix.goos }}' = linux ]; then
             staging_dir="$(pwd)/staging-formula"
             assets_dir="$(pwd)/release-assets"
             sed -i "s|$public_url|file:///release-assets/$archive|g" staging-formula/javdb-cli-verify.rb

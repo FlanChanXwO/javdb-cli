@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
+      platform_required: ${{ steps.scope.outputs.platform_required }}
     permissions:
       contents: read
     steps:
@@ -36,8 +37,30 @@ jobs:
           base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-  packaged_binary_smoke:
+  resolve_platforms:
+    name: Resolve platform matrix
     needs: classify_changes
+    if: needs.classify_changes.outputs.platform_required == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve smoke platforms
+        id: matrix
+        shell: bash
+        run: go run ./tools/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
+
+  packaged_binary_smoke:
+    needs: [classify_changes, resolve_platforms]
     # 纯文档改动不运行矩阵；静态 job 名称避免 job-level skip 时渲染未展开的 matrix 表达式。
     if: needs.classify_changes.outputs.docs_only != 'true'
     name: Packaged binary smoke
@@ -46,26 +69,7 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -91,7 +95,7 @@ jobs:
           go vet ./...
 
       - name: Test with the race detector where Go supports it
-        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        if: contains(matrix.capabilities, 'race')
         shell: bash
         run: go test -race ./... -count=1
 
@@ -131,6 +135,7 @@ jobs:
     name: Platform smoke gate
     needs:
       - classify_changes
+      - resolve_platforms
       - packaged_binary_smoke
     if: ${{ always() }}
     runs-on: ubuntu-24.04
@@ -141,12 +146,16 @@ jobs:
         env:
           CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
           DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
+          PLATFORM_REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
+          RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
           MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
         run: |
           set -euo pipefail
           test "$CLASSIFY_RESULT" = success
-          if [ "$DOCS_ONLY" = true ]; then
+          if [ "$PLATFORM_REQUIRED" != true ]; then
+            test "$RESOLVE_RESULT" = skipped
             test "$MATRIX_RESULT" = skipped
           else
+            test "$RESOLVE_RESULT" = success
             test "$MATRIX_RESULT" = success
           fi

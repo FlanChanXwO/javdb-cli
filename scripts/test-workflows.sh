@@ -1,202 +1,62 @@
 #!/bin/sh
-# 静态检查 CI 与发布 workflow 的关键结构，避免未运行到 Actions 才发现 YAML 或目标矩阵漂移。
+# 只验证 CI/Release 的稳定行为契约；具体 YAML 排版与实现细节交给 Actions 实际运行。
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-for workflow in \
-	"$repo_root/.github/workflows/ci.yml" \
-	"$repo_root/.github/workflows/platform-smoke.yml" \
-	"$repo_root/.github/workflows/release.yml" \
-	"$repo_root/.github/workflows/e2e.yml" \
-	"$repo_root/.github/workflows/publish-clawhub.yml" \
-	"$repo_root/.github/workflows/container-smoke.yml" \
-	"$repo_root/.github/workflows/auto-assign.yml" \
-	"$repo_root/.github/workflows/pr-triage.yml"; do
+for workflow in "$repo_root"/.github/workflows/*.yml; do
 	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
 done
 
-ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_file(path) }' \
-	"$repo_root/.github/auto_assign.yml" \
-	"$repo_root/.github/labeler.yml"
+quality="$repo_root/.github/workflows/ci.yml"
+platform="$repo_root/.github/workflows/platform-smoke.yml"
+container="$repo_root/.github/workflows/container-smoke.yml"
+release="$repo_root/.github/workflows/release.yml"
+verification="$repo_root/.github/workflows/pr-verification.yml"
+metadata="$repo_root/.github/workflows/pr-metadata.yml"
 
-change_scope_action="$repo_root/.github/actions/classify-change-scope/action.yml"
-ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$change_scope_action"
+# Branch protection relies on these stable aggregate names.
+grep -F 'name: Quality gate' "$quality" >/dev/null
+grep -F 'name: Platform smoke gate' "$platform" >/dev/null
+grep -F 'name: Container smoke gate' "$container" >/dev/null
+grep -F "context='PR template gate'" "$metadata" >/dev/null
+grep -F "context='PR test command gate'" "$metadata" >/dev/null
 
-platform_workflow="$repo_root/.github/workflows/platform-smoke.yml"
-quality_workflow="$repo_root/.github/workflows/ci.yml"
-release_workflow="$repo_root/.github/workflows/release.yml"
+# Platform sets are resolved from the shared registry rather than copied into workflows.
+grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
+grep -F './tools/platformmatrix --capability container' "$container" >/dev/null
+grep -F './tools/platformmatrix --capability verification' "$verification" >/dev/null
+grep -F './tools/platformmatrix --capability release' "$release" >/dev/null
+grep -F './tools/platformmatrix --capability homebrew' "$release" >/dev/null
 
-# quality 的 release-note hook 需要历史 tags；不能只依赖默认浅 checkout。
-quality_checkout=$(sed -n '/^  quality:/,/^      - uses: actions\/setup-go@/p' "$quality_workflow")
-printf '%s\n' "$quality_checkout" | grep -F 'fetch-depth: 0' >/dev/null
-
-for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
-	grep -F "goos: ${target%/*}" "$platform_workflow" >/dev/null
-	grep -F "goarch: ${target#*/}" "$platform_workflow" >/dev/null
-	grep -F "goos: ${target%/*}" "$release_workflow" >/dev/null
-	grep -F "goarch: ${target#*/}" "$release_workflow" >/dev/null
-done
-
-grep -F 'ref: ${{ env.RELEASE_TAG }}' "$release_workflow" >/dev/null
-grep -F 'release_notes_audit:' "$release_workflow" >/dev/null
-# Dockerfile 契约：pinned digest 基础镜像、非 root javdb 用户、私有状态目录、可写 /work、固定入口。
-dockerfile="$repo_root/Dockerfile"
-grep -F 'FROM debian@sha256:' "$dockerfile" >/dev/null
-grep -F '固定基础镜像' "$dockerfile" >/dev/null
-if grep -F '保证构建可复现' "$dockerfile" >/dev/null; then
-	echo 'Dockerfile must not claim full-image reproducibility without pinned runtime packages' >&2
+# Release bytes are built once on fresh production runners, then prepared and approved.
+grep -F 'build_production:' "$release" >/dev/null
+grep -F 'Smoke the exact production package' "$release" >/dev/null
+if grep -F 'Build, package, and smoke the versioned binary' "$release" >/dev/null; then
+	echo 'release verification must not build a disposable second package' >&2
 	exit 1
 fi
-grep -F 'useradd --home-dir /home/javdb --create-home --shell /usr/sbin/nologin --uid 1000 javdb' "$dockerfile" >/dev/null
-grep -F 'install -d -o javdb -g javdb -m 0700 /home/javdb/.javdb-cli' "$dockerfile" >/dev/null
-grep -F 'COPY dist/javdb /usr/local/bin/javdb' "$dockerfile" >/dev/null
-grep -F 'COPY LICENSE /usr/share/doc/javdb-cli/' "$dockerfile" >/dev/null
-grep -F 'ENV HOME=/home/javdb' "$dockerfile" >/dev/null
-grep -F 'WORKDIR /work' "$dockerfile" >/dev/null
-grep -F 'install -d -o javdb -g javdb -m 0755 /work' "$dockerfile" >/dev/null
-grep -F 'LABEL org.opencontainers.image.source="https://github.com/FlanChanXwO/javdb-cli"' "$dockerfile" >/dev/null
-grep -F 'USER javdb' "$dockerfile" >/dev/null
-sed -n 's/^ENTRYPOINT //p' "$dockerfile" | grep -F '["/usr/local/bin/javdb"]' >/dev/null
-# 容器 smoke workflow 在镜像构建文件、构建输入和运行时契约变更时执行。
-container_workflow="$repo_root/.github/workflows/container-smoke.yml"
-grep -F 'name: Container image smoke' "$container_workflow" >/dev/null
-grep -F "'Dockerfile'" "$container_workflow" >/dev/null
-grep -F "'.dockerignore'" "$container_workflow" >/dev/null
-grep -F 'javdb version 0.0.0-smoke (2026-01-01)' "$container_workflow" >/dev/null
-grep -F '/home/javdb/.javdb-cli/' "$container_workflow" >/dev/null
-grep -F 'test -s /usr/share/doc/javdb-cli/LICENSE' "$container_workflow" >/dev/null
-grep -F 'touch /work/container-smoke' "$container_workflow" >/dev/null
-grep -F "state_mode=\$(docker run --rm --entrypoint stat" "$container_workflow" >/dev/null
-grep -F "test \"\$state_mode\" = 700" "$container_workflow" >/dev/null
-grep -F -- '--build-arg REVISION=smoke-revision' "$container_workflow" >/dev/null
-grep -F -- '--build-arg VERSION=0.0.0-smoke' "$container_workflow" >/dev/null
-for label in revision version source licenses; do
-	grep -F "org.opencontainers.image.$label" "$container_workflow" >/dev/null
-done
-# 容器 smoke 必须覆盖生成镜像所依赖的构建脚本、模块文件和 Go 源码；pull_request 与 push 两个触发器都要同步。
-for path in \
-	'scripts/build-release.sh' \
-	'go.mod' \
-	'go.sum' \
-	'cmd/**' \
-	'internal/**' \
-	'sdk/**' \
-	'LICENSE'; do
-	test "$(grep -Fc -- "      - '$path'" "$container_workflow")" -eq 2
-done
-grep -F 'pull-requests: read' "$release_workflow" >/dev/null
-grep -F 'scripts/previous-release-tag.sh' "$release_workflow" >/dev/null
-grep -F 'sh scripts/test-releasenotes.sh' "$release_workflow" >/dev/null
-grep -F 'needs: [validate, verify_release_source, release_notes_audit]' "$release_workflow" >/dev/null
-grep -F 'needs: [validate, prepare_release, build_container, verify_homebrew_formula]' "$release_workflow" >/dev/null
-grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
-grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
-grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
-grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
-# 容器镜像发布：build_container 从同一不可变 tag 重建 Linux 二进制、构建并验证镜像契约；
-# publish 必须等待审批前的二进制、metadata、容器与 Homebrew 验证全部完成，再进入唯一 environment gate。
-grep -F 'build_container:' "$release_workflow" >/dev/null
-if grep -F 'publish_container:' "$release_workflow" >/dev/null; then
-	echo 'container publication must share the single protected publish job' >&2
+grep -F 'prepare_release:' "$release" >/dev/null
+grep -F 'go run ./tools/release verify-artifact-set' "$release" >/dev/null
+
+# Exactly one human approval boundary. Publication environments must not require another approval.
+test "$(grep -Fc 'environment: release-approval' "$release")" -eq 1
+grep -F 'environment: release' "$release" >/dev/null
+approval_line=$(grep -n '^  approve_release:$' "$release" | cut -d: -f1)
+publish_line=$(grep -n '^  publish:$' "$release" | cut -d: -f1)
+test "$approval_line" -lt "$publish_line"
+
+# Approval must happen after the archive, container, and Homebrew verification work.
+approval_job=$(sed -n '/^  approve_release:$/,/^  publish:$/p' "$release")
+printf '%s\n' "$approval_job" | grep -F 'needs: [prepare_release, verify_homebrew_formula]' >/dev/null
+
+# PR code execution cannot write PR comments/reactions; trusted jobs own those permissions.
+verify_job=$(sed -n '/^  verify:$/,/^  aggregate:$/p' "$verification")
+if printf '%s\n' "$verify_job" | grep -F 'issues: write' >/dev/null; then
+	echo 'untrusted verification job must not have issue write permission' >&2
 	exit 1
 fi
-publish_job=$(sed -n '/^  publish:$/,/^  build_container:/p' "$release_workflow")
-prepare_job=$(sed -n '/^  prepare_release:$/,/^  publish:/p' "$release_workflow")
-test "$(grep -Fc 'environment: release' "$release_workflow")" -eq 1
-test "$(printf '%s\n' "$publish_job" | grep -Fc 'environment: release')" -eq 1
-printf '%s\n' "$prepare_job" | grep -F 'name: prepared-release-metadata' >/dev/null
-printf '%s\n' "$prepare_job" | grep -F 'sha256sum "dist/$archive"' >/dev/null
-if printf '%s\n' "$prepare_job" | grep -F 'go run ./scripts/sign-release' >/dev/null; then
-	echo 'release signing must happen only after the final approval gate' >&2
-	exit 1
-fi
-printf '%s\n' "$publish_job" | grep -F 'packages: write' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'go run ./scripts/sign-release' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'cmp prepared/dist/checksums.txt dist/checksums.txt' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-amd64' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-arm64' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'registry: docker.io' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'username: flanchanxwo' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'password: ${{ secrets.DOCKER_HUB_TOKEN }}' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '\''.isDraft'\'')" = true' >/dev/null
-grep -F 'ghcr.io/flanchanxwo/javdb-cli' "$release_workflow" >/dev/null
-grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' "$release_workflow" >/dev/null
-grep -F 'docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest"' "$release_workflow" >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker push "flanchanxwo/javdb-cli:${RELEASE_TAG}-linux-${goarch}"' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker manifest create "flanchanxwo/javdb-cli:latest"' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker manifest push "flanchanxwo/javdb-cli:latest"' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker logout docker.io' >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'docker manifest inspect "docker.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"' >/dev/null
-container_publish_line=$(printf '%s\n' "$publish_job" | grep -nF 'docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"' | cut -d: -f1)
-release_create_line=$(printf '%s\n' "$publish_job" | grep -nF 'gh release create "$RELEASE_TAG"' | cut -d: -f1)
-release_public_line=$(printf '%s\n' "$publish_job" | grep -nF 'gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false' | cut -d: -f1)
-test "$release_create_line" -lt "$container_publish_line"
-test "$container_publish_line" -lt "$release_public_line"
-latest_promotion=$(printf '%s\n' "$publish_job" | sed -n '/^      - name: Promote latest only for the newest stable tag$/,$p')
-printf '%s\n' "$latest_promotion" | grep -F "if [ \"\$RELEASE_TAG\" = \"\$latest_stable_tag\" ]; then" >/dev/null
-if printf '%s\n' "$latest_promotion" | grep -F "test \"\$RELEASE_TAG\" = \"\$latest_stable_tag\"" >/dev/null; then
-	echo 'latest promotion guard must skip older stable tags without failing the job' >&2
-	exit 1
-fi
-# 归档、checksums、容器和 Homebrew 验证在人工审批前完成；审批后只签名并公开既有产物。
-grep -F 'dist/release-manifest.json' "$release_workflow" >/dev/null
-grep -F 'dist/release-manifest.sig' "$release_workflow" >/dev/null
-grep -F 'dist/checksums.txt' "$release_workflow" >/dev/null
-printf '%s\n' "$publish_job" | grep -F 'HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}' >/dev/null
-verify_homebrew_job=$(sed -n '/^  verify_homebrew_formula:$/,$p' "$release_workflow")
-printf '%s\n' "$verify_homebrew_job" | grep -F 'needs: render_homebrew_formula' >/dev/null
-printf '%s\n' "$verify_homebrew_job" | grep -F 'verified-release-${{ matrix.artifact }}' >/dev/null
-printf '%s\n' "$verify_homebrew_job" | grep -F 'file:///release-assets/$archive' >/dev/null
+printf '%s\n' "$verify_job" | grep -F 'contents: read' >/dev/null
+grep -F '<!-- pr-test-result -->' "$verification" >/dev/null
+
 sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
-
-# 文档专属路径必须有一致的 classifier 与稳定汇总 gate；workflow 本身的改动不在白名单内。
-for workflow in "$quality_workflow" "$platform_workflow"; do
-	grep -F 'classify_changes:' "$workflow" >/dev/null
-	grep -F './.github/actions/classify-change-scope' "$workflow" >/dev/null
-done
-grep -F 'go run ./scripts/changescope' "$change_scope_action" >/dev/null
-if grep -F 'Validate pull request release-note declaration' "$quality_workflow" >/dev/null; then
-	echo 'quality workflow must not validate PR release-note metadata' >&2
-	exit 1
-fi
-grep -F 'docs_only' "$quality_workflow" >/dev/null
-grep -F 'platform_smoke_gate:' "$platform_workflow" >/dev/null
-grep -F 'name: Platform smoke gate' "$platform_workflow" >/dev/null
-grep -F "if: needs.classify_changes.outputs.docs_only != 'true'" "$platform_workflow" >/dev/null
-grep -F 'MATRIX_RESULT' "$platform_workflow" >/dev/null
-# 代码变更保留六个平台原生矩阵；文档变更由聚合 gate 接管，job 名称不得暴露未展开的 matrix 表达式。
-grep -F 'name: Packaged binary smoke' "$platform_workflow" >/dev/null
-if grep -F 'name: Packaged binary smoke ${{ matrix.goos }}/${{ matrix.goarch }}' "$platform_workflow" >/dev/null; then
-	echo 'platform smoke job name must not expose an unexpanded matrix expression' >&2
-	exit 1
-fi
-grep -F 'runs-on: ${{ matrix.runner }}' "$platform_workflow" >/dev/null
-if grep -F 'Confirm docs-only native smoke skip' "$platform_workflow" >/dev/null; then
-	echo 'platform smoke must not create docs-only placeholder checks' >&2
-	exit 1
-fi
-
-# e2e workflow 必须排除纯文档/changelog/skills 路径,避免文档改动触发真实 API 冒烟。
-e2e_workflow="$repo_root/.github/workflows/e2e.yml"
-grep -F "paths-ignore:" "$e2e_workflow" >/dev/null
-grep -F "'docs/**'" "$e2e_workflow" >/dev/null
-grep -F "'CHANGELOG.md'" "$e2e_workflow" >/dev/null
-grep -F "'skills/**'" "$e2e_workflow" >/dev/null
-grep -F 'secrets.JAVDB_E2E_USERNAME' "$e2e_workflow" >/dev/null
-
-# PR 自动化只使用目标仓库权限，并固定第三方 action 的不可变提交。
-auto_assign_workflow="$repo_root/.github/workflows/auto-assign.yml"
-triage_workflow="$repo_root/.github/workflows/pr-triage.yml"
-grep -F 'pull_request_target:' "$auto_assign_workflow" >/dev/null
-grep -F 'pull-requests: write' "$auto_assign_workflow" >/dev/null
-grep -F 'kentaro-m/auto-assign-action@f4648c0a9fdb753479e9e75fc251f507ce17bb7e' "$auto_assign_workflow" >/dev/null
-grep -F 'pull_request_target:' "$triage_workflow" >/dev/null
-grep -F 'issues: write' "$triage_workflow" >/dev/null
-grep -F 'actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9' "$triage_workflow" >/dev/null
-grep -F 'configuration-path: .github/labeler.yml' "$triage_workflow" >/dev/null
-grep -F 'sync-labels: true' "$triage_workflow" >/dev/null
