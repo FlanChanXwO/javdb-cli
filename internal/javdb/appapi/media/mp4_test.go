@@ -157,6 +157,31 @@ func TestDownloadHLSToMP4ProducesFastStartFile(t *testing.T) {
 	}
 }
 
+func TestDownloadHLSToMP4NormalizesSegmentTimestampReset(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/video.m3u8":
+			_, _ = writer.Write([]byte("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\nseg1.ts\n#EXTINF:1.0,\nseg2.ts\n#EXT-X-ENDLIST\n"))
+		case "/seg1.ts", "/seg2.ts":
+			// JavDB 上游部分预览会在新的 TS segment 重新从较小时间戳开始。
+			// remux 必须把这种 segment 级回跳接回连续时间轴，而不是拒绝下载
+			// 或把非单调 DTS/PTS 原样写入 MP4。
+			_, _ = writer.Write(validTSSegmentAt(0))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	target := filepath.Join(t.TempDir(), "preview.mp4")
+	if _, err := DownloadHLS(context.Background(), hlsFetchFrom(server.URL), server.URL+"/video.m3u8", target); err != nil {
+		t.Fatalf("download HLS with segment timestamp reset: %v", err)
+	}
+	if err := validateMP4File(target); err != nil {
+		t.Fatalf("normalized MP4 validation: %v", err)
+	}
+}
+
 func TestDownloadMP4IgnoresStaleFixedSpool(t *testing.T) {
 	server := hlsMP4Server(t)
 	defer server.Close()
