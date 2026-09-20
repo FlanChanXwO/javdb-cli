@@ -145,6 +145,12 @@ sh scripts/build-platform.sh \
 进入 release/smoke matrix 仍由 registry 决定。底层 `package-release.sh` 会拒绝 malformed target、
 错误二进制名、符号链接输出和既有资产名。Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 
+发布版本 identity 统一由 `internal/releaseversion` 校验；updater manifest 与 CI release trust 不再各自
+维护 stable SemVer 正则。`tools/release` 负责可复用的 tag/default-branch ancestry、published Release
+状态与 Release-run handoff identity 校验。Release/ClawHub workflow 仍显式拥有 credential、权限、
+skill 变更检测和实际发布动作；workflow recovery 只验证成功的 `Release` handoff，不把恢复 run 的
+head 强行等同于 tag commit。
+
 ### Docker 镜像
 
 每个 stable release 向 GHCR 与 Docker Hub 发布相同的多架构镜像

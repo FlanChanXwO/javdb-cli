@@ -38,6 +38,7 @@ if grep -F 'Build, package, and smoke the versioned binary' "$release" >/dev/nul
 fi
 grep -F 'prepare_release:' "$release" >/dev/null
 grep -F 'go run ./tools/release verify-artifact-set' "$release" >/dev/null
+grep -F 'go run ./tools/release verify-source' "$release" >/dev/null
 
 # Exactly one human approval boundary. Publication environments must not require another approval.
 test "$(grep -Fc 'environment: release-approval' "$release")" -eq 1

@@ -35,8 +35,10 @@ grep -F 'contents: read' "$clawhub_workflow" >/dev/null
 grep -F 'name: clawhub-release-tag' "$clawhub_workflow" >/dev/null
 grep -F "path: $github_expr{{ runner.temp }}/clawhub-release-tag" "$clawhub_workflow" >/dev/null
 grep -F 'handoff_dir="$RUNNER_TEMP/clawhub-release-tag"' "$clawhub_workflow" >/dev/null
-grep -F 'git merge-base --is-ancestor' "$clawhub_workflow" >/dev/null
-grep -F "releases/tags/\$RELEASE_TAG" "$clawhub_workflow" >/dev/null
+grep -F 'tools/release verify-source' "$clawhub_workflow" >/dev/null
+grep -F 'tools/release verify-published-release' "$clawhub_workflow" >/dev/null
+grep -F 'tools/release verify-handoff' "$clawhub_workflow" >/dev/null
+grep -F 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' "$clawhub_workflow" >/dev/null
 grep -F "ref: $github_expr{{ steps.release_tag.outputs.value }}" "$clawhub_workflow" >/dev/null
 
 ruby - "$clawhub_workflow" <<'RUBY'
