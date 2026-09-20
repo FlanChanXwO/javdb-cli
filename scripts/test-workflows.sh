@@ -88,21 +88,33 @@ done
 grep -F 'pull-requests: read' "$release_workflow" >/dev/null
 grep -F 'scripts/previous-release-tag.sh' "$release_workflow" >/dev/null
 grep -F 'sh scripts/test-releasenotes.sh' "$release_workflow" >/dev/null
-grep -F 'needs: [validate, verify_release_source, release_notes_audit, build_container]' "$release_workflow" >/dev/null
+grep -F 'needs: [validate, verify_release_source, release_notes_audit]' "$release_workflow" >/dev/null
+grep -F 'needs: [validate, prepare_release, build_container, verify_homebrew_formula]' "$release_workflow" >/dev/null
 grep -F 'scripts/releasenotes render' "$release_workflow" >/dev/null
 grep -F -- '--notes-file release/release-notes.md' "$release_workflow" >/dev/null
 grep -F 'gh release create "$RELEASE_TAG"' "$release_workflow" >/dev/null
 grep -F 'HOMEBREW_TAP_DEPLOY_ENABLED' "$release_workflow" >/dev/null
 # 容器镜像发布：build_container 从同一不可变 tag 重建 Linux 二进制、构建并验证镜像契约；
-# publish 在同一次 release environment gate 中消费已验证镜像，推送 GHCR 与 Docker Hub，最后公开 Release。
+# publish 必须等待审批前的二进制、metadata、容器与 Homebrew 验证全部完成，再进入唯一 environment gate。
 grep -F 'build_container:' "$release_workflow" >/dev/null
 if grep -F 'publish_container:' "$release_workflow" >/dev/null; then
 	echo 'container publication must share the single protected publish job' >&2
 	exit 1
 fi
 publish_job=$(sed -n '/^  publish:$/,/^  build_container:/p' "$release_workflow")
+prepare_job=$(sed -n '/^  prepare_release:$/,/^  publish:/p' "$release_workflow")
+test "$(grep -Fc 'environment: release' "$release_workflow")" -eq 1
 test "$(printf '%s\n' "$publish_job" | grep -Fc 'environment: release')" -eq 1
+printf '%s\n' "$prepare_job" | grep -F 'name: prepared-release-metadata' >/dev/null
+printf '%s\n' "$prepare_job" | grep -F 'sha256sum "dist/$archive"' >/dev/null
+if printf '%s\n' "$prepare_job" | grep -F 'go run ./scripts/sign-release' >/dev/null; then
+	echo 'release signing must happen only after the final approval gate' >&2
+	exit 1
+fi
 printf '%s\n' "$publish_job" | grep -F 'packages: write' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'go run ./scripts/sign-release' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}' >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'cmp prepared/dist/checksums.txt dist/checksums.txt' >/dev/null
 printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-amd64' >/dev/null
 printf '%s\n' "$publish_job" | grep -F 'verified-container-linux-arm64' >/dev/null
 printf '%s\n' "$publish_job" | grep -F 'registry: docker.io' >/dev/null
@@ -131,14 +143,15 @@ if printf '%s\n' "$latest_promotion" | grep -F "test \"\$RELEASE_TAG\" = \"\$lat
 	echo 'latest promotion guard must skip older stable tags without failing the job' >&2
 	exit 1
 fi
-# publish job 必须绑定受保护的 release environment，只在此处读取签名私钥，
-# 并从已验证 archives 生成 manifest、signature 与由 manifest 派生的 checksums。
-grep -F 'environment: release' "$release_workflow" >/dev/null
-grep -F 'JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}' "$release_workflow" >/dev/null
-grep -F 'go run ./scripts/sign-release' "$release_workflow" >/dev/null
+# 归档、checksums、容器和 Homebrew 验证在人工审批前完成；审批后只签名并公开既有产物。
 grep -F 'dist/release-manifest.json' "$release_workflow" >/dev/null
 grep -F 'dist/release-manifest.sig' "$release_workflow" >/dev/null
 grep -F 'dist/checksums.txt' "$release_workflow" >/dev/null
+printf '%s\n' "$publish_job" | grep -F 'HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}' >/dev/null
+verify_homebrew_job=$(sed -n '/^  verify_homebrew_formula:$/,$p' "$release_workflow")
+printf '%s\n' "$verify_homebrew_job" | grep -F 'needs: render_homebrew_formula' >/dev/null
+printf '%s\n' "$verify_homebrew_job" | grep -F 'verified-release-${{ matrix.artifact }}' >/dev/null
+printf '%s\n' "$verify_homebrew_job" | grep -F 'file:///release-assets/$archive' >/dev/null
 sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
 
 # 文档专属路径必须有一致的 classifier 与稳定汇总 gate；workflow 本身的改动不在白名单内。
