@@ -336,12 +336,96 @@ jobs:
           git fetch --no-tags origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
 
+  prepare_release:
+    name: Prepare release materials
+    needs: [validate, verify_release_source, release_notes_audit]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-darwin-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-darwin-arm64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-linux-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-linux-arm64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-windows-amd64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-windows-arm64
+          path: dist
+
+      - name: Prepare checksums for the exact release asset set
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          : > dist/checksums.txt
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            ext=tar.gz
+            if [ "$goos" = windows ]; then
+              ext=zip
+            fi
+            archive="javdb-cli_${VERSION}_${goos}_${goarch}.${ext}"
+            test -f "dist/$archive"
+            sha=$(sha256sum "dist/$archive" | awk '{print $1}')
+            printf '%s  %s\n' "$sha" "$archive" >> dist/checksums.txt
+          done
+          test "$(find dist -maxdepth 1 -type f -name 'javdb-cli_*' | wc -l | tr -d ' ')" = 6
+          test -s dist/checksums.txt
+          cat dist/checksums.txt
+
+      - name: Render release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          go run ./scripts/releasenotes render \
+            --version "${RELEASE_TAG#v}" \
+            --dir "changelog/v${RELEASE_TAG#v}" \
+            --output release/release-notes.md
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: prepared-release-metadata
+          path: |
+            dist/checksums.txt
+            release/release-notes.md
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     name: Publish release and container images
-    needs: [validate, verify_release_source, release_notes_audit, build_container]
+    needs: [validate, prepare_release, build_container, verify_homebrew_formula]
     runs-on: ubuntu-24.04
-    # 受保护 environment：只有这里允许读取签名私钥与 Docker Hub token。缺失 secret
-    # 或未配置 required reviewers 时 job 显式失败（fail-closed），不公开不完整 Release。
+    # 所有构建、打包、checksums、容器与 Homebrew 安装验证都在此 gate 前完成。
+    # environment 只承担一次最终人工放行，并提供发布所需受保护 secrets。
     environment: release
     permissions:
       contents: write
@@ -383,6 +467,16 @@ jobs:
           path: dist
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
+          name: prepared-release-metadata
+          path: prepared
+      - name: Restore prepared release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp prepared/release/release-notes.md release/release-notes.md
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
           name: verified-container-linux-amd64
           path: containers
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -390,36 +484,29 @@ jobs:
           name: verified-container-linux-arm64
           path: containers
 
-      - name: Check the exact release asset set and sign the release manifest
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-homebrew-formula
+          path: staging-formula
+
+      - name: Sign the already prepared release archives
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
           JAVDB_RELEASE_ED25519_PRIVATE_KEYS: ${{ secrets.JAVDB_RELEASE_ED25519_PRIVATE_KEYS }}
         run: |
           set -euo pipefail
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
-            goos="${target%/*}"
-            goarch="${target#*/}"
-            ext=tar.gz
-            if [ "$goos" = windows ]; then
-              ext=zip
-            fi
-            test -f "dist/javdb-cli_${VERSION}_${goos}_${goarch}.${ext}"
-          done
-          test "$(find dist -maxdepth 1 -type f -name 'javdb-cli_*' | wc -l | tr -d ' ')" = 6
           release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
           test -n "$release_date"
-          # 只从已验证的 production archives 生成清单、签名与兼容 checksums。
           go run ./scripts/sign-release \
             --version "$VERSION" \
             --release-date "$release_date" \
             --dir dist \
             --output dist \
             --checksums dist/checksums.txt
+          cmp prepared/dist/checksums.txt dist/checksums.txt
           test -s dist/release-manifest.json
           test -s dist/release-manifest.sig
-          test -s dist/checksums.txt
-          cat dist/checksums.txt
 
       - name: Create and verify the GitHub Release
         shell: bash
@@ -427,13 +514,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p release
-          go run ./scripts/releasenotes render \
-            --version "${RELEASE_TAG#v}" \
-            --dir "changelog/v${RELEASE_TAG#v}" \
-            --output release/release-notes.md
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            # failed-job rerun 只允许复用本次 workflow 已创建但尚未公开的 draft。
             test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = true
           else
             gh release create "$RELEASE_TAG" \
@@ -450,12 +531,7 @@ jobs:
           fi
           expected=$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)
           actual=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)
-          if [ "$actual" != "$expected" ]; then
-            printf '%s\n' 'draft release assets differ from the verified local set' >&2
-            printf '%s\n' "expected:$expected" >&2
-            printf '%s\n' "actual:$actual" >&2
-            exit 1
-          fi
+          test "$actual" = "$expected"
 
       - name: Load the verified container images
         shell: bash
@@ -540,6 +616,41 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
+      - name: Prepare the exact Homebrew formula commit
+        if: vars.HOMEBREW_TAP_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat staging-formula/formula-name)" = javdb-cli
+          test -f staging-formula/javdb-cli.rb
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
+          git -C "$tap_dir" config user.name github-actions[bot]
+          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          mkdir -p "$tap_dir/Formula"
+          cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
+          git -C "$tap_dir" add -- Formula/javdb-cli.rb
+          test "$(git -C "$tap_dir" diff --cached --name-only)" = Formula/javdb-cli.rb
+          git -C "$tap_dir" commit -m "$RELEASE_TAG: update javdb-cli formula"
+
+      - name: Push the verified Homebrew formula
+        if: vars.HOMEBREW_TAP_DEPLOY_ENABLED == 'true'
+        shell: bash
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
+          umask 077
+          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
+          trap 'rm -f "$key_path"' EXIT HUP INT TERM
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
+          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
+            git -C "$tap_dir" push origin HEAD:main
+
       # ClawHub 发布 workflow 只信任这个由已公开 Release 生成的 tag handoff；
       # 不从 workflow_run 的 head_branch 推断版本，也不重新读取 main。
       - name: Hand off the immutable release tag to ClawHub
@@ -553,13 +664,6 @@ jobs:
         with:
           name: clawhub-release-tag
           path: clawhub-release-tag/release-tag
-          if-no-files-found: error
-          retention-days: 1
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: verified-release-checksums
-          path: dist/checksums.txt
           if-no-files-found: error
           retention-days: 1
 
@@ -670,7 +774,7 @@ jobs:
 
   render_homebrew_formula:
     name: Render Homebrew formula
-    needs: [validate, publish]
+    needs: [validate, prepare_release]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -682,10 +786,10 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-release-checksums
-          path: verified-release
+          name: prepared-release-metadata
+          path: prepared-release
 
-      - name: Render the formula from published checksums
+      - name: Render the formula from prepared checksums
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
@@ -694,7 +798,7 @@ jobs:
           mkdir -p staging-formula
           bash scripts/render-homebrew-formula.sh \
             --version "$VERSION" \
-            --checksums verified-release/checksums.txt \
+            --checksums prepared-release/dist/checksums.txt \
             --output staging-formula/javdb-cli.rb
           printf '%s\n' javdb-cli > staging-formula/formula-name
 
@@ -718,32 +822,50 @@ jobs:
           - runner: macos-15-intel
             os: darwin
             arch: amd64
+            artifact: darwin-amd64
           - runner: macos-15
             os: darwin
             arch: arm64
+            artifact: darwin-arm64
           - runner: ubuntu-22.04
             os: linux
             arch: amd64
+            artifact: linux-amd64
           - runner: ubuntu-22.04-arm
             os: linux
             arch: arm64
+            artifact: linux-arm64
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: staging-homebrew-formula
           path: staging-formula
 
-      - name: Install the staging formula and verify its embedded version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-${{ matrix.artifact }}
+          path: release-assets
+
+      - name: Install the prepared archive through the staging formula
         shell: bash
         run: |
           set -euo pipefail
           formula_name=$(cat staging-formula/formula-name)
           test "$formula_name" = javdb-cli
           test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/javdb-cli.rb | LC_ALL=C sort)"
+          version="${RELEASE_TAG#v}"
+          archive="javdb-cli_${version}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz"
+          test -f "release-assets/$archive"
+          public_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$archive"
+          grep -F "url \"$public_url\"" staging-formula/javdb-cli.rb >/dev/null
+          cp staging-formula/javdb-cli.rb staging-formula/javdb-cli-verify.rb
           if [ '${{ matrix.os }}' = linux ]; then
             staging_dir="$(pwd)/staging-formula"
+            assets_dir="$(pwd)/release-assets"
+            sed -i "s|$public_url|file:///release-assets/$archive|g" staging-formula/javdb-cli-verify.rb
             docker run --rm \
               --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
+              --mount "type=bind,src=$assets_dir,dst=/release-assets,readonly" \
               --env RELEASE_TAG \
               --env HOMEBREW_NO_AUTO_UPDATE=1 \
               --env HOMEBREW_NO_ENV_HINTS=1 \
@@ -752,69 +874,16 @@ jobs:
               -euo pipefail -c '
                 brew tap-new javdb-cli-release/staging --no-git
                 tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
-                cp /staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
+                cp /staging-formula/javdb-cli-verify.rb "$tap_dir/Formula/javdb-cli.rb"
                 brew install --formula javdb-cli-release/staging/javdb-cli
                 javdb --version | grep -F "javdb version ${RELEASE_TAG#v} ("
               '
           else
+            sed -i '' "s|$public_url|file://$(pwd)/release-assets/$archive|g" staging-formula/javdb-cli-verify.rb
             brew tap-new javdb-cli-release/staging --no-git
             brew trust --tap javdb-cli-release/staging
             tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
-            cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
+            cp staging-formula/javdb-cli-verify.rb "$tap_dir/Formula/javdb-cli.rb"
             brew install --formula javdb-cli-release/staging/javdb-cli
             javdb --version | grep -F "javdb version ${RELEASE_TAG#v} ("
           fi
-
-  # 默认跳过：只有显式设置仓库变量 HOMEBREW_TAP_DEPLOY_ENABLED=true 才允许使用 protected
-  # environment 中的 deploy key 推送到 tap，避免未配置密钥的普通发布被伪装为成功部署。
-  deploy_homebrew_tap:
-    name: Deploy verified Homebrew formula
-    needs: verify_homebrew_formula
-    if: vars.HOMEBREW_TAP_DEPLOY_ENABLED == 'true'
-    runs-on: ubuntu-24.04
-    environment: release
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-
-      - name: Prepare the exact formula commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(cat staging-formula/formula-name)" = javdb-cli
-          test -f staging-formula/javdb-cli.rb
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
-          git -C "$tap_dir" config user.name github-actions[bot]
-          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          mkdir -p "$tap_dir/Formula"
-          cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
-          git -C "$tap_dir" add -- Formula/javdb-cli.rb
-          test "$(git -C "$tap_dir" diff --cached --name-only)" = Formula/javdb-cli.rb
-          git -C "$tap_dir" commit -m "$RELEASE_TAG: update javdb-cli formula"
-
-      - name: Push the verified formula with the protected deploy key
-        shell: bash
-        env:
-          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
-          umask 077
-          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
-          trap 'rm -f "$key_path"' EXIT HUP INT TERM
-          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
-          chmod 600 "$key_path"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
-          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
-            git -C "$tap_dir" push origin HEAD:main
