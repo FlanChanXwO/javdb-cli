@@ -102,7 +102,7 @@ docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
   ghcr.io/flanchanxwo/javdb-cli:latest auth login
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
-  ghcr.io/flanchanxwo/javdb-cli:latest search SSIS-589 --limit 5
+  ghcr.io/flanchanxwo/javdb-cli:latest search NUMBER --limit 5
 ```
 
 Docker Hub 镜像从启用该发布渠道后的 stable release 开始提供；这些版本可使用相同 tag，
@@ -144,17 +144,17 @@ javdb auth login
 javdb auth check --json
 
 # 搜索影片，再读取详情中的图 ID 以便后续导航。
-javdb search SSIS-589 --limit 5 --json
-javdb detail SSIS-589 --json
-javdb comments SSIS-589 --page 1 --limit 20 --json
+javdb search NUMBER --limit 5 --json
+javdb detail NUMBER --json
+javdb comments NUMBER --page 1 --limit 20 --json
 
 # 按标签浏览，并获取经过筛选的磁力列表（无需登录）。
 javdb browse --tag 巨乳 --main m --limit 20 --json
-javdb magnets SSIS-589 --cnsub --hd --json
+javdb magnets NUMBER --cnsub --hd --json
 
 # 先发现影片媒体资产，再精确下载所需内容。
-javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./images
-javdb assets list SSIS-589 --type video | javdb assets download -o ./preview.mp4
+javdb assets list NUMBER --type image 1-4 | javdb assets download -d ./images
+javdb assets list NUMBER --type video | javdb assets download -o ./preview.mp4
 ```
 
 运行 `javdb --help`，或阅读[完整命令参考](docs/zh-CN/cli-reference.md)，查看所有命令、flag、
@@ -205,7 +205,7 @@ func main() {
 		panic(err)
 	}
 
-	res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
+	res, err := c.Search(context.Background(), "NUMBER", javdb.SearchOptions{Limit: 5})
 	if err != nil {
 		panic(err)
 	}

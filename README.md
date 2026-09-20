@@ -118,7 +118,7 @@ docker run --rm ghcr.io/flanchanxwo/javdb-cli:v0.2.0 --version
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
   ghcr.io/flanchanxwo/javdb-cli:latest auth login
 docker run --rm -v javdb-cli-state:/home/javdb/.javdb-cli \
-  ghcr.io/flanchanxwo/javdb-cli:latest search SSIS-589 --limit 5
+  ghcr.io/flanchanxwo/javdb-cli:latest search NUMBER --limit 5
 ```
 
 Docker Hub images are published for stable releases created after that channel
@@ -165,17 +165,17 @@ javdb auth login
 javdb auth check --json
 
 # Find a movie and inspect graph IDs for the next navigation step.
-javdb search SSIS-589 --limit 5 --json
-javdb detail SSIS-589 --json
-javdb comments SSIS-589 --page 1 --limit 20 --json
+javdb search NUMBER --limit 5 --json
+javdb detail NUMBER --json
+javdb comments NUMBER --page 1 --limit 20 --json
 
 # Browse a tag and request a filtered magnet list (works without login).
 javdb browse --tag 巨乳 --main m --limit 20 --json
-javdb magnets SSIS-589 --cnsub --hd --json
+javdb magnets NUMBER --cnsub --hd --json
 
 # Discover movie media assets, then download exactly what you need.
-javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./images
-javdb assets list SSIS-589 --type video | javdb assets download -o ./preview.mp4
+javdb assets list NUMBER --type image 1-4 | javdb assets download -d ./images
+javdb assets list NUMBER --type video | javdb assets download -o ./preview.mp4
 ```
 
 Run `javdb --help` or read the [complete command reference](docs/en/cli-reference.md) for
@@ -233,7 +233,7 @@ func main() {
 		panic(err)
 	}
 
-	res, err := c.Search(context.Background(), "SSIS-589", javdb.SearchOptions{Limit: 5})
+	res, err := c.Search(context.Background(), "NUMBER", javdb.SearchOptions{Limit: 5})
 	if err != nil {
 		panic(err)
 	}

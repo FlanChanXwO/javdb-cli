@@ -36,8 +36,8 @@ func NewDownload(options *invocation.RootOptions, streams *invocation.Streams) *
 			"-o writes a single asset to an exact path (.ts keeps the transport stream, " +
 			".mp4 produces a fast-start MP4). Existing files are never overwritten. " +
 			"Output is the final written path per line.",
-		Example: "  javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./media\n" +
-			"  javdb assets list SSIS-589 --type video | javdb assets download -o preview.mp4",
+		Example: "  javdb assets list NUMBER --type image 1-4 | javdb assets download -d ./media\n" +
+			"  javdb assets list NUMBER --type video | javdb assets download -o preview.mp4",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return client.WithOptionalAuth(options, streams.Err, func(c *javdb.Client) error {

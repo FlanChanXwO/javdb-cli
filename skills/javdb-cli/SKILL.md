@@ -69,15 +69,15 @@ javdb config get host
 javdb auth list
 javdb auth check --json
 
-javdb search "SSIS-589" --limit 5 --json
+javdb search "NUMBER" --limit 5 --json
 javdb search "巨乳" --type actor --json
-javdb detail SSIS-589 --json
+javdb detail NUMBER --json
 javdb detail MOVIE_ID --id --json        # 仅当 MOVIE_ID 已确认是内部 ID
-javdb comments SSIS-589 --page 1 --limit 20 --json
-javdb magnets SSIS-589 --cnsub --hd --json
-javdb magnets SSIS-589 --best --json
-javdb assets list SSIS-589 --type image 1-2 | javdb assets download -d ./images
-javdb assets list SSIS-589 --type video | javdb assets download -o ./preview.mp4
+javdb comments NUMBER --page 1 --limit 20 --json
+javdb magnets NUMBER --cnsub --hd --json
+javdb magnets NUMBER --best --json
+javdb assets list NUMBER --type image 1-2 | javdb assets download -d ./images
+javdb assets list NUMBER --type video | javdb assets download -o ./preview.mp4
 
 javdb tags --zone censored
 javdb browse --tag 巨乳 --main m --limit 20 --json
@@ -88,10 +88,10 @@ javdb top250 --limit 20
 
 javdb lists search "关键词" --zone all --json
 javdb list LIST_ID --json
-javdb lists related SSIS-589 --json
+javdb lists related NUMBER --json
 
-javdb mark SSIS-589 --want
-javdb unmark SSIS-589
+javdb mark NUMBER --want
+javdb unmark NUMBER
 ```
 
 所有数据命令可加的全局参数只有本次调用生效：`--proxy URL` 与
