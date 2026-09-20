@@ -145,9 +145,8 @@ and returns the written byte count. Images are validated (XOR unwrap when the
 CDN obfuscates, then magic-byte checks) and published atomically without any
 format conversion. Videos select the output format by target extension:
 `.ts` keeps the decrypted, validated MPEG-TS; `.mp4` produces a fast-start MP4
-(ftyp → moov → mdat) via a pure-Go remux of the H.264/AAC stream and normalizes
-regressed/reset DTS/PTS at HLS segment boundaries onto a continuous timeline —
-no ffmpeg, no transcoding; any other extension returns
+(ftyp → moov → mdat) via a pure-Go remux of the H.264/AAC stream — no ffmpeg,
+no transcoding; any other extension returns
 `unsupported video output format`. Unsupported codecs (HEVC, AC-3, ...) fail
 explicitly. Context cancellation stops every stage and leaves no output file.
 

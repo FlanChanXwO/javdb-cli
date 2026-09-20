@@ -89,9 +89,7 @@ device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`�
 - `appapi/codec`：App JSON、JWT、用户 ID 和响应数组解析。
 - `appapi/media`：图片格式校验/XOR 还原、HLS playlist/key/IV/PKCS#7 处理、三层完整性
   （Layer A segment 校验、Layer B 媒体模型校验、Layer C MP4 容器校验）、按协议要求的
-  segment 重试、spool 化 TS→MP4 Fast Start remux（纯 Go，无 ffmpeg/转码）与 no-replace 发布；
-  MP4 remux 在 segment 边界用已观测视频帧间隔或 AAC 固定 cadence 把回退/重置的 DTS/PTS
-  归一化到连续时间轴，并对同一 segment 的 PTS/DTS 应用同一偏移，
+  segment 重试、spool 化 TS→MP4 Fast Start remux（含 segment 时间戳归一化）与 no-replace 发布，
   TS 临时文件逐包重组每个 PID 当前未完成的 PES，H.264/AAC 样本立即校验并写入
   spool；长期只保留 codec 配置与 sample metadata，最终 mdat 使用固定 I/O 缓冲复制。
   TS 发布前运行 Layer B；MP4 每段仅支持一个 H.264 PID、至多一个 AAC-LC PID，

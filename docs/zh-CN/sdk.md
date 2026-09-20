@@ -127,8 +127,7 @@ id/index/role 等元数据。
 `DownloadMovieAsset(ctx, asset, target)` 把单个资产下载到精确路径并返回写入字节数。图片会先校验
 （CDN 混淆时 XOR 解包，再魔数校验）并原子发布，不做任何格式转换。视频由 target 后缀决定输出格式：
 `.ts` 保留解密校验后的 MPEG-TS；`.mp4` 通过纯 Go remux 生成 Fast Start MP4（ftyp → moov → mdat），
-并在 HLS segment 边界对回退/重置的 DTS/PTS 做连续时间轴归一化；无 ffmpeg、无转码。其余后缀返回
-`unsupported video output format`。不支持的编码（HEVC、AC-3 等）
+无 ffmpeg、无转码；其余后缀返回 `unsupported video output format`。不支持的编码（HEVC、AC-3 等）
 明确失败。context 取消会中断所有阶段且不留下输出文件。
 
 MP4 每段要求恰好一个 H.264 PID、至多一个 AAC-LC PID，且每个 ADTS 帧只有一个 raw data block；
