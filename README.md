@@ -75,6 +75,8 @@ The Formula is updated after a verified release when tap deployment is enabled.
 
 ### Go
 
+Go `1.27.1` is the supported toolchain version for source builds and `go install`.
+
 Use an exact published tag:
 
 ```bash
@@ -88,7 +90,7 @@ Download the archive for your platform from
 against the accompanying `checksums.txt`, and place `javdb` (`javdb.exe` on
 Windows) in a directory on your `PATH`.
 
-To build the checkout, install the Go version declared in `go.mod` and run:
+To build the checkout, install Go `1.27.1` as declared in `go.mod` and run:
 
 ```bash
 sh scripts/build.sh
@@ -255,7 +257,7 @@ flags with `javdb <command> --help`.
 
 Agents using ClawHub can install the published [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)
 with `clawhub install javdb-cli`; pin the installed skill to the matching
-published release version, currently `0.7.3`, rather than following an
+published release version, currently `0.8.0`, rather than following an
 unversioned `latest` tag.
 
 ## Authentication and credential safety
