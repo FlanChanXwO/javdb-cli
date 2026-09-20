@@ -58,10 +58,6 @@ jobs:
             test "$(find "$handoff_dir" -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$handoff_dir/release-tag"
             release_tag=$(cat "$handoff_dir/release-tag")
           fi
-          if ! printf '%s' "$release_tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
-            printf '%s\n' "release tag must be stable SemVer vX.Y.Z, got: $release_tag" >&2
-            exit 1
-          fi
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -70,6 +66,11 @@ jobs:
           persist-credentials: false
           ref: ${{ steps.release_tag.outputs.value }}
 
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Verify immutable release and exact skill source
         id: skill_change
         shell: bash
@@ -77,14 +78,14 @@ jobs:
           RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
-          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
-          test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
+          go run ./tools/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            go run ./tools/release verify-handoff --repository "$GITHUB_REPOSITORY" --run-id "$WORKFLOW_RUN_ID"
+          fi
           skill_version=$(sed -n 's/^version: //p' skills/javdb-cli/SKILL.md)
           test "$(grep -c '^version: ' skills/javdb-cli/SKILL.md)" = 1
           git cat-file -e "$RELEASE_TAG:skills/javdb-cli/SKILL.md"
@@ -99,7 +100,6 @@ jobs:
             test "$skill_version" = "${RELEASE_TAG#v}"
             printf 'publish=true\n' >> "$GITHUB_OUTPUT"
           fi
-          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
           printf 'skill_version=%s\n' "$skill_version" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned ClawHub CLI without credentials

@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/javdb-cli/internal/releaseversion"
 	"github.com/FlanChanXwO/javdb-cli/internal/update/model"
 )
 
@@ -44,9 +44,6 @@ type Manifest struct {
 	ReleaseDate string   `json:"release_date"`
 	Targets     []Target `json:"targets"`
 }
-
-// stableSemverTag 匹配稳定发布 tag vX.Y.Z（与发布 workflow 一致）。
-var stableSemverTag = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 // supportedTargets 是发布契约固定的六平台集合。
 var supportedTargets = map[string]map[string]bool{
@@ -87,10 +84,11 @@ func (m *Manifest) Validate() error {
 	if m.Repository != DefaultRepository {
 		return fmt.Errorf("release manifest repository %q does not match %q", m.Repository, DefaultRepository)
 	}
-	if !stableSemverTag.MatchString(m.Tag) {
-		return fmt.Errorf("release manifest tag %q is not a stable vX.Y.Z tag", m.Tag)
+	version, err := releaseversion.ParseStableTag(m.Tag)
+	if err != nil {
+		return fmt.Errorf("release manifest tag %q is not a stable vX.Y.Z tag: %w", m.Tag, err)
 	}
-	if m.Version != strings.TrimPrefix(m.Tag, "v") {
+	if m.Version != version {
 		return fmt.Errorf("release manifest version %q does not match tag %q", m.Version, m.Tag)
 	}
 	if _, err := time.Parse("2006-01-02", m.ReleaseDate); err != nil {
