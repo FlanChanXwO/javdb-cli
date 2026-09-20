@@ -196,7 +196,7 @@ SDK 嵌入方必须自行施加网络边界。
 `javdb.pipeline/v1` NDJSON 信封、逐行纯文本。位置参数与非空 stdin 同时存在是歧义错误。
 
 ```json
-{"schema":"javdb.pipeline/v1","kind":"movie","ref":"NUMBER","id":"MOVIE_ID","data":{},"meta":{}}
+{"schema":"javdb.pipeline/v1","kind":"movie","ref":"ABC-123","id":"MOVIE_ID","data":{},"meta":{}}
 ```
 
 稳定 kinds：`movie`、`actor`、`series`、`maker`、`director`、`code`、`list`、

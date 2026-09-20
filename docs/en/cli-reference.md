@@ -252,7 +252,7 @@ envelopes, then plain text lines. Providing both a positional argument and
 non-empty stdin is an ambiguity error.
 
 ```json
-{"schema":"javdb.pipeline/v1","kind":"movie","ref":"NUMBER","id":"MOVIE_ID","data":{},"meta":{}}
+{"schema":"javdb.pipeline/v1","kind":"movie","ref":"ABC-123","id":"MOVIE_ID","data":{},"meta":{}}
 ```
 
 Stable kinds: `movie`, `actor`, `series`, `maker`, `director`, `code`, `list`,
