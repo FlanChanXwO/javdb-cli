@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/model"
 )
 
-// ResolveNumber finds the internal movie id for a printed number (e.g. SSIS-589).
+// ResolveNumber finds the internal movie id for a printed number.
 // It prefers an exact case-insensitive match, then accepts one unambiguous
 // alphanumeric formatting-equivalent candidate; it never picks a first hit.
 func ResolveNumber(movies []map[string]any, number string) (string, error) {

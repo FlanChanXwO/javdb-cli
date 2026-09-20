@@ -40,9 +40,9 @@ func NewList(options *invocation.RootOptions, streams *invocation.Streams) *cobr
 			"Without a selector every asset of the requested type is listed. " +
 			"JSON/NDJSON always contain type/url and add best-effort width/height/duration metadata when available. " +
 			"Pipe output remains TYPE<TAB>URL per line and feeds `javdb assets download`.",
-		Example: "  javdb assets list SSIS-589\n" +
-			"  javdb assets list SSIS-589 --type image 1-4 | javdb assets download -d ./images\n" +
-			"  javdb assets list SSIS-589 --type video | javdb assets download -o preview.mp4",
+		Example: "  javdb assets list ABC-123\n" +
+			"  javdb assets list ABC-123 --type image 1-4 | javdb assets download -d ./images\n" +
+			"  javdb assets list ABC-123 --type video | javdb assets download -o preview.mp4",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := pipeline.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)

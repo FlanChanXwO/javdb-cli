@@ -4,9 +4,9 @@
 
 | 动作 | 执行前需确认 |
 | --- | --- |
-| `javdb mark NUMBER --watched` | 影片、设置为已看、可选评分和评论文本 |
-| `javdb mark NUMBER --want` | 影片、设置为想看、可选评分和评论文本 |
-| `javdb unmark NUMBER` | 影片与将删除的标记 |
+| `javdb mark ABC-123 --watched` | 影片、设置为已看、可选评分和评论文本 |
+| `javdb mark ABC-123 --want` | 影片、设置为想看、可选评分和评论文本 |
+| `javdb unmark ABC-123` | 影片与将删除的标记 |
 | `javdb auth use USER_ID` | 将要成为默认账号的 ID |
 | `javdb auth remove USER_ID` | 将要删除的本地账号 ID |
 | `javdb config set/unset KEY` | 配置键和新值/重置结果 |

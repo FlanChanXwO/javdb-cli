@@ -55,7 +55,7 @@ token，token 失效则自动回退匿名请求。
 4. `--all` 只在用户明确要求完整遍历时使用；它仅出现在实体/合集电影列表等支持的命令上。不要把它加到不支持的命令，也不要猜测 CLI 内部的分页行为。
 5. `--best` 会把 `magnets` 的结果缩为单个优先项（中字 > HD > 体积）。用户要完整列表时不要添加它。
 6. `comments` 每次只读一个页面，默认第 `1` 页、每页 `20` 条；不要为它附加 `--all` 或自动读取下一页。用户指定页码或条数时，原样传入正数。
-7. 影片媒体资产走两步:`javdb assets list NUMBER` 先看资产(编号只是位置),再用 selector 或 `--type` 过滤后管道到 `javdb assets download`。list 默认在最终选择后以有界并发流式 probe 图片尺寸/预览视频元数据；`--json/--ndjson` 可选增加 `width`、`height`、视频 `duration`（整数秒），TTY 显示 `SIZE`/`DURATION`，单项失败只省略字段。pipe 仍严格输出 `TYPE<TAB>URL`。可用 `config set assets.probe.enabled false` 关闭额外媒体请求，`assets.probe.concurrency` 默认 `4` 且必须为正数。`-d DIR` 自动命名(`image-001.jpg`/`video-001.mp4`),`-o PATH` 只接受恰好一个资产。两者都是本地资源写入,目标不能已存在,不表示支持完整影片或磁力下载。`assets download` stdout 每行只输出最终路径,无装饰文本。
+7. 影片媒体资产走两步:`javdb assets list ABC-123` 先看资产(编号只是位置),再用 selector 或 `--type` 过滤后管道到 `javdb assets download`。list 默认在最终选择后以有界并发流式 probe 图片尺寸/预览视频元数据；`--json/--ndjson` 可选增加 `width`、`height`、视频 `duration`（整数秒），TTY 显示 `SIZE`/`DURATION`，单项失败只省略字段。pipe 仍严格输出 `TYPE<TAB>URL`。可用 `config set assets.probe.enabled false` 关闭额外媒体请求，`assets.probe.concurrency` 默认 `4` 且必须为正数。`-d DIR` 自动命名(`image-001.jpg`/`video-001.mp4`),`-o PATH` 只接受恰好一个资产。两者都是本地资源写入,目标不能已存在,不表示支持完整影片或磁力下载。`assets download` stdout 每行只输出最终路径,无装饰文本。
 
 ## 命令速查
 
@@ -69,15 +69,15 @@ javdb config get host
 javdb auth list
 javdb auth check --json
 
-javdb search "SSIS-589" --limit 5 --json
+javdb search "ABC-123" --limit 5 --json
 javdb search "巨乳" --type actor --json
-javdb detail SSIS-589 --json
+javdb detail ABC-123 --json
 javdb detail MOVIE_ID --id --json        # 仅当 MOVIE_ID 已确认是内部 ID
-javdb comments SSIS-589 --page 1 --limit 20 --json
-javdb magnets SSIS-589 --cnsub --hd --json
-javdb magnets SSIS-589 --best --json
-javdb assets list SSIS-589 --type image 1-2 | javdb assets download -d ./images
-javdb assets list SSIS-589 --type video | javdb assets download -o ./preview.mp4
+javdb comments ABC-123 --page 1 --limit 20 --json
+javdb magnets ABC-123 --cnsub --hd --json
+javdb magnets ABC-123 --best --json
+javdb assets list ABC-123 --type image 1-2 | javdb assets download -d ./images
+javdb assets list ABC-123 --type video | javdb assets download -o ./preview.mp4
 
 javdb tags --zone censored
 javdb browse --tag 巨乳 --main m --limit 20 --json
@@ -88,10 +88,10 @@ javdb top250 --limit 20
 
 javdb lists search "关键词" --zone all --json
 javdb list LIST_ID --json
-javdb lists related SSIS-589 --json
+javdb lists related ABC-123 --json
 
-javdb mark SSIS-589 --want
-javdb unmark SSIS-589
+javdb mark ABC-123 --want
+javdb unmark ABC-123
 ```
 
 所有数据命令可加的全局参数只有本次调用生效：`--proxy URL` 与
@@ -111,7 +111,7 @@ javdb unmark SSIS-589
 6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
 7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会独立解析 Release 代理并忽略 `--host`、`JAVDB_HOST` 与已配置 host，再按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
 8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
-9. 影片媒体资产:`javdb assets list NUMBER` 输出资产序列(TTY 带编号描述、尺寸和预览时长;管道为 `TYPE<TAB>URL`),机器输出保留 `type`/`url` 并在可用时增加 probe metadata;`javdb assets download` 消费该记录流并验证落盘。下载链路不要求自己解析 preview_images JSON、手写 Referer、调用 ffmpeg，也不为 list 解析完整媒体。该命令域只写入本地 thumbnail/preview 资源,不支持完整影片或磁力目标。失败时如实报告,不能把已包装的图片字节或不完整视频当作成功结果。
+9. 影片媒体资产:`javdb assets list ABC-123` 输出资产序列(TTY 带编号描述、尺寸和预览时长;管道为 `TYPE<TAB>URL`),机器输出保留 `type`/`url` 并在可用时增加 probe metadata;`javdb assets download` 消费该记录流并验证落盘。下载链路不要求自己解析 preview_images JSON、手写 Referer、调用 ffmpeg，也不为 list 解析完整媒体。该命令域只写入本地 thumbnail/preview 资源,不支持完整影片或磁力目标。失败时如实报告,不能把已包装的图片字节或不完整视频当作成功结果。
 10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。
 11. `search --zone` 与 `lists search --zone` 只使用 `censored|uncensored|western|fc2|all`；`search --filter-by` 的文档值为 `can_play|magnets|subtitle|single`。`magnets` 与集成搜索的 `--min-size` 必须为非负数，负小数也拒绝，零合法。
 
