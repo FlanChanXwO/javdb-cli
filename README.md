@@ -257,7 +257,7 @@ flags with `javdb <command> --help`.
 
 Agents using ClawHub can install the published [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)
 with `clawhub install javdb-cli`; pin the installed skill to the matching
-published release version, currently `0.8.0`, rather than following an
+published release version, currently `0.8.1`, rather than following an
 unversioned `latest` tag.
 
 ## Authentication and credential safety
