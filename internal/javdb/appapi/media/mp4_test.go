@@ -155,6 +155,7 @@ func TestDownloadHLSToMP4ProducesFastStartFile(t *testing.T) {
 	if boxes[1].kind != "moov" {
 		t.Fatalf("box order = %v, want moov before mdat", boxes)
 	}
+	assertAACEsdsFullBox(t, data)
 }
 
 func TestDownloadHLSToMP4NormalizesSegmentTimestampReset(t *testing.T) {
@@ -236,6 +237,27 @@ func hlsMP4Server(t *testing.T) *httptest.Server {
 			http.NotFound(writer, request)
 		}
 	}))
+}
+
+// assertAACEsdsFullBox 验证最终 MP4 的 AAC esds 符合 ISO BMFF FullBox 布局：
+// box header 后必须先有 version/flags，再进入 ES_Descriptor(0x03)。
+func assertAACEsdsFullBox(t *testing.T, data []byte) {
+	t.Helper()
+	kind := bytes.Index(data, []byte("esds"))
+	if kind < 4 || kind+9 > len(data) {
+		t.Fatal("AAC esds box not found")
+	}
+	boxStart := kind - 4
+	size := int(beU32(data[boxStart : boxStart+4]))
+	if size < 13 || boxStart+size > len(data) {
+		t.Fatalf("invalid esds box size %d", size)
+	}
+	if !bytes.Equal(data[kind+4:kind+8], []byte{0, 0, 0, 0}) {
+		t.Fatalf("esds FullBox version/flags = % x, want 00 00 00 00", data[kind+4:kind+8])
+	}
+	if data[kind+8] != 0x03 {
+		t.Fatalf("esds first descriptor tag = 0x%02x, want ES_Descriptor 0x03", data[kind+8])
+	}
 }
 
 func boxKind(data []byte, off int) string {

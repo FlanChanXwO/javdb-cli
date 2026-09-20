@@ -655,7 +655,7 @@ func buildESDS(asc []byte) []byte {
 		0x00, 0x01, 0x00,
 	}, decoderConfig...)
 	es = append(es, slConfig...)
-	return mp4Box("esds", es)
+	return mp4FullBox("esds", 0, 0, es)
 }
 
 // ---- SPS 解析(宽高,Exp-Golomb) ----
