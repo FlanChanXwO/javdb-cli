@@ -64,6 +64,10 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 	var hasVideo, hasAudio bool
 	var segmentTimestampOffset uint64
 	var segmentTimestampOffsetSet bool
+	segmentAudioStart := 0
+	if s.audio != nil {
+		segmentAudioStart = len(s.audio.Samples)
+	}
 	_, err := walkTSFrames(reader, func(pid uint16, kind byte, frame demuxedFrame) error {
 		switch kind {
 		case streamTypeH264:
@@ -88,6 +92,14 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 				}
 				segmentTimestampOffset = offset
 				segmentTimestampOffsetSet = true
+				if s.audio != nil {
+					for i := segmentAudioStart; i < len(s.audio.Samples); i++ {
+						s.audio.Samples[i].PTS, err = addTimestampOffset(s.audio.Samples[i].PTS, segmentTimestampOffset)
+						if err != nil {
+							return fmt.Errorf("normalize buffered audio PTS: %w", err)
+						}
+					}
+				}
 			}
 			for i := range track.Samples {
 				track.Samples[i].PTS, err = addTimestampOffset(track.Samples[i].PTS, segmentTimestampOffset)
@@ -136,18 +148,12 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 						return err
 					}
 				}
-				if !segmentTimestampOffsetSet {
-					offset, err := s.audioSegmentTimestampOffset(sample.PTS, track.SampleRate)
+				if segmentTimestampOffsetSet {
+					var err error
+					sample.PTS, err = addTimestampOffset(sample.PTS, segmentTimestampOffset)
 					if err != nil {
-						return err
+						return fmt.Errorf("normalize audio PTS: %w", err)
 					}
-					segmentTimestampOffset = offset
-					segmentTimestampOffsetSet = true
-				}
-				var err error
-				sample.PTS, err = addTimestampOffset(sample.PTS, segmentTimestampOffset)
-				if err != nil {
-					return fmt.Errorf("normalize audio PTS: %w", err)
 				}
 
 				n, err := s.file.Write(sample.Data)
@@ -199,27 +205,6 @@ func (s *mp4Spooler) videoSegmentTimestampOffset(firstDTS uint64) (uint64, error
 	}
 	expected := last + step
 	return expected - firstDTS, nil
-}
-
-// audioSegmentTimestampOffset 使用 AAC-LC 每帧固定 1024 sample 的协议 cadence，
-// 在音频先于视频出现时也能建立同一 segment 的时间轴偏移。
-func (s *mp4Spooler) audioSegmentTimestampOffset(firstPTS uint64, sampleRate int) (uint64, error) {
-	if s.audio == nil || len(s.audio.Samples) == 0 {
-		return 0, nil
-	}
-	last := s.audio.Samples[len(s.audio.Samples)-1].PTS
-	if firstPTS > last {
-		return 0, nil
-	}
-	if sampleRate <= 0 {
-		return 0, fmt.Errorf("cannot normalize audio timestamp reset with invalid sample rate %d", sampleRate)
-	}
-	step := uint64(1024 * mp4VideoTimescale / sampleRate)
-	if step == 0 || ^uint64(0)-last < step {
-		return 0, fmt.Errorf("cannot normalize audio timestamp reset")
-	}
-	expected := last + step
-	return expected - firstPTS, nil
 }
 
 func addTimestampOffset(timestamp, offset uint64) (uint64, error) {
