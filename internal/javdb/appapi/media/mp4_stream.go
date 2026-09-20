@@ -62,6 +62,12 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 	// 每段只允许一条视频和至多一条音频；相同配置不代表相同轨道。
 	var videoPID, audioPID uint16
 	var hasVideo, hasAudio bool
+	var segmentTimestampOffset uint64
+	var segmentTimestampOffsetSet bool
+	segmentAudioStart := 0
+	if s.audio != nil {
+		segmentAudioStart = len(s.audio.Samples)
+	}
 	_, err := walkTSFrames(reader, func(pid uint16, kind byte, frame demuxedFrame) error {
 		switch kind {
 		case streamTypeH264:
@@ -78,6 +84,32 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 			}
 			if err := s.checkVideoConfig(track); err != nil {
 				return err
+			}
+			if len(track.Samples) > 0 && !segmentTimestampOffsetSet {
+				offset, err := s.videoSegmentTimestampOffset(track.Samples[0].DTS)
+				if err != nil {
+					return err
+				}
+				segmentTimestampOffset = offset
+				segmentTimestampOffsetSet = true
+				if s.audio != nil {
+					for i := segmentAudioStart; i < len(s.audio.Samples); i++ {
+						s.audio.Samples[i].PTS, err = addTimestampOffset(s.audio.Samples[i].PTS, segmentTimestampOffset)
+						if err != nil {
+							return fmt.Errorf("normalize buffered audio PTS: %w", err)
+						}
+					}
+				}
+			}
+			for i := range track.Samples {
+				track.Samples[i].PTS, err = addTimestampOffset(track.Samples[i].PTS, segmentTimestampOffset)
+				if err != nil {
+					return fmt.Errorf("normalize video PTS: %w", err)
+				}
+				track.Samples[i].DTS, err = addTimestampOffset(track.Samples[i].DTS, segmentTimestampOffset)
+				if err != nil {
+					return fmt.Errorf("normalize video DTS: %w", err)
+				}
 			}
 			if err := s.checkVideoTimestamps(track.Samples); err != nil {
 				return err
@@ -116,6 +148,13 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 						return err
 					}
 				}
+				if segmentTimestampOffsetSet {
+					var err error
+					sample.PTS, err = addTimestampOffset(sample.PTS, segmentTimestampOffset)
+					if err != nil {
+						return fmt.Errorf("normalize audio PTS: %w", err)
+					}
+				}
 
 				n, err := s.file.Write(sample.Data)
 				if err != nil {
@@ -140,6 +179,39 @@ func (s *mp4Spooler) addSegmentReader(reader io.ReadSeeker) error {
 		return fmt.Errorf("expected exactly one H.264 video track")
 	}
 	return nil
+}
+
+// videoSegmentTimestampOffset 在 segment 边界把回退/重置的 90kHz 时间戳接回
+// 已观测到的连续 decode timeline。步长来自上一段真实相邻视频样本，不使用
+// 固定帧率或经验阈值；没有足够观测依据时仍显式拒绝。
+func (s *mp4Spooler) videoSegmentTimestampOffset(firstDTS uint64) (uint64, error) {
+	if s.video == nil || len(s.video.Samples) == 0 {
+		return 0, nil
+	}
+	last := s.video.Samples[len(s.video.Samples)-1].DTS
+	if firstDTS > last {
+		return 0, nil
+	}
+	if len(s.video.Samples) < 2 {
+		return 0, fmt.Errorf("cannot normalize video timestamp reset without an observed frame interval")
+	}
+	previous := s.video.Samples[len(s.video.Samples)-2].DTS
+	if last <= previous {
+		return 0, fmt.Errorf("cannot normalize video timestamp reset after non-increasing prior DTS")
+	}
+	step := last - previous
+	if ^uint64(0)-last < step {
+		return 0, fmt.Errorf("normalized video timestamp overflows uint64")
+	}
+	expected := last + step
+	return expected - firstDTS, nil
+}
+
+func addTimestampOffset(timestamp, offset uint64) (uint64, error) {
+	if ^uint64(0)-timestamp < offset {
+		return 0, fmt.Errorf("timestamp offset overflows uint64")
+	}
+	return timestamp + offset, nil
 }
 
 // checkVideoConfig 校验后续 segment 的 H.264 SPS/PPS 与首段一致。
@@ -178,8 +250,8 @@ func (s *mp4Spooler) checkVideoConfig(track *h264Track) error {
 	return nil
 }
 
-// checkVideoTimestamps 在写入 spool 前校验新 segment 的 DTS 不回退。
-// Layer A 只能发现单个 segment 内的问题，这里补上跨 segment 的全局时间轴约束。
+// checkVideoTimestamps 在 segment 边界归一化之后仍要求 DTS 严格递增；
+// segment 内部的重复/回退不是可安全推断的边界重置，继续明确拒绝。
 func (s *mp4Spooler) checkVideoTimestamps(samples []h264Sample) error {
 	var previous uint64
 	hasPrevious := false
@@ -188,8 +260,8 @@ func (s *mp4Spooler) checkVideoTimestamps(samples []h264Sample) error {
 		hasPrevious = true
 	}
 	for _, sample := range samples {
-		if hasPrevious && sample.DTS < previous {
-			return fmt.Errorf("video timestamp regression across segments: DTS %d < previous DTS %d", sample.DTS, previous)
+		if hasPrevious && sample.DTS <= previous {
+			return fmt.Errorf("video timestamp is not strictly increasing: DTS %d <= previous DTS %d", sample.DTS, previous)
 		}
 		previous = sample.DTS
 		hasPrevious = true

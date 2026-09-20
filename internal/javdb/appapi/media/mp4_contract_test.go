@@ -884,21 +884,6 @@ func TestSpoolerRejectsCrossSegmentSPSChange(t *testing.T) {
 	}
 }
 
-func TestSpoolerRejectsCrossSegmentDTSRegression(t *testing.T) {
-	spool, err := newMP4Spooler(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(spool.file.Name())
-	defer spool.file.Close()
-	if err := spool.addSegment(validTSSegmentAt(0)); err != nil {
-		t.Fatalf("first segment: %v", err)
-	}
-	if err := spool.addSegment(validTSSegmentAt(0)); err == nil || !strings.Contains(err.Error(), "timestamp regression") {
-		t.Fatalf("error = %v, want cross-segment timestamp regression", err)
-	}
-}
-
 func TestSpoolerRejectsCrossSegmentPPSChange(t *testing.T) {
 	spool, err := newMP4Spooler(t.TempDir())
 	if err != nil {
