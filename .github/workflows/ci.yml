@@ -91,6 +91,7 @@ jobs:
         shell: bash
         run: |
           sh scripts/test-package-release.sh
+          sh scripts/test-build-platform.sh
           sh scripts/test-homebrew-formula.sh
           sh scripts/test-workflows.sh
 

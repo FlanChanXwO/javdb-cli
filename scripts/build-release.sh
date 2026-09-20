@@ -12,10 +12,9 @@ usage() {
 	cat >&2 <<'EOF'
 usage: scripts/build-release.sh --version VERSION --target OS/ARCH --output PATH [--release-date DATE]
 
-Builds one of the six supported release targets with CGO disabled:
-darwin/amd64, darwin/arm64, linux/amd64, linux/arm64,
-windows/amd64, windows/arm64. --release-date (YYYY-MM-DD, from the audited
-changelog) is embedded for the public root --version contract.
+Builds the requested registry-selected target with CGO disabled. --release-date
+(YYYY-MM-DD, from the audited changelog) is embedded for the public root
+--version contract.
 EOF
 }
 
@@ -62,12 +61,14 @@ done
 [ -n "$output" ] || fail '--output is required'
 
 case "$target" in
-	darwin/amd64|darwin/arm64|linux/amd64|linux/arm64|windows/amd64|windows/arm64) ;;
-	*) fail "unsupported target: $target" ;;
+	*/*)
+		goos=${target%%/*}
+		goarch=${target#*/}
+		;;
+	*) fail 'target must use OS/ARCH form' ;;
 esac
-
-goos=${target%/*}
-goarch=${target#*/}
+[ -n "$goos" ] && [ -n "$goarch" ] || fail 'target must contain non-empty OS and ARCH'
+case "$goarch" in */*) fail 'target must contain exactly one slash' ;; esac
 case "$goos" in
 	windows) expected_binary=javdb.exe ;;
 	*) expected_binary=javdb ;;

@@ -47,6 +47,11 @@ sh "$repo_root/scripts/package-release.sh" \
 	--binary "$windows_binary" --target windows/amd64 --version v0.1.1 --output-dir "$temporary/out"
 assert_members "$temporary/out/javdb-cli_0.1.1_windows_amd64.zip" zip
 
+expected_binary=javdb
+sh "$repo_root/scripts/package-release.sh" \
+	--binary "$darwin_binary" --target linux/riscv64 --version 0.1.2 --output-dir "$temporary/out"
+assert_members "$temporary/out/javdb-cli_0.1.2_linux_riscv64.tar.gz" tar.gz
+
 expect_failure() {
 	expected=$1
 	shift
@@ -60,8 +65,8 @@ expect_failure() {
 	}
 }
 
-expect_failure 'unsupported target: plan9/amd64' \
-	sh "$repo_root/scripts/package-release.sh" --binary "$darwin_binary" --target plan9/amd64 --version 0.1.1 --output-dir "$temporary/out"
+expect_failure 'target must use OS/ARCH form' \
+	sh "$repo_root/scripts/package-release.sh" --binary "$darwin_binary" --target plan9 --version 0.1.1 --output-dir "$temporary/out"
 expect_failure 'requires binary named javdb.exe' \
 	sh "$repo_root/scripts/package-release.sh" --binary "$darwin_binary" --target windows/arm64 --version 0.1.1 --output-dir "$temporary/out"
 expect_failure 'output already exists' \

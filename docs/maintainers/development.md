@@ -127,28 +127,23 @@ commit 可能没有 GitHub 的直接 PR 关联；审计工具只在提交标题�
 
 ## 构建、打包与平台
 
-Release 只支持六个原生目标：`darwin/amd64`、`darwin/arm64`、`linux/amd64`、
-`linux/arm64`、`windows/amd64`、`windows/arm64`。Release binary 使用
-`CGO_ENABLED=0`、`-trimpath` 和 `-buildvcs=false`；每个 archive 只包含目标二进制、
-`LICENSE` 与 `README.md`。
+Release 平台只由 `ci/platforms.json` 中的 capability 决定；workflow 与构建脚本不再维护第二份
+平台列表。Release binary 使用 `CGO_ENABLED=0`、`-trimpath` 和 `-buildvcs=false`；每个 archive
+只包含目标二进制、`LICENSE` 与 `README.md`。
 
 本地演练一个目标而不发布：
 
 ```bash
 mkdir -p dist
-sh scripts/build-release.sh \
-  --version 0.2.0 \
-  --target darwin/arm64 \
-  --output dist/javdb
-sh scripts/package-release.sh \
-  --binary dist/javdb \
+sh scripts/build-platform.sh \
   --version 0.2.0 \
   --target darwin/arm64 \
   --output-dir dist
 ```
 
-`package-release.sh` 会拒绝不支持的平台、错误二进制名、符号链接输出和既有资产名。
-Windows Git Bash runner 用预装 `7z` 生成 ZIP。
+`build-platform.sh` 统一 exact-target build、规范归档命名与 artifact path 输出；是否让某个 target
+进入 release/smoke matrix 仍由 registry 决定。底层 `package-release.sh` 会拒绝 malformed target、
+错误二进制名、符号链接输出和既有资产名。Windows Git Bash runner 用预装 `7z` 生成 ZIP。
 
 ### Docker 镜像
 
