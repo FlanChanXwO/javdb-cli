@@ -61,7 +61,7 @@ func TestSearchPositionalNonTTYUsesStablePipelineRecord(t *testing.T) {
 	t.Setenv("HOMEPATH", strings.TrimPrefix(t.TempDir(), filepath.VolumeName(t.TempDir())))
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
-			"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1", "title": "Mock"}},
+			"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1", "title": "Mock", "duration": float64(130)}},
 		}})
 	}))
 	defer server.Close()
@@ -619,7 +619,7 @@ func TestSearchTextPipelineToMagnets(t *testing.T) {
 		case "/api/v2/search":
 			searchQueries = append(searchQueries, request.URL.Query().Get("q"))
 			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{
-				"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1", "title": "Mock"}},
+				"movies": []map[string]any{{"number": "SSIS-001", "id": "id-1", "title": "Mock", "duration": float64(130)}},
 			}})
 		case "/api/v4/movies/id-1":
 			_ = json.NewEncoder(writer).Encode(map[string]any{"success": true, "data": map[string]any{

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -36,6 +35,9 @@ type trackBoxes struct {
 	sttsRaw         []byte
 	cttsRaw         []byte // nil 表示省略
 	stssRaw         []byte // nil 表示省略
+	stscRaw         []byte
+	stcoRaw         []byte
+	stszRaw         []byte
 	avcC            []byte
 }
 
@@ -76,12 +78,17 @@ func parseMP4Tracks(t *testing.T, mp4 []byte) []trackBoxes {
 				tb.cttsRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
 			case "stss":
 				tb.stssRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
+			case "stsc":
+				tb.stscRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
+			case "stco":
+				tb.stcoRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
+			case "stsz":
+				tb.stszRaw = append([]byte(nil), trak[tref.off:tref.off+int64(boxSize(trak, int(tref.off)))]...)
+				tb.stszSampleCount = beU32(trak[tref.off+16 : tref.off+20])
 			case "avcC":
 				tb.avcC = append([]byte(nil), trak[tref.off+8:tref.off+int64(boxSize(trak, int(tref.off)))]...)
 			case "hdlr":
 				tb.kind = string(trak[tref.off+16 : tref.off+20])
-			case "stsz":
-				tb.stszSampleCount = beU32(trak[tref.off+16 : tref.off+20])
 			}
 			return nil
 		})
@@ -578,80 +585,217 @@ func TestBuildMoovRejects32BitOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = buildMoov(video, audio, int64(0xFFFFFFF0))
+	const overflowStart = int64(0xFFFFFFF0)
+	videoChunks, audioChunks := interleaveSamples(video, audio, overflowStart)
+	_, err = buildMoov(video, audio, videoChunks, audioChunks, overflowStart)
 	if err == nil || !strings.Contains(err.Error(), "32") {
 		t.Fatalf("error = %v, want 32-bit overflow rejection", err)
 	}
 }
 
-// ---- #25:mdat A/V chunk interleave ----
+// ---- #25:mdat A/V chunk interleave 与最终 stsc/stco 一致 ----
 
-// interleaveSamples 单元级:长视频(多 GOP)+ 长音频(多秒)必须产生
-// 多 chunk 交错,且 chunk 首样本 Offset 单调递增、覆盖全部样本。
-func TestInterleaveSamplesProducesAVChunks(t *testing.T) {
-	video := &mp4TrackMeta{
-		Timescale: 90000,
-		Width:     64, Height: 64,
-		ParamSets: [][]byte{{0x67, 0x42}, {0x68, 0xCC}},
-	}
-	// 4 个 GOP,每 GOP 2 帧,每帧 3000 字节;PTS 每 3600 推进。
-	sampleSize := uint32(3000)
-	for gop := 0; gop < 4; gop++ {
-		for i := 0; i < 2; i++ {
-			video.Samples = append(video.Samples, mp4SampleMeta{
-				Size: sampleSize,
-				PTS:  uint64(gop*2+i) * 3600,
-				DTS:  uint64(gop*2+i) * 3600,
+// multiChunkTestTracks 在真实 SPS/PPS 之上扩散出多 GOP 视频与约 1.28 秒音频：
+// 每个 chunk 必须含多个样本，否则 "1 sample = 1 chunk" 的坏实现也会偶然通过。
+func multiChunkTestTracks(t *testing.T) (*h264Track, *aacTrack) {
+	t.Helper()
+	video, audio := buildTestTracks(t)
+	baseVideo := append([]h264Sample(nil), video.Samples...)
+	baseAudio := append([]aacSample(nil), audio.Samples...)
+
+	// 3 个 GOP,每 GOP 2 帧(首帧 sync);DTS/PTS 以 3600(90kHz 下 40ms)推进。
+	video.Samples = nil
+	for gop := 0; gop < 3; gop++ {
+		for i, sample := range baseVideo {
+			video.Samples = append(video.Samples, h264Sample{
+				Data: append([]byte(nil), sample.Data...),
+				PTS:  uint64(gop*len(baseVideo)+i) * 3600,
+				DTS:  uint64(gop*len(baseVideo)+i) * 3600,
 				Sync: i == 0,
 			})
 		}
 	}
-	audio := &mp4TrackMeta{
-		Timescale:  48000,
-		SampleRate: 48000,
-	}
-	// 4 秒音频,每秒 46 个样本,每个 400 字节。
-	for i := 0; i < 46*4; i++ {
-		audio.Samples = append(audio.Samples, mp4SampleMeta{
-			Size: 400,
-			PTS:  uint64(i) * 48000 / 46,
+
+	// 约 1.28 秒音频:每样本 1024 采样,PTS 步进 1024*90000/sampleRate;
+	// 1 秒窗口应产生远少于样本数的 audio chunk。
+	audio.Samples = nil
+	step := uint64(1024) * 90000 / uint64(audio.SampleRate)
+	for i := 0; i < 60; i++ {
+		audio.Samples = append(audio.Samples, aacSample{
+			Data: append([]byte(nil), baseAudio[0].Data...),
+			PTS:  uint64(i) * step,
 		})
 	}
-	const mdatStart = 1000000
-	videoChunks, audioChunks := interleaveSamples(video, audio, mdatStart)
-	if len(videoChunks) < 2 {
-		t.Fatalf("video chunks = %d, want GOP-level chunks (>= 2)", len(videoChunks))
+	return video, audio
+}
+
+// expandSTSC 把 stsc 展开为每个 chunk 的 samples_per_chunk。
+func expandSTSC(stsc []byte, chunkCount uint32) []uint32 {
+	entryCount := beU32(stsc[12:16])
+	firsts := make([]uint32, 0, entryCount)
+	perChunk := make([]uint32, 0, entryCount)
+	for i := uint32(0); i < entryCount; i++ {
+		off := 16 + int(i)*12
+		firsts = append(firsts, beU32(stsc[off:off+4]))
+		perChunk = append(perChunk, beU32(stsc[off+4:off+8]))
 	}
-	if len(audioChunks) < 2 {
-		t.Fatalf("audio chunks = %d, want time-window chunks (>= 2)", len(audioChunks))
-	}
-	// 全部样本被覆盖且 Offset 单调(与 writer 相同:按 Offset 排序后校验)。
-	allChunks := append(videoChunks, audioChunks...)
-	sort.Slice(allChunks, func(i, j int) bool { return allChunks[i].offset < allChunks[j].offset })
-	sampleTotal := 0
-	prev := int64(mdatStart - 1)
-	for _, chunk := range allChunks {
-		if chunk.offset < prev {
-			t.Fatalf("chunk offset %d < previous %d (interleave must be monotonic)", chunk.offset, prev)
+	var out []uint32
+	for i := range firsts {
+		last := chunkCount
+		if i+1 < len(firsts) {
+			last = firsts[i+1] - 1
 		}
-		prev = chunk.offset
-		for range chunk.samples {
-			sampleTotal++
-		}
-	}
-	if sampleTotal != len(video.Samples)+len(audio.Samples) {
-		t.Fatalf("chunk samples = %d, want %d", sampleTotal, len(video.Samples)+len(audio.Samples))
-	}
-	// 每个样本的 Offset 都被重分配为交错后的绝对位置。
-	for i, s := range video.Samples {
-		if s.Offset < mdatStart {
-			t.Fatalf("video sample %d Offset = %d, want >= mdatStart", i, s.Offset)
+		for chunk := firsts[i]; chunk <= last; chunk++ {
+			out = append(out, perChunk[i])
 		}
 	}
-	for i, s := range audio.Samples {
-		if s.Offset < mdatStart {
-			t.Fatalf("audio sample %d Offset = %d, want >= mdatStart", i, s.Offset)
+	return out
+}
+
+// spoolTestMP4 把内存 track 经生产 spool 路径写出 MP4。
+func spoolTestMP4(t *testing.T, video *h264Track, audio *aacTrack) []byte {
+	t.Helper()
+	spool, err := newMP4Spooler(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer spool.file.Close()
+	spool.video, err = planVideoTrack(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audio != nil {
+		spool.audio, err = planAudioTrack(audio)
+		if err != nil {
+			t.Fatal(err)
 		}
+	}
+	// 按 track 原始顺序写入 spool 字节，并记录样本在 spool 内的位置。
+	writeTrack := func(samples []mp4SampleMeta, data func(i int) []byte) error {
+		for i := range samples {
+			blob := data(i)
+			samples[i].SpoolOffset = spool.fileOffset
+			if _, err := spool.file.WriteAt(blob, spool.fileOffset); err != nil {
+				return err
+			}
+			spool.fileOffset += int64(len(blob))
+		}
+		return nil
+	}
+	if err := writeTrack(spool.video.Samples, func(i int) []byte { return video.Samples[i].Data }); err != nil {
+		t.Fatal(err)
+	}
+	if spool.audio != nil {
+		if err := writeTrack(spool.audio.Samples, func(i int) []byte { return audio.Samples[i].Data }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := spool.finalize(); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if _, err := writeMP4Body(spool, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+// assertChunkTablesMatchMDAT 校验一个最终 MP4 的 stsc/stco 与 mdat 基本契约：
+// stco 一项对应一个真实 chunk(不是 sample),stsc 描述真实 samples_per_chunk,
+// 展开后样本总数等于 stsz sample_count,每个 track 的 stco 偏移递增且落在 mdat 内。
+func assertChunkTablesMatchMDAT(t *testing.T, mp4 []byte) {
+	t.Helper()
+	boxes := scanTopLevelBoxes(t, mp4)
+	mdat := boxes[len(boxes)-1]
+	if mdat.kind != "mdat" {
+		t.Fatalf("last box = %q, want mdat", mdat.kind)
+	}
+	mdatPayloadStart := int64(mdat.off + 8)
+	mdatPayloadEnd := int64(mdat.off + mdat.size)
+
+	tracks := parseMP4Tracks(t, mp4)
+	if len(tracks) != 2 {
+		t.Fatalf("tracks = %d, want video+audio", len(tracks))
+	}
+	multiSampleChunks := false
+	for _, track := range tracks {
+		if track.stscRaw == nil || track.stcoRaw == nil || track.stszRaw == nil {
+			t.Fatalf("track %q is missing stsc/stco/stsz", track.kind)
+		}
+		chunkCount := beU32(track.stcoRaw[12:16])
+		sampleCount := track.stszSampleCount
+		if chunkCount == 0 {
+			t.Fatalf("track %q has zero chunks", track.kind)
+		}
+		samplesPerChunk := expandSTSC(track.stscRaw, chunkCount)
+		if uint32(len(samplesPerChunk)) != chunkCount {
+			t.Fatalf("track %q stsc expands to %d chunks, stco has %d", track.kind, len(samplesPerChunk), chunkCount)
+		}
+		var expanded uint64
+		for _, count := range samplesPerChunk {
+			if count == 0 {
+				t.Fatalf("track %q has a zero-sample chunk", track.kind)
+			}
+			expanded += uint64(count)
+			if count > 1 {
+				multiSampleChunks = true
+			}
+		}
+		if expanded != uint64(sampleCount) {
+			t.Fatalf("track %q stsc expands to %d samples, stsz says %d", track.kind, expanded, sampleCount)
+		}
+		// 错误实现会把每个 sample 伪装成一个 chunk,这里必须直接红灯。
+		if chunkCount >= sampleCount {
+			t.Fatalf("track %q has %d chunks for %d samples; chunk table still describes samples as independent chunks", track.kind, chunkCount, sampleCount)
+		}
+		var previousOffset int64
+		for i := uint32(0); i < chunkCount; i++ {
+			offset := int64(beU32(track.stcoRaw[16+int(i)*4 : 20+int(i)*4]))
+			if offset < mdatPayloadStart || offset >= mdatPayloadEnd {
+				t.Fatalf("track %q chunk %d offset %d outside mdat payload [%d,%d)", track.kind, i, offset, mdatPayloadStart, mdatPayloadEnd)
+			}
+			if i > 0 && offset <= previousOffset {
+				t.Fatalf("track %q stco offset %d (%d) is not strictly increasing", track.kind, i, offset)
+			}
+			previousOffset = offset
+		}
+	}
+	if !multiSampleChunks {
+		t.Fatal("fixture produced only single-sample chunks; it cannot detect the 1-sample=1-chunk regression")
+	}
+}
+
+// TestMP4ChunkTablesMatchInterleavedMDAT 是最终容器的 chunk-table contract。
+// 这里只覆盖生产 writeMP4Body(spool) 路径，完整 mdat 字节布局由 Layer C 校验。
+func TestMP4ChunkTablesMatchInterleavedMDAT(t *testing.T) {
+	video, audio := multiChunkTestTracks(t)
+	assertChunkTablesMatchMDAT(t, spoolTestMP4(t, video, audio))
+}
+
+func TestValidateMP4RejectsBrokenChunkTable(t *testing.T) {
+	video, audio := multiChunkTestTracks(t)
+	mp4 := spoolTestMP4(t, video, audio)
+	mutated := append([]byte(nil), mp4...)
+	mutatedSTSC := false
+	if err := walkBoxes(mutated, 0, int64(len(mutated)), func(ref boxWalker) error {
+		if ref.kind == "stsc" && !mutatedSTSC {
+			original := beU32(mutated[ref.off+20 : ref.off+24])
+			overwriteUint32(mutated, int(ref.off)+20, original+1)
+			mutatedSTSC = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !mutatedSTSC {
+		t.Fatal("stsc not found")
+	}
+	tmp := t.TempDir() + "/broken-stsc.mp4"
+	if err := writeFile(tmp, mutated); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateMP4File(tmp); err == nil {
+		t.Fatal("broken stsc sample mapping must be rejected")
 	}
 }
 

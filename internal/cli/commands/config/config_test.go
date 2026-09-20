@@ -132,6 +132,75 @@ func TestConfigSetInvalidHostValueErrorsWithoutCreating(t *testing.T) {
 	}
 }
 
+// TestConfigAssetProbeContract 在一条真实 CLI 链路上验证 [assets.probe] 的
+// 有效配置契约：默认值 → set → get → unset 回默认 → 非法值被拒绝，
+// 以及损坏的手写配置不得被 config get 静默隐藏。
+func TestConfigAssetProbeContract(t *testing.T) {
+	home := isolateHome(t)
+	get := func(key string) string {
+		t.Helper()
+		out, _, err := executeConfig(t, "get", key)
+		if err != nil {
+			t.Fatalf("get %s: %v", key, err)
+		}
+		return strings.TrimSpace(out.String())
+	}
+
+	if got := get("assets.probe.enabled"); got != "true" {
+		t.Fatalf("default enabled = %q, want true", got)
+	}
+	if got := get("assets.probe.concurrency"); got != "4" {
+		t.Fatalf("default concurrency = %q, want 4", got)
+	}
+
+	path := filepath.Join(home, ".javdb-cli", "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read default config: %v", err)
+	}
+	if strings.Contains(string(data), "[assets.probe]") {
+		t.Fatalf("default config unexpectedly contains [assets.probe]:\n%s", data)
+	}
+
+	if _, _, err := executeConfig(t, "set", "assets.probe.concurrency", "8"); err != nil {
+		t.Fatalf("set concurrency: %v", err)
+	}
+	if got := get("assets.probe.concurrency"); got != "8" {
+		t.Fatalf("explicit concurrency = %q, want 8", got)
+	}
+	if _, _, err := executeConfig(t, "unset", "assets.probe.concurrency"); err != nil {
+		t.Fatalf("unset concurrency: %v", err)
+	}
+	if got := get("assets.probe.concurrency"); got != "4" {
+		t.Fatalf("reset concurrency = %q, want 4", got)
+	}
+
+	if _, _, err := executeConfig(t, "set", "assets.probe.enabled", "false"); err != nil {
+		t.Fatalf("set enabled: %v", err)
+	}
+	if got := get("assets.probe.enabled"); got != "false" {
+		t.Fatalf("explicit enabled = %q, want false", got)
+	}
+	// 半量配置（只写 enabled）必须继续返回默认 concurrency。
+	if got := get("assets.probe.concurrency"); got != "4" {
+		t.Fatalf("sparse concurrency = %q, want default 4", got)
+	}
+
+	// 非正值是非法 interface 输入，必须在命令层被拒绝。
+	if _, _, err := executeConfig(t, "set", "assets.probe.concurrency", "0"); err == nil {
+		t.Fatal("set concurrency accepted 0")
+	}
+
+	// 手工写入损坏配置后，无参数 config get 必须报错而不是静默跳过该项。
+	if err := os.WriteFile(path, []byte("[assets.probe]\nconcurrency = 0\n"), 0o600); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+	_, _, err = executeConfig(t, "get")
+	if err == nil || !strings.Contains(err.Error(), "assets.probe.concurrency must be positive") {
+		t.Fatalf("config get error = %v, want invalid concurrency", err)
+	}
+}
+
 func TestConfigReverseSearchScalarRoundTrip(t *testing.T) {
 	isolateHome(t)
 	out, _, err := executeConfig(t, "set", "reverse_search.retries", "5")

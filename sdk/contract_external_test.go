@@ -44,36 +44,37 @@ var (
 
 // ---- Client 方法签名（编译期） ----
 var (
-	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions, maxPages int) ([]map[string]any, error)  = (*javdb.Client).AllEntityMovies
-	_ func(c *javdb.Client, ctx context.Context, opt javdb.BrowseOptions) (javdb.SearchResult, error)                                           = (*javdb.Client).Browse
-	_ func(c *javdb.Client, ctx context.Context, kind string) ([]map[string]any, error)                                                         = (*javdb.Client).Collected
-	_ func(c *javdb.Client, ctx context.Context, asset javdb.MovieAsset, target string) (int64, error)                                          = (*javdb.Client).DownloadMovieAsset
-	_ func(c *javdb.Client, ctx context.Context, kind, id string) (map[string]any, error)                                                       = (*javdb.Client).EntityDetail
-	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions) (javdb.SearchResult, error)              = (*javdb.Client).EntityMovies
-	_ func(c *javdb.Client, ctx context.Context, listID string) (map[string]any, error)                                                         = (*javdb.Client).ListInfo
-	_ func(c *javdb.Client, ctx context.Context, username, password string) (string, error)                                                     = (*javdb.Client).Login
-	_ func(c *javdb.Client, ctx context.Context, movieID, status string, score int, content string) (map[string]any, error)                     = (*javdb.Client).Mark
-	_ func(c *javdb.Client, ctx context.Context, movieID string) ([]javdb.MovieAsset, error)                                                    = (*javdb.Client).MovieAssets
-	_ func(c *javdb.Client, ctx context.Context, movieID string, page, limit int) ([]map[string]any, error)                                     = (*javdb.Client).MovieComments
-	_ func(c *javdb.Client, ctx context.Context, movieID string) (map[string]any, error)                                                        = (*javdb.Client).MovieDetail
-	_ func(c *javdb.Client, ctx context.Context, movieID string) ([]map[string]any, error)                                                      = (*javdb.Client).MovieMagnets
-	_ func(c *javdb.Client, ctx context.Context, page, limit int, sortBy string) (javdb.SearchResult, error)                                    = (*javdb.Client).MyLists
-	_ func(c *javdb.Client, ctx context.Context, period string) (javdb.SearchResult, error)                                                     = (*javdb.Client).RankingsActors
-	_ func(c *javdb.Client, ctx context.Context, type_, period string) (javdb.SearchResult, error)                                              = (*javdb.Client).RankingsMovies
-	_ func(c *javdb.Client, ctx context.Context, filterBy, period string) (javdb.SearchResult, error)                                           = (*javdb.Client).RankingsPlayback
-	_ func(c *javdb.Client, ctx context.Context) ([]map[string]any, error)                                                                      = (*javdb.Client).RecentViewed
-	_ func(c *javdb.Client, ctx context.Context, movieID string, page, limit int) (javdb.SearchResult, error)                                   = (*javdb.Client).RelatedLists
-	_ func(c *javdb.Client, ctx context.Context, kind, ref, zone string) (string, error)                                                        = (*javdb.Client).ResolveEntity
-	_ func(c *javdb.Client, ctx context.Context, number string) (string, error)                                                                 = (*javdb.Client).ResolveMovieID
-	_ func(c *javdb.Client, ctx context.Context, refs []string, zone string) ([]string, error)                                                  = (*javdb.Client).ResolveTags
-	_ func(c *javdb.Client, ctx context.Context) (int64, string, error)                                                                         = (*javdb.Client).ResolveUserID
-	_ func(c *javdb.Client, ctx context.Context, keyword string, opt javdb.SearchOptions) (javdb.SearchResult, error)                           = (*javdb.Client).Search
-	_ func(c *javdb.Client, token string)                                                                                                       = (*javdb.Client).SetToken
-	_ func(c *javdb.Client) string                                                                                                              = (*javdb.Client).Token
-	_ func(c *javdb.Client, ctx context.Context, zone, year string, startRank, page, limit int, ignoreWatched bool) (javdb.SearchResult, error) = (*javdb.Client).Top250
-	_ func(c *javdb.Client, ctx context.Context, movieID string) (bool, error)                                                                  = (*javdb.Client).Unmark
-	_ func(c *javdb.Client, ctx context.Context) ([]map[string]any, error)                                                                      = (*javdb.Client).WantMovies
-	_ func(c *javdb.Client, ctx context.Context) ([]map[string]any, error)                                                                      = (*javdb.Client).WatchedMovies
+	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions, maxPages int) ([]map[string]any, error)    = (*javdb.Client).AllEntityMovies
+	_ func(c *javdb.Client, ctx context.Context, opt javdb.BrowseOptions) (javdb.SearchResult, error)                                             = (*javdb.Client).Browse
+	_ func(c *javdb.Client, ctx context.Context, kind string) ([]map[string]any, error)                                                           = (*javdb.Client).Collected
+	_ func(c *javdb.Client, ctx context.Context, asset javdb.MovieAsset, target string) (int64, error)                                            = (*javdb.Client).DownloadMovieAsset
+	_ func(c *javdb.Client, ctx context.Context, kind, id string) (map[string]any, error)                                                         = (*javdb.Client).EntityDetail
+	_ func(c *javdb.Client, ctx context.Context, kind, entityID string, opt javdb.EntityMoviesOptions) (javdb.SearchResult, error)                = (*javdb.Client).EntityMovies
+	_ func(c *javdb.Client, ctx context.Context, listID string) (map[string]any, error)                                                           = (*javdb.Client).ListInfo
+	_ func(c *javdb.Client, ctx context.Context, username, password string) (string, error)                                                       = (*javdb.Client).Login
+	_ func(c *javdb.Client, ctx context.Context, movieID, status string, score int, content string) (map[string]any, error)                       = (*javdb.Client).Mark
+	_ func(c *javdb.Client, ctx context.Context, movieID string) ([]javdb.MovieAsset, error)                                                      = (*javdb.Client).MovieAssets
+	_ func(c *javdb.Client, ctx context.Context, assets []javdb.MovieAsset, options javdb.MovieAssetProbeOptions) ([]javdb.MovieAssetInfo, error) = (*javdb.Client).ProbeMovieAssets
+	_ func(c *javdb.Client, ctx context.Context, movieID string, page, limit int) ([]map[string]any, error)                                       = (*javdb.Client).MovieComments
+	_ func(c *javdb.Client, ctx context.Context, movieID string) (map[string]any, error)                                                          = (*javdb.Client).MovieDetail
+	_ func(c *javdb.Client, ctx context.Context, movieID string) ([]map[string]any, error)                                                        = (*javdb.Client).MovieMagnets
+	_ func(c *javdb.Client, ctx context.Context, page, limit int, sortBy string) (javdb.SearchResult, error)                                      = (*javdb.Client).MyLists
+	_ func(c *javdb.Client, ctx context.Context, period string) (javdb.SearchResult, error)                                                       = (*javdb.Client).RankingsActors
+	_ func(c *javdb.Client, ctx context.Context, type_, period string) (javdb.SearchResult, error)                                                = (*javdb.Client).RankingsMovies
+	_ func(c *javdb.Client, ctx context.Context, filterBy, period string) (javdb.SearchResult, error)                                             = (*javdb.Client).RankingsPlayback
+	_ func(c *javdb.Client, ctx context.Context) ([]map[string]any, error)                                                                        = (*javdb.Client).RecentViewed
+	_ func(c *javdb.Client, ctx context.Context, movieID string, page, limit int) (javdb.SearchResult, error)                                     = (*javdb.Client).RelatedLists
+	_ func(c *javdb.Client, ctx context.Context, kind, ref, zone string) (string, error)                                                          = (*javdb.Client).ResolveEntity
+	_ func(c *javdb.Client, ctx context.Context, number string) (string, error)                                                                   = (*javdb.Client).ResolveMovieID
+	_ func(c *javdb.Client, ctx context.Context, refs []string, zone string) ([]string, error)                                                    = (*javdb.Client).ResolveTags
+	_ func(c *javdb.Client, ctx context.Context) (int64, string, error)                                                                           = (*javdb.Client).ResolveUserID
+	_ func(c *javdb.Client, ctx context.Context, keyword string, opt javdb.SearchOptions) (javdb.SearchResult, error)                             = (*javdb.Client).Search
+	_ func(c *javdb.Client, token string)                                                                                                         = (*javdb.Client).SetToken
+	_ func(c *javdb.Client) string                                                                                                                = (*javdb.Client).Token
+	_ func(c *javdb.Client, ctx context.Context, zone, year string, startRank, page, limit int, ignoreWatched bool) (javdb.SearchResult, error)   = (*javdb.Client).Top250
+	_ func(c *javdb.Client, ctx context.Context, movieID string) (bool, error)                                                                    = (*javdb.Client).Unmark
+	_ func(c *javdb.Client, ctx context.Context) ([]map[string]any, error)                                                                        = (*javdb.Client).WantMovies
+	_ func(c *javdb.Client, ctx context.Context) ([]map[string]any, error)                                                                        = (*javdb.Client).WatchedMovies
 )
 
 // ---- 别名类型身份 ----
@@ -89,6 +90,9 @@ var (
 	_ javdb.SearchOptions                                     = javdb.SearchOptions{}
 	_ javdb.Option                                            = javdb.WithHost("mirror")
 	_ javdb.MovieAsset                                        = javdb.MovieAsset{}
+	_ javdb.MovieAssetMetadata                                = javdb.MovieAssetMetadata{}
+	_ javdb.MovieAssetInfo                                    = javdb.MovieAssetInfo{}
+	_ javdb.MovieAssetProbeOptions                            = javdb.MovieAssetProbeOptions{}
 )
 
 func TestExternalConstantsMatchLogicalHostNames(t *testing.T) {

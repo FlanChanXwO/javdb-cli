@@ -46,6 +46,15 @@ func ProjectMovies(items []map[string]any) []MovieRow {
 	return out
 }
 
+// MovieDurationMinutes 返回上游影片正片时长；单位为分钟，非正或无效值视为缺失。
+func MovieDurationMinutes(item map[string]any) (int64, bool) {
+	minutes, ok := scalar.Int64(item["duration"])
+	if !ok || minutes <= 0 {
+		return 0, false
+	}
+	return minutes, true
+}
+
 // FilterMoviesWithMagnets 丢弃 magnets_count == 0 的行；缺失该字段的行保留。
 func FilterMoviesWithMagnets(items []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(items))

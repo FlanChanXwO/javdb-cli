@@ -27,7 +27,8 @@ javdb config unset KEY
 ```
 
 Supported keys are `host`, `https_proxy` (or `proxy`), `auto_relogin`,
-`lang`, and the `reverse_search` scalars (`reverse_search.default_source`,
+`lang`, `assets.probe.enabled`, `assets.probe.concurrency`, and the
+`reverse_search` scalars (`reverse_search.default_source`,
 `reverse_search.cache`, `reverse_search.cache_ttl`,
 `reverse_search.retries`, `reverse_search.retry_wait`,
 `reverse_search.request_timeout`). `auto_relogin` is disabled by default. When
@@ -122,6 +123,13 @@ page size of `20`; pass any positive `--page` and `--limit` when a different
 single page is needed. `--json` preserves the complete review objects returned
 for that page.
 
+Human-readable `search` rows append a movie duration such as `130m` when the
+source provides a positive duration in minutes; JSON/NDJSON preserve the
+upstream `duration` field. Human-readable `detail` output prints that value with
+the fixed label `时长 130 分钟`; the label is not localized. This feature-film
+duration is distinct from preview-asset `duration`, which `assets list` reports
+in integer seconds.
+
 ## Local movie assets
 
 ```bash
@@ -138,11 +146,33 @@ in that filtered list (`1`, `1-4`, `1,3-5`, or several tokens such as
 `1-` and non-numeric tokens fail, and out-of-range numbers fail with the valid
 range. Without a selector every asset of the requested type is listed.
 
-On a TTY the output is a numbered table with human-only descriptions; piped
-output is exactly one `TYPE<TAB>URL` record per line; `--json` prints one JSON
-array and `--ndjson` prints one JSON object per line. Machine output contains
-exactly `type` and `url`; listing does not fetch the media payload. The numbers
-are positional, not persistent asset IDs.
+Asset metadata probing is enabled by default. It makes additional streaming
+requests only for assets remaining after filtering and selectors. Inspect or
+change the effective settings with `config get/set`:
+
+```bash
+javdb config get assets.probe.enabled       # true by default
+javdb config get assets.probe.concurrency   # 4 by default
+javdb config set assets.probe.enabled false
+javdb config set assets.probe.concurrency 8
+```
+
+`assets.probe.concurrency` must be positive. The probe uses a bounded worker
+pool and best-effort metadata: an individual failure leaves fields absent and
+does not add a `probe_error` field. A media request that times out on its own
+only drops that asset's fields; cancelling or expiring the parent context still
+fails the whole command. Image metadata reports `width`/`height`; preview video
+metadata reports those fields plus `duration` in integer seconds. Values are
+never inferred from URLs, file names, content length, bitrate, or movie duration.
+
+On a TTY the output is a numbered table with human-only descriptions plus
+best-effort `SIZE` and `DURATION` columns; unknown values are shown as `-`.
+Piped output is exactly one `TYPE<TAB>URL` record per line even though probing
+still runs. `--json` prints one JSON array and `--ndjson` prints one JSON object
+per line; machine objects always contain `type` and `url`, and add available
+`width`, `height`, and video `duration` fields. When probing is disabled,
+optional fields are omitted and TTY shows `-`. The numbers are positional,
+not persistent asset IDs.
 
 `assets download` consumes `TYPE<TAB>URL` records from `assets list` on stdin
 and streams them one by one without buffering the whole input. `-d DIR`

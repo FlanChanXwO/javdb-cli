@@ -16,6 +16,9 @@ func renderDetail(w io.Writer, movie map[string]any) {
 	fmt.Fprintf(w, "标题\t%s\n", display(movie["title"]))
 	fmt.Fprintf(w, "评分\t%s\n", display(movie["score"]))
 	fmt.Fprintf(w, "日期\t%s\n", display(movie["release_date"]))
+	if minutes, ok := result.MovieDurationMinutes(movie); ok {
+		fmt.Fprintf(w, "时长\t%d 分钟\n", minutes)
+	}
 	fmt.Fprintf(w, "磁力数\t%s\n", display(movie["magnets_count"]))
 	if display(movie["series_id"]) != "" || display(movie["series_name"]) != "" {
 		fmt.Fprintf(w, "系列\t%s\t%s\n", display(movie["series_id"]), display(movie["series_name"]))
