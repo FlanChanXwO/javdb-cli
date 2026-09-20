@@ -59,4 +59,12 @@ fi
 printf '%s\n' "$verify_job" | grep -F 'contents: read' >/dev/null
 grep -F '<!-- pr-test-result -->' "$verification" >/dev/null
 
+# Trusted verifier code follows the current PR base branch tip rather than the PR's stale base commit.
+if grep -F "jq -r '.base.sha'" "$verification" >/dev/null; then
+	echo 'PR verification must not trust the PR-captured base.sha as the executor source' >&2
+	exit 1
+fi
+grep -F "jq -r '.base.ref'" "$verification" >/dev/null
+grep -F 'branches/$base_ref_encoded' "$verification" >/dev/null
+
 sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
