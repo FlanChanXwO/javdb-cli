@@ -8,6 +8,7 @@
 
 ## Changed
 
+- Raise the supported Go toolchain for source builds, `go install`, CI, and release builds from Go 1.26.3 to Go 1.27.1; workflows continue to source the version from `go.mod`, and the READMEs/CONTRIBUTING guides now state Go 1.27.1 explicitly. ([#49](https://github.com/FlanChanXwO/javdb-cli/pull/49))
 - **Breaking:** v0.7.3 users must migrate from `javdb download NUMBER --thumbnail/--preview-image/--preview-video` to the composable `javdb assets list ... | javdb assets download ...` flow. The public SDK likewise moves from `DownloadMovieMedia` with `MovieMediaDownloadOptions` / `MovieMediaDownloadResult` to `MovieAssets` plus `DownloadMovieAsset`. ([#45](https://github.com/FlanChanXwO/javdb-cli/pull/45), [#47](https://github.com/FlanChanXwO/javdb-cli/pull/47))
 - **Breaking:** lists/collections NDJSON moves from aggregate `data.lists` / `data.items` payloads to per-record `data.list` / `data.entity` envelopes with required stable IDs. Legacy human-readable output and explicit aggregate `--json` keep their existing shapes. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
 - Document the official JavDB website and the official app GitHub Releases page in both READMEs. ([#43](https://github.com/FlanChanXwO/javdb-cli/pull/43))

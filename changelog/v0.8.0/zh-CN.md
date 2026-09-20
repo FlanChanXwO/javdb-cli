@@ -8,6 +8,7 @@
 
 ## 变更
 
+- 将源码构建、`go install`、CI 与 Release 构建支持的 Go toolchain 从 1.26.3 提升到 Go 1.27.1；workflow 继续统一从 `go.mod` 读取版本，并在中英文 README / CONTRIBUTING 中明确声明 Go 1.27.1。 ([#49](https://github.com/FlanChanXwO/javdb-cli/pull/49))
 - **破坏性变更：** 从 v0.7.3 升级时，需要把 `javdb download NUMBER --thumbnail/--preview-image/--preview-video` 迁移为可组合的 `javdb assets list ... | javdb assets download ...` 流程；公共 SDK 也从 `DownloadMovieMedia` 与 `MovieMediaDownloadOptions` / `MovieMediaDownloadResult` 迁移为 `MovieAssets` + `DownloadMovieAsset`。 ([#45](https://github.com/FlanChanXwO/javdb-cli/pull/45), [#47](https://github.com/FlanChanXwO/javdb-cli/pull/47))
 - **破坏性变更：** lists/collections 的 NDJSON 从聚合 `data.lists` / `data.items` payload 迁移为逐记录 `data.list` / `data.entity` envelope，并要求稳定 ID；legacy 人类可读输出和显式聚合 `--json` 的 shape 保持不变。 ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
 - 在中英文 README 中补充 JavDB 官方网站和官方 App GitHub Releases 下载入口。 ([#43](https://github.com/FlanChanXwO/javdb-cli/pull/43))
