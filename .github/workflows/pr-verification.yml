@@ -95,11 +95,19 @@ jobs:
           author=$(printf '%s' "$pr_json" | jq -r '.user.login')
           head_sha=$(printf '%s' "$pr_json" | jq -r '.head.sha')
           head_repo=$(printf '%s' "$pr_json" | jq -r '.head.repo.full_name')
-          base_sha=$(printf '%s' "$pr_json" | jq -r '.base.sha')
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
           if [ -z "$head_repo" ] || [ "$head_repo" = null ]; then
             echo "Pull request head repository is unavailable." >&2
             exit 1
           fi
+          if [ -z "$base_ref" ] || [ "$base_ref" = null ]; then
+            echo "Pull request base branch is unavailable." >&2
+            exit 1
+          fi
+          # PR .base.sha is the base commit captured by the PR and may lag the current protected
+          # branch. Resolve the branch tip once here so trusted verification code uses current main.
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          base_sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
 
           authorized=false
           if [ "$commenter" = "$author" ]; then
