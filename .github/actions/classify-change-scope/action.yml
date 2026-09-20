@@ -13,6 +13,18 @@ outputs:
   docs_only:
     description: Whether every changed path is in the documentation-only allowlist.
     value: ${{ steps.scope.outputs.docs_only }}
+  quality_required:
+    description: Whether source quality checks are required.
+    value: ${{ steps.scope.outputs.quality_required }}
+  platform_required:
+    description: Whether native platform smoke is required.
+    value: ${{ steps.scope.outputs.platform_required }}
+  container_required:
+    description: Whether container smoke is required.
+    value: ${{ steps.scope.outputs.container_required }}
+  native_required:
+    description: Whether project-specific native evidence is required.
+    value: ${{ steps.scope.outputs.native_required }}
 
 runs:
   using: composite
@@ -31,7 +43,13 @@ runs:
       run: |
         set -euo pipefail
         if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-          printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
+          {
+            printf '%s\n' 'docs_only=false'
+            printf '%s\n' 'quality_required=true'
+            printf '%s\n' 'platform_required=true'
+            printf '%s\n' 'container_required=true'
+            printf '%s\n' 'native_required=true'
+          } >> "$GITHUB_OUTPUT"
           exit 0
         fi
         go run ./scripts/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"

@@ -5,31 +5,9 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/container-smoke.yml'
-      - 'scripts/build-release.sh'
-      - 'go.mod'
-      - 'go.sum'
-      - 'cmd/**'
-      - 'internal/**'
-      - 'sdk/**'
-      - 'LICENSE'
   push:
     branches:
       - main
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/container-smoke.yml'
-      - 'scripts/build-release.sh'
-      - 'go.mod'
-      - 'go.sum'
-      - 'cmd/**'
-      - 'internal/**'
-      - 'sdk/**'
-      - 'LICENSE'
   workflow_dispatch: {}
 
 concurrency:
@@ -39,21 +17,56 @@ concurrency:
 permissions: {}
 
 jobs:
+  classify_changes:
+    name: Classify change scope
+    runs-on: ubuntu-24.04
+    outputs:
+      container_required: ${{ steps.scope.outputs.container_required }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/classify-change-scope
+        id: scope
+        with:
+          base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+  resolve_platforms:
+    name: Resolve container matrix
+    needs: classify_changes
+    if: needs.classify_changes.outputs.container_required == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve container platforms
+        id: matrix
+        shell: bash
+        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+
   container_smoke:
+    needs: [classify_changes, resolve_platforms]
+    if: needs.classify_changes.outputs.container_required == 'true'
     name: Container smoke ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -144,3 +157,28 @@ jobs:
         run: |
           docker run --rm --entrypoint sh javdb-cli-smoke:${{ matrix.goarch }} -c \
             'test -s /usr/share/doc/javdb-cli/LICENSE'
+
+  container_smoke_gate:
+    name: Container smoke gate
+    needs: [classify_changes, resolve_platforms, container_smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Require expected container outcome
+        shell: bash
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
+          CONTAINER_REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
+          RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
+          MATRIX_RESULT: ${{ needs.container_smoke.result }}
+        run: |
+          set -euo pipefail
+          test "$CLASSIFY_RESULT" = success
+          if [ "$CONTAINER_REQUIRED" != true ]; then
+            test "$RESOLVE_RESULT" = skipped
+            test "$MATRIX_RESULT" = skipped
+          else
+            test "$RESOLVE_RESULT" = success
+            test "$MATRIX_RESULT" = success
+          fi
