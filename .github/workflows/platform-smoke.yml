@@ -104,27 +104,17 @@ jobs:
         run: |
           set -euo pipefail
           version="0.1.1-ci.${GITHUB_RUN_ID}"
-          mkdir -p dist smoke
-          binary='dist/javdb'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary='dist/javdb.exe'
-          fi
-          sh scripts/build-release.sh \
+          archive=$(sh scripts/build-platform.sh \
             --version "$version" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --output "$binary"
-          sh scripts/package-release.sh \
-            --binary "$binary" \
-            --version "$version" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --output-dir dist
-          archive="dist/javdb-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
+            --output-dir dist)
+          mkdir -p smoke
           smoked_binary='smoke/javdb'
           if [ '${{ matrix.goos }}' = windows ]; then
-            7z x "${archive}.zip" -osmoke
+            7z x "$archive" -osmoke
             smoked_binary='smoke/javdb.exe'
           else
-            tar -xzf "${archive}.tar.gz" -C smoke
+            tar -xzf "$archive" -C smoke
           fi
           test -f "$smoked_binary"
           "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"

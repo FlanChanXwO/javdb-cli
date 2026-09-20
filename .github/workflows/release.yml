@@ -239,24 +239,14 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
-          # 先证明 checkout 干净，再创建本 job 的临时产物目录。
-          mkdir -p dist
-          binary='dist/javdb'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary='dist/javdb.exe'
-          fi
           release_date=$(sed -n '1p' "changelog/v${VERSION}/en.md" | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1)
           test -n "$release_date"
-          sh scripts/build-release.sh \
+          archive=$(sh scripts/build-platform.sh \
             --version "$VERSION" \
             --release-date "$release_date" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --output "$binary"
-          sh scripts/package-release.sh \
-            --binary "$binary" \
-            --version "$VERSION" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --output-dir dist
+            --output-dir dist)
+          test -f "$archive"
 
       - name: Smoke the exact production package
         shell: bash

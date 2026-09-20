@@ -15,9 +15,7 @@ usage() {
 	cat >&2 <<'EOF'
 usage: scripts/package-release.sh --binary PATH --target OS/ARCH --version VERSION --output-dir DIR
 
-Packages exactly one platform binary plus LICENSE and README.md. Supported
-targets: darwin/amd64, darwin/arm64, linux/amd64, linux/arm64,
-windows/amd64, windows/arm64.
+Packages exactly one registry-selected platform binary plus LICENSE and README.md.
 EOF
 }
 
@@ -80,16 +78,22 @@ done
 version=${version#v}
 
 case "$target" in
-	darwin/amd64|darwin/arm64|linux/amd64|linux/arm64)
-		archive_ext=tar.gz
-		expected_binary=javdb
+	*/*)
+		target_os=${target%%/*}
+		target_arch=${target#*/}
 		;;
-	windows/amd64|windows/arm64)
+	*) fail 'target must use OS/ARCH form' ;;
+esac
+[ -n "$target_os" ] && [ -n "$target_arch" ] || fail 'target must contain non-empty OS and ARCH'
+case "$target_arch" in */*) fail 'target must contain exactly one slash' ;; esac
+case "$target_os" in
+	windows)
 		archive_ext=zip
 		expected_binary=javdb.exe
 		;;
 	*)
-		fail "unsupported target: $target"
+		archive_ext=tar.gz
+		expected_binary=javdb
 		;;
 esac
 
@@ -103,8 +107,6 @@ esac
 reject_output_symlink_ancestors "$output_dir"
 
 output_dir=$(CDPATH= cd -- "$output_dir" && pwd)
-target_os=${target%/*}
-target_arch=${target#*/}
 output="$output_dir/javdb-cli_${version}_${target_os}_${target_arch}.${archive_ext}"
 [ ! -e "$output" ] || fail "output already exists: $output"
 
