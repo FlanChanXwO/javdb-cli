@@ -13,7 +13,7 @@
 
 ## 开发环境
 
-受支持的源码构建使用 Go `1.26.3` 与标准 Go toolchain，没有 C 或 native 依赖。
+受支持的源码构建使用 Go `1.27.1` 与标准 Go toolchain，没有 C 或 native 依赖。
 
 在仓库根目录构建和测试：
 

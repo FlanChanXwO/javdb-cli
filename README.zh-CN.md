@@ -64,6 +64,8 @@ brew upgrade javdb-cli
 
 ### Go
 
+源码构建与 `go install` 支持的工具链版本为 Go `1.27.1`。
+
 请使用精确的已发布 tag：
 
 ```bash
@@ -76,7 +78,7 @@ go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.2.0
 压缩包，先用同附的 `checksums.txt` 校验；再将 `javdb`（Windows 为 `javdb.exe`）放入 PATH 中的
 目录。
 
-构建当前 checkout 时，先安装 `go.mod` 指定的 Go 版本，再运行：
+构建当前 checkout 时，先安装 `go.mod` 声明的 Go `1.27.1`，再运行：
 
 ```bash
 sh scripts/build.sh
@@ -224,7 +226,7 @@ func main() {
 
 使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
 [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)；请将已安装的 skill 固定到对应的
-published release 版本（当前为 `0.7.3`），不要跟随无版本的 `latest` tag。
+published release 版本（当前为 `0.8.0`），不要跟随无版本的 `latest` tag。
 
 ## 认证与凭据安全
 

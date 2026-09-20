@@ -13,7 +13,7 @@ Thanks for helping improve `javdb-cli`. Focused bug reports, documentation fixes
 
 ## Development environment
 
-The supported source build uses Go `1.26.3` and a standard Go toolchain; there are no C or native dependencies.
+The supported source build uses Go `1.27.1` and a standard Go toolchain; there are no C or native dependencies.
 
 Build and test from the repository root:
 
