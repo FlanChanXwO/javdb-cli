@@ -28,7 +28,7 @@ jobs:
       actions: write
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     outputs:
       execute: ${{ steps.coordinate.outputs.execute }}
       head_sha: ${{ steps.authorize.outputs.head_sha }}
@@ -372,6 +372,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
