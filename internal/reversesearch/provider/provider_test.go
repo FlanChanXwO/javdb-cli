@@ -16,6 +16,12 @@ import (
 
 var testImage = append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, 0x00, 0x01, 0x02)
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
 func testOptions() Options {
 	return Options{
 		HTTPClient:     http.DefaultClient,
@@ -189,20 +195,19 @@ func TestRetriesOn429ThenSucceeds(t *testing.T) {
 
 func TestRetriesOnRequestTimeout(t *testing.T) {
 	var attempts int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&attempts, 1)
-		time.Sleep(200 * time.Millisecond)
-		_, _ = writer.Write(okResponseJSON())
-	}))
-	defer server.Close()
+		<-request.Context().Done()
+		return nil, request.Context().Err()
+	})}
 
 	builtin := NewBuiltin(Options{
-		HTTPClient: server.Client(),
+		HTTPClient: client,
 
-		Endpoint:       server.URL,
-		RequestTimeout: 30 * time.Millisecond,
+		Endpoint:       "http://provider.test/search",
+		RequestTimeout: time.Millisecond,
 		Retries:        3,
-		RetryWait:      5 * time.Millisecond,
+		RetryWait:      time.Nanosecond,
 	})
 	_, err := builtin.Search(context.Background(), Request{Image: testImage, Filename: "frame.jpg"})
 	if err == nil {
