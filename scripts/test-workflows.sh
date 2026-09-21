@@ -68,4 +68,27 @@ fi
 grep -F "jq -r '.base.ref'" "$verification" >/dev/null
 grep -F 'branches/$base_ref_encoded' "$verification" >/dev/null
 
+# Deleted trigger comments may disappear after /test is accepted. Only that
+# concrete HTTP 404 becomes an empty reaction target; other API errors stay fatal.
+test "$(grep -Fc '(HTTP 404)' "$verification")" -eq 2
+test "$(grep -Fc '*"(HTTP 404)"*) return 0 ;;' "$verification")" -eq 2
+test "$(grep -Fc '[ -n "$subject_id" ] || return 0' "$verification")" -eq 4
+if grep -F 'subject_id=$(reaction_subject "$1") || return 0' "$verification" >/dev/null; then
+	echo 'reaction lookup must not broadly suppress non-404 failures' >&2
+	exit 1
+fi
+if grep -F -- '-f content="$2" >/dev/null 2>&1 || true' "$verification" >/dev/null; then
+	echo 'GraphQL reaction failures must remain observable' >&2
+	exit 1
+fi
+
+# Cancelling a superseded run is best-effort, but failures must remain visible.
+if grep -F 'gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" >/dev/null 2>&1 || true' "$verification" >/dev/null; then
+	echo 'superseded run cancellation must not silently discard failures' >&2
+	exit 1
+fi
+grep -F 'if cancel_output=$(gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" 2>&1); then' "$verification" >/dev/null
+grep -F 'failed to cancel superseded verification run %s: %s' "$verification" >/dev/null
+grep -F '"$old_run" "$cancel_output" >&2' "$verification" >/dev/null
+
 sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
