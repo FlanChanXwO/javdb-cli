@@ -32,7 +32,7 @@ grep -F 'sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 grep -F 'bin.install "javdb"' "$formula" >/dev/null
 grep -F 'assert_match "javdb version #{version}", shell_output("#{bin}/javdb --version")' "$formula" >/dev/null
 
-if rg -i 'windows|depends_on' "$formula" >/dev/null; then
+if grep -E -i 'windows|depends_on' "$formula" >/dev/null; then
 	printf '%s\n' 'Formula unexpectedly selects Windows or declares a build dependency' >&2
 	exit 1
 fi
