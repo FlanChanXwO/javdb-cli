@@ -71,16 +71,31 @@ func TestGetIsolatedBySource(t *testing.T) {
 }
 
 func TestTTLExpiryIsNormalMiss(t *testing.T) {
-	// TTL 窗口要远大于调度抖动：fresh 命中与过期 miss 都依赖真实时钟。
-	store := New(t.TempDir(), 500*time.Millisecond)
-	if err := store.Put("builtin", stringsRepeatHex("d"), sampleResponse()); err != nil {
-		t.Fatal(err)
+	dir := t.TempDir()
+	ttl := time.Hour
+	store := New(dir, ttl)
+	key := stringsRepeatHex("d")
+	file := filepath.Join(dir, "builtin.json")
+	writeFixture := func(writtenAt time.Time) {
+		t.Helper()
+		content := fmt.Sprintf(
+			`{"%s":{"written_at":%q,"response":{"source":"builtin"}}}`,
+			key,
+			writtenAt.UTC().Format(time.RFC3339Nano),
+		)
+		if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, ok, err := store.Get("builtin", stringsRepeatHex("d")); err != nil || !ok {
+
+	now := time.Now().UTC()
+	// 直接控制持久化时间，避免把 runner 调度或 fsync 延迟误当成 TTL 语义。
+	writeFixture(now)
+	if _, ok, err := store.Get("builtin", key); err != nil || !ok {
 		t.Fatalf("fresh entry should hit: ok=%v err=%v", ok, err)
 	}
-	time.Sleep(700 * time.Millisecond)
-	_, ok, err := store.Get("builtin", stringsRepeatHex("d"))
+	writeFixture(now.Add(-2 * ttl))
+	_, ok, err := store.Get("builtin", key)
 	if err != nil {
 		t.Fatalf("expired entry must be a normal miss, got error: %v", err)
 	}
