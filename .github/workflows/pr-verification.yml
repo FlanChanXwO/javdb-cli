@@ -189,11 +189,23 @@ jobs:
             fi
           }
           reaction_subject() {
-            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+            local output status
+            if output=$(gh api "repos/$REPO/issues/comments/$1" --jq '.node_id' 2>&1); then
+              printf '%s\n' "$output"
+              return 0
+            else
+              status=$?
+            fi
+            case "$output" in
+              *"(HTTP 404)"*) return 0 ;;
+            esac
+            printf '%s\n' "$output" >&2
+            return "$status"
           }
           add_reaction() {
             local subject_id
             subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
               -f subjectId="$subject_id" \
@@ -201,11 +213,12 @@ jobs:
           }
           remove_reaction() {
             local subject_id
-            subject_id=$(reaction_subject "$1") || return 0
+            subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
-              -f content="$2" >/dev/null 2>&1 || true
+              -f content="$2" >/dev/null
           }
           fail_trigger() {
             local reason="$1"
@@ -271,7 +284,11 @@ jobs:
               done
               old_run=$(printf '%s' "$old_state" | jq -r '.run_id // 0')
               if [ "$old_run" != 0 ] && [ "$old_run" != "$GITHUB_RUN_ID" ]; then
-                gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" >/dev/null 2>&1 || true
+                if cancel_output=$(gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" 2>&1); then
+                  :
+                else
+                  printf 'warning: failed to cancel superseded verification run %s: %s\n' "$old_run" "$cancel_output" >&2
+                fi
               fi
             fi
           fi
@@ -423,11 +440,23 @@ jobs:
         run: |
           set -euo pipefail
           reaction_subject() {
-            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+            local output status
+            if output=$(gh api "repos/$REPO/issues/comments/$1" --jq '.node_id' 2>&1); then
+              printf '%s\n' "$output"
+              return 0
+            else
+              status=$?
+            fi
+            case "$output" in
+              *"(HTTP 404)"*) return 0 ;;
+            esac
+            printf '%s\n' "$output" >&2
+            return "$status"
           }
           add_reaction() {
             local subject_id
             subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
               -f subjectId="$subject_id" \
@@ -435,11 +464,12 @@ jobs:
           }
           remove_reaction() {
             local subject_id
-            subject_id=$(reaction_subject "$1") || return 0
+            subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
-              -f content="$2" >/dev/null 2>&1 || true
+              -f content="$2" >/dev/null
           }
           comment_id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-test-result -->"))) | .id' | head -1)
           test -n "$comment_id"
