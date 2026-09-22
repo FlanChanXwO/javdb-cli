@@ -158,4 +158,25 @@ grep -F 'if cancel_output=$(gh api --method POST "repos/$REPO/actions/runs/$old_
 grep -F 'failed to cancel superseded verification run %s: %s' "$verification" >/dev/null
 grep -F '"$old_run" "$cancel_output" >&2' "$verification" >/dev/null
 
+# §25.3：旧 Real API e2e orchestration 已被统一 Verification 取代，不得长期
+# 同时存在两套入口。这里禁止旧入口文件与引用回归。
+for legacy in "$repo_root/.github/workflows/e2e.yml" "$repo_root/e2e/run.sh"; do
+	if [ -e "$legacy" ]; then
+		echo "legacy e2e entrypoint still present: $legacy" >&2
+		exit 1
+	fi
+done
+if [ -d "$repo_root/e2e" ] && [ -n "$(find "$repo_root/e2e" -type f -print -quit)" ]; then
+	echo 'legacy e2e directory still contains files' >&2
+	exit 1
+fi
+# 排除本脚本自身：它必须写出旧路径才能完成检查。
+if grep -rn --exclude-dir=.git --exclude-dir='goal-*' --exclude-dir=.worktrees \
+	--exclude=test-workflows.sh \
+	-e 'e2e/run\.sh' -e 'workflows/e2e\.yml' \
+	"$repo_root/.github" "$repo_root/scripts" "$repo_root/docs" 2>/dev/null; then
+	echo 'legacy e2e entrypoint is still referenced' >&2
+	exit 1
+fi
+
 sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
