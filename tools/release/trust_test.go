@@ -107,16 +107,34 @@ func TestReleaseTrustGitHelpersIgnoreInheritedGitEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capture toplevel: %v", err)
 	}
-	resolvedFixture, err := filepath.EvalSymlinks(fixture)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if toplevel != resolvedFixture {
-		t.Fatalf("git helpers resolved %q, want the fixture root %q", toplevel, resolvedFixture)
+	if !samePath(toplevel, fixture) {
+		t.Fatalf("git helpers resolved %q, want the fixture root %q", toplevel, fixture)
 	}
 	if _, err := captureGit(decoy, "rev-parse", "--verify", "refs/tags/v1.2.3"); err == nil {
 		t.Fatal("fixture tag leaked into the ambient GIT_DIR repository")
 	}
+}
+
+// samePath compares two paths that git and Go may render differently: git
+// reports forward slashes even on Windows, Go uses the platform separator, and
+// the temporary directory can be reached through a symlink. Normalize the
+// separators explicitly rather than via filepath.ToSlash so the helper behaves
+// the same on every platform, then resolve symlinks and compare folded.
+func samePath(left, right string) bool {
+	canonical := func(value string) string {
+		if resolved, err := filepath.EvalSymlinks(value); err == nil {
+			value = resolved
+		}
+		// Normalize to forward slashes on every platform: on Unix the Windows
+		// fixture path contains literal backslashes that filepath.Clean leaves
+		// alone, while on Windows git returns forward slashes.
+		value = strings.ReplaceAll(value, `\`, "/")
+		for strings.Contains(value, "//") {
+			value = strings.ReplaceAll(value, "//", "/")
+		}
+		return strings.TrimSuffix(strings.ToLower(value), "/")
+	}
+	return canonical(left) == canonical(right)
 }
 
 func TestReleaseTrustPublishedReleaseAndHandoff(t *testing.T) {
