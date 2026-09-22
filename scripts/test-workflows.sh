@@ -76,6 +76,25 @@ grep -F 'prepare_release:' "$release" >/dev/null
 grep -F 'go run ./tools/release verify-artifact-set' "$release" >/dev/null
 grep -F 'go run ./tools/release verify-source' "$release" >/dev/null
 
+# §14：生产归档与容器镜像各只构建一次（build once）。
+test "$(grep -Fc 'sh scripts/build-platform.sh' "$release")" -eq 1
+test "$(grep -Fc 'docker build' "$release")" -eq 1
+
+# §15：preparation 阶段固化 immutable handoff，publish 阶段只校验后复用。
+grep -F 'write-handoff' "$release" >/dev/null
+grep -F -- '--output release/release-handoff.json' "$release" >/dev/null
+grep -F 'release/release-handoff.json' "$release" >/dev/null
+test "$(grep -Fc 'verify-handoff-set' "$release")" -ge 2
+grep -F -- '--checksums prepared/dist/checksums.txt' "$release" >/dev/null
+
+# §19：publisher 不得出现任何生产性重建。
+for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+	if grep -nE '(^|[^a-z-])(go build|docker build|build-platform\.sh|build-release\.sh|package-release)' "$publisher" >/dev/null; then
+		echo "publisher must not rebuild release artifacts: $publisher" >&2
+		exit 1
+	fi
+done
+
 # Exactly one human approval boundary. Publication environments must not require another approval.
 test "$(grep -Fc 'environment: release-approval' "$release")" -eq 1
 grep -F 'environment: release' "$release" >/dev/null

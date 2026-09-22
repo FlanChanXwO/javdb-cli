@@ -272,6 +272,9 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      commit: ${{ steps.trust.outputs.commit }}
+      version: ${{ steps.trust.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -285,13 +288,14 @@ jobs:
           cache: false
 
       - name: Require the tag commit on the default release branch
+        id: trust
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
-          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
 
   prepare_release:
     name: Prepare release materials
@@ -313,6 +317,11 @@ jobs:
           pattern: verified-release-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: verified-container-*
+          path: containers
+          merge-multiple: true
       - name: Require the complete registry-defined release artifact set
         shell: bash
         env:
@@ -320,8 +329,40 @@ jobs:
         run: |
           set -euo pipefail
           go run ./tools/release verify-artifact-set --dir dist --version "$VERSION"
+          go run ./tools/release verify-container-set --dir containers
           go run ./tools/release checksums --dir dist --version "$VERSION" --output dist/checksums.txt
           test -s dist/checksums.txt
+
+      # §14/§15：这里一次性固化 build-once 产物的 identity 与 checksum。所有
+      # downstream publisher 只消费这份 immutable handoff，不再自行构建或推断。
+      - name: Write the immutable release handoff
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          TAG_COMMIT: ${{ needs.verify_release_source.outputs.commit }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          go run ./tools/release write-handoff \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow 'Release' \
+            --tag "$RELEASE_TAG" \
+            --commit-sha "$TAG_COMMIT" \
+            --version "$VERSION" \
+            --dist-dir dist \
+            --container-dir containers \
+            --output release/release-handoff.json
+          go run ./tools/release verify-handoff-set \
+            --handoff release/release-handoff.json \
+            --dist-dir dist \
+            --container-dir containers \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --tag "$RELEASE_TAG"
 
       - name: Render release notes
         shell: bash
@@ -338,9 +379,10 @@ jobs:
           name: prepared-release-metadata
           path: |
             dist/checksums.txt
+            release/release-handoff.json
             release/release-notes.md
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
 
   approve_release:
     name: Approve release publication
@@ -392,6 +434,24 @@ jobs:
           pattern: verified-container-*
           path: containers
           merge-multiple: true
+
+      # §18/§19：publish 只消费 preparation 阶段固化的 handoff，并重新校验
+      # 每个产物的 checksum。这里不构建任何产物，也不从 tag 名推断 identity。
+      - name: Verify the immutable release handoff
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          go run ./tools/release verify-handoff-set \
+            --handoff prepared/release/release-handoff.json \
+            --dist-dir dist \
+            --container-dir containers \
+            --checksums prepared/dist/checksums.txt \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --tag "$RELEASE_TAG"
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
