@@ -117,5 +117,13 @@ jobs:
           QUALITY_RESULT: ${{ needs.quality.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
-          test "$QUALITY_RESULT" = success
+          # §12.1：aggregate 失败必须给出可操作原因，而不是只留
+          # `Process completed with exit code 1.`；详细错误仍在 worker 日志。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Required quality checks did not complete successfully.'
+            exit 1
+          fi
+          if [ "$QUALITY_RESULT" != success ]; then
+            echo '::error::Required quality checks did not complete successfully.'
+            exit 1
+          fi

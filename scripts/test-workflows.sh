@@ -48,6 +48,16 @@ fi
 grep -F 'name: Platform setup' "$platform" >/dev/null
 grep -F 'name: Container setup' "$container" >/dev/null
 
+# §12.1 aggregate 失败必须给出可操作原因，不能只留退出码。
+grep -F 'Platform smoke failed on one or more required platforms.' "$platform" >/dev/null
+grep -F 'Container smoke failed on one or more required platforms.' "$container" >/dev/null
+grep -F 'Required quality checks did not complete successfully.' "$quality" >/dev/null
+grep -F 'Platform configuration could not be resolved.' "$platform" >/dev/null
+
+# §12.2 合法 skip 必须解释原因。
+grep -F 'Documentation-only change; platform smoke is not required.' "$platform" >/dev/null
+grep -F 'Container smoke is not required for this change.' "$container" >/dev/null
+
 # Platform sets are resolved from the shared registry rather than copied into workflows.
 grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
 grep -F './tools/platformmatrix --capability container' "$container" >/dev/null

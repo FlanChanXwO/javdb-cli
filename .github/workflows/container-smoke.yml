@@ -203,10 +203,20 @@ jobs:
           MATRIX_RESULT: ${{ needs.container_smoke.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
-          # setup 与 worker 始终运行；非必需变更在 worker 内部跳过重活。
-          test "$RESOLVE_RESULT" = success
-          test "$MATRIX_RESULT" = success
+          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Container configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$RESOLVE_RESULT" != success ]; then
+            echo '::error::Container configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$MATRIX_RESULT" != success ]; then
+            echo '::error::Container smoke failed on one or more required platforms.'
+            exit 1
+          fi
+          # §12.2：合法跳过必须解释原因。
           if [ "$CONTAINER_REQUIRED" != true ]; then
             printf '%s\n' 'Container smoke is not required for this change.'
           fi
