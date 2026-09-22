@@ -1,43 +1,28 @@
-name: Container image smoke
+name: Container smoke workers
 
-# 只在容器打包契约相关路径变更时运行；其余 PR 由 ci/platform-smoke 覆盖。
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number for this worker run
+        required: false
+        default: ''
+        type: string
+      head_sha:
+        description: Exact source commit to verify
+        required: false
+        default: ''
+        type: string
 
 concurrency:
-  group: container-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: container-smoke-worker-${{ inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  classify_changes:
-    name: Classify change scope
-    runs-on: ubuntu-24.04
-    outputs:
-      container_required: ${{ steps.scope.outputs.container_required }}
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/classify-change-scope
-        id: scope
-        with:
-          base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-
-  resolve_platforms:
-    name: Container setup
-    needs: classify_changes
+  setup:
+    name: Resolve container workers
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -46,66 +31,51 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || inputs.head_sha || github.sha }}
           persist-credentials: false
+
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
-      - name: Resolve container platforms
-        id: matrix
+          cache: false
+
+      - name: Require the requested source
+        if: ${{ inputs.head_sha != '' }}
         shell: bash
         env:
-          REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
-        run: |
-          set -euo pipefail
-          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
-          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里说明
-          # 跳过原因，并落到便宜的 ubuntu runner，不占用容器 runner。
-          if [ "$REQUIRED" = true ]; then
-            raw=$(go run ./tools/platformmatrix --capability container)
-            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
-          else
-            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
-          fi
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
 
-  container_smoke:
-    needs: [classify_changes, resolve_platforms]
-    # 这里刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
-    # `${{ matrix.* }}` 占位符。改为始终运行 + step 级跳过，并让非必需平台
-    # 落到便宜的 ubuntu runner 上，避免占用重平台 runner。
-    name: Container smoke · ${{ matrix.display }}
-    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
+      - name: Resolve container matrix
+        id: matrix
+        shell: bash
+        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+
+  worker:
+    needs: setup
+    name: Container platform - ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
-      - name: Require container work for this change
-        if: matrix.required != 'true'
-        shell: bash
-        run: printf '%s\n' 'Container smoke is not required for this change.'
-
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        if: matrix.required == 'true'
         with:
+          ref: ${{ inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || inputs.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Build the smoke Linux binary
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          # 注入固定 smoke release date，使 --version 走正式版输出路径
-          # （javdb version <version> (<date>)），贴近生产镜像契约。
           sh scripts/build-release.sh \
             --version '0.0.0-smoke' \
             --release-date '2026-01-01' \
@@ -113,7 +83,6 @@ jobs:
             --output dist/javdb
 
       - name: Build the container image
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -123,7 +92,6 @@ jobs:
             -t "javdb-cli-smoke:${{ matrix.goarch }}" .
 
       - name: Verify OCI labels
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -142,18 +110,16 @@ jobs:
             | grep -Fx 'MIT'
 
       - name: Verify non-root user
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
           uid=$(docker run --rm --entrypoint id javdb-cli-smoke:${{ matrix.goarch }} -u)
           if [ "$uid" = "0" ]; then
-            echo "Container must not run as root (UID 0)" >&2
+            echo 'Container must not run as root (UID 0)' >&2
             exit 1
           fi
 
       - name: Verify exact smoke version
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -161,7 +127,6 @@ jobs:
           printf '%s\n' "$version" | grep -F 'javdb version 0.0.0-smoke (2026-01-01)'
 
       - name: Verify state path and permissions
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -171,7 +136,6 @@ jobs:
           test "$state_mode" = 700
 
       - name: Verify working directory and write access
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -181,42 +145,7 @@ jobs:
             'touch /work/container-smoke && test -f /work/container-smoke'
 
       - name: Verify embedded license
-        if: matrix.required == 'true'
         shell: bash
         run: |
           docker run --rm --entrypoint sh javdb-cli-smoke:${{ matrix.goarch }} -c \
             'test -s /usr/share/doc/javdb-cli/LICENSE'
-
-  container_smoke_gate:
-    name: Container smoke gate
-    needs: [classify_changes, resolve_platforms, container_smoke]
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    permissions: {}
-    steps:
-      - name: Require expected container outcome
-        shell: bash
-        env:
-          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
-          CONTAINER_REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
-          RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
-          MATRIX_RESULT: ${{ needs.container_smoke.result }}
-        run: |
-          set -euo pipefail
-          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
-          if [ "$CLASSIFY_RESULT" != success ]; then
-            echo '::error::Container configuration could not be resolved.'
-            exit 1
-          fi
-          if [ "$RESOLVE_RESULT" != success ]; then
-            echo '::error::Container configuration could not be resolved.'
-            exit 1
-          fi
-          if [ "$MATRIX_RESULT" != success ]; then
-            echo '::error::Container smoke failed on one or more required platforms.'
-            exit 1
-          fi
-          # §12.2：合法跳过必须解释原因。
-          if [ "$CONTAINER_REQUIRED" != true ]; then
-            printf '%s\n' 'Container smoke is not required for this change.'
-          fi

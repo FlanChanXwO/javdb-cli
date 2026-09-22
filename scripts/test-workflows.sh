@@ -14,10 +14,21 @@ clawhub="$workflows/publish-clawhub.yml"
 
 # Branch protection relies on these aggregate check names.
 grep -F 'name: Quality gate' "$quality" >/dev/null
-grep -F 'name: Platform smoke gate' "$platform" >/dev/null
-grep -F 'name: Container smoke gate' "$container" >/dev/null
+grep -F 'name: Platform smoke gate' "$quality" >/dev/null
+grep -F 'name: Container smoke gate' "$quality" >/dev/null
 grep -F "context='PR template gate'" "$metadata" >/dev/null
 grep -F "context='PR commands gate'" "$metadata" >/dev/null
+
+# PRs expose only the two aggregate smoke gates; native/container matrices run
+# through workflow_dispatch so their worker jobs do not become PR checks.
+grep -F '  pull_request:' "$quality" >/dev/null
+grep -F '  workflow_dispatch:' "$platform" >/dev/null
+grep -F '  workflow_dispatch:' "$container" >/dev/null
+if grep -F '  pull_request:' "$platform" >/dev/null ||
+	grep -F '  pull_request:' "$container" >/dev/null; then
+	echo 'smoke worker workflows must not emit pull-request checks' >&2
+	exit 1
+fi
 
 # Shared platform registry remains the single source of platform sets.
 grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
