@@ -53,7 +53,7 @@ Update documentation in the same pull request when changing a command, flag, SDK
 
 - Keep `README.md` and `README.zh-CN.md` behaviorally aligned.
 - Keep both locale versions under `docs/en/` and `docs/zh-CN/` behaviorally aligned; never use untranslated placeholder content.
-- Update `docs/sdk.md` / `docs/sdk.zh-CN.md`, `docs/maintainers/architecture.md`, or `docs/maintainers/development.md` according to their documented responsibility.
+- Update `docs/en/sdk.md` / `docs/zh-CN/sdk.md`, `docs/maintainers/architecture.md`, or `docs/maintainers/development.md` according to their documented responsibility.
 - Release notes are maintained directly in the release-prep PR under `changelog/vX.Y.Z/{en.md,zh-CN.md}`. Keep English and Simplified Chinese entries aligned, include a PR or direct-commit source in every entry, and update both changelog indexes. See the [development guide](docs/maintainers/development.md) for the exact process.
 - Check `skills/javdb-cli/` when CLI commands, flags, or safety semantics change.
 

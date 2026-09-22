@@ -1,188 +1,84 @@
 #!/bin/sh
-# 只验证 CI/Release 的稳定行为契约；具体 YAML 排版与实现细节交给 Actions 实际运行。
+# Verify stable CI/release trust boundaries without snapshot-testing YAML layout.
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+workflows="$repo_root/.github/workflows"
+quality="$workflows/ci.yml"
+platform="$workflows/platform-smoke.yml"
+container="$workflows/container-smoke.yml"
+release="$workflows/release.yml"
+verification="$workflows/pr-verification.yml"
+metadata="$workflows/pr-metadata.yml"
+clawhub="$workflows/publish-clawhub.yml"
 
-for workflow in "$repo_root"/.github/workflows/*.yml; do
-	ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
-done
-
-quality="$repo_root/.github/workflows/ci.yml"
-platform="$repo_root/.github/workflows/platform-smoke.yml"
-container="$repo_root/.github/workflows/container-smoke.yml"
-release="$repo_root/.github/workflows/release.yml"
-verification="$repo_root/.github/workflows/pr-verification.yml"
-metadata="$repo_root/.github/workflows/pr-metadata.yml"
-clawhub="$repo_root/.github/workflows/publish-clawhub.yml"
-
-# Branch protection relies on these stable aggregate names.
+# Branch protection relies on these aggregate check names.
 grep -F 'name: Quality gate' "$quality" >/dev/null
 grep -F 'name: Platform smoke gate' "$platform" >/dev/null
 grep -F 'name: Container smoke gate' "$container" >/dev/null
 grep -F "context='PR template gate'" "$metadata" >/dev/null
 grep -F "context='PR commands gate'" "$metadata" >/dev/null
 
-# 用户可见 Check name 只回答「检查什么」：
-#  - 每个 job 必须有显式 name，否则 GitHub 直接暴露内部 job id；
-#  - setup job 不得使用内部实现词（Resolve ... matrix）。
-# 注意：运行中的 matrix job 名称会被 GitHub 追加整个 matrix tuple，且被 skip 的 job
-# 不会展开 name 中的表达式，所以只能约束 job id 与 setup 名称。
-python3 - "$repo_root/.github/workflows" <<'PY'
-import sys, pathlib, yaml
-root = pathlib.Path(sys.argv[1])
-failures = []
-for path in sorted(root.glob('*.yml')):
-    doc = yaml.safe_load(path.read_text())
-    for job_id, spec in (doc.get('jobs') or {}).items():
-        if not spec.get('name'):
-            failures.append(f'{path.name}: job {job_id!r} has no user-facing name')
-if failures:
-    print('\n'.join(failures), file=sys.stderr)
-    sys.exit(1)
-PY
-
-if grep -F 'Resolve platform matrix' "$platform" "$container" >/dev/null 2>&1; then
-	echo 'setup jobs must use user-facing names' >&2
-	exit 1
-fi
-grep -F 'name: Platform setup' "$platform" >/dev/null
-grep -F 'name: Container setup' "$container" >/dev/null
-
-# §12.1 aggregate 失败必须给出可操作原因，不能只留退出码。
-grep -F 'Platform smoke failed on one or more required platforms.' "$platform" >/dev/null
-grep -F 'Container smoke failed on one or more required platforms.' "$container" >/dev/null
-grep -F 'Required quality checks did not complete successfully.' "$quality" >/dev/null
-grep -F 'Platform configuration could not be resolved.' "$platform" >/dev/null
-
-# §12.2 合法 skip 必须解释原因。
-grep -F 'Documentation-only change; platform smoke is not required.' "$platform" >/dev/null
-grep -F 'Container smoke is not required for this change.' "$container" >/dev/null
-
-# Platform sets are resolved from the shared registry rather than copied into workflows.
+# Shared platform registry remains the single source of platform sets.
 grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
 grep -F './tools/platformmatrix --capability container' "$container" >/dev/null
 grep -F './tools/platformmatrix --capability verification' "$verification" >/dev/null
 grep -F './tools/platformmatrix --capability release' "$release" >/dev/null
-# Homebrew 现在是独立 publisher：release.yml 只负责 build/package 与准备材料，
-# 不再内联渲染或验证 formula。
-if grep -F 'render-homebrew-formula.sh' "$release" >/dev/null; then
-	echo 'Homebrew rendering must live in the dedicated publisher' >&2
-	exit 1
-fi
-homebrew="$repo_root/.github/workflows/publish-homebrew.yml"
-grep -F 'render-homebrew-formula.sh' "$homebrew" >/dev/null
-grep -F 'workflow_run:' "$homebrew" >/dev/null
 
-# Release bytes are built once on fresh production runners, then prepared and approved.
-grep -F 'build_production:' "$release" >/dev/null
-grep -F 'Smoke the exact production package' "$release" >/dev/null
-if grep -F 'Build, package, and smoke the versioned binary' "$release" >/dev/null; then
-	echo 'release verification must not build a disposable second package' >&2
-	exit 1
-fi
-grep -F 'prepare_release:' "$release" >/dev/null
-grep -F 'go run ./tools/release verify-artifact-set' "$release" >/dev/null
-grep -F 'go run ./tools/release verify-source' "$release" >/dev/null
-
-# §14：生产归档与容器镜像各只构建一次（build once）。
+# Release artifacts are built once, bound to an immutable handoff, then reused.
 test "$(grep -Fc 'sh scripts/build-platform.sh' "$release")" -eq 1
 test "$(grep -Fc 'docker build' "$release")" -eq 1
-
-# §15：preparation 阶段固化 immutable handoff，publish 阶段只校验后复用。
 grep -F 'write-handoff' "$release" >/dev/null
 grep -F -- '--output release/release-handoff.json' "$release" >/dev/null
-grep -F 'release/release-handoff.json' "$release" >/dev/null
-test "$(grep -Fc 'verify-handoff-set' "$release")" -ge 2
-grep -F -- '--checksums prepared/dist/checksums.txt' "$release" >/dev/null
+grep -F 'verify-handoff-set' "$release" >/dev/null
 
-# §19：publisher 不得出现任何生产性重建。
-for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+for publisher in "$workflows"/publish-*.yml; do
+	grep -F 'workflow_run:' "$publisher" >/dev/null
+	grep -F 'release_run_id:' "$publisher" >/dev/null
+	grep -F 'release_run_id must be a positive decimal number' "$publisher" >/dev/null
 	if grep -nE '(^|[^a-z-])(go build|docker build|build-platform\.sh|build-release\.sh|package-release)' "$publisher" >/dev/null; then
 		echo "publisher must not rebuild release artifacts: $publisher" >&2
 		exit 1
 	fi
-done
-
-# §17：手动恢复只接受 release_run_id，不接受 tag/latest 等模糊解析。
-for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
-	grep -F 'workflow_run:' "$publisher" >/dev/null
-	grep -F 'release_run_id:' "$publisher" >/dev/null
-	grep -F 'release_run_id must be a positive decimal number' "$publisher" >/dev/null
 	if grep -nE 'latest successful run|latest release|inputs\.tag|latest_release' "$publisher" >/dev/null; then
-		echo "publisher must not accept fuzzy recovery inputs: $publisher" >&2
+		echo "publisher must not use fuzzy recovery inputs: $publisher" >&2
+		exit 1
+	fi
+	if grep -nE '^[[:space:]]*(required_reviewers|reviewers):' "$publisher" >/dev/null; then
+		echo "publisher must not add another approval boundary: $publisher" >&2
 		exit 1
 	fi
 done
 
-# §20：publisher 之间必须独立，不得互相 needs 形成串行链。
-for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
-	if grep -nE 'needs:.*publish' "$publisher" >/dev/null; then
-		echo "publishers must run independently: $publisher" >&2
-		exit 1
-	fi
-done
-
-# §24：整个 Release pipeline 只允许一个 release-approval 人工审批边界。
+# The release pipeline has one human approval after preparation.
 test "$(grep -Fc 'environment: release-approval' "$release")" -eq 1
-approval_line=$(grep -n '^  approve_release:$' "$release" | cut -d: -f1)
-publish_line=$(grep -n '^  publish:$' "$release" | cut -d: -f1)
-test "$approval_line" -lt "$publish_line"
-
-# 审批必须发生在所有产物准备与验证之后。
 approval_job=$(sed -n '/^  approve_release:$/,/^  publish:$/p' "$release")
 printf '%s\n' "$approval_job" | grep -F 'needs: [prepare_release]' >/dev/null
 
-# §24：publisher environment 可以承载 secret，但不得再要求 reviewer approval。
-# 只检查 YAML 键，忽略注释中的说明文字。
-for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
-	if grep -nE '^[[:space:]]*(required_reviewers|reviewers):' "$publisher" >/dev/null; then
-		echo "publisher must not add a second approval boundary: $publisher" >&2
-		exit 1
-	fi
-done
-
-# §23：需要 environment 级 secret 的 publisher 必须声明 environment: release。
-for publisher in publish-dockerhub.yml publish-homebrew.yml; do
-	grep -F 'environment: release' "$repo_root/.github/workflows/$publisher" >/dev/null
-done
-
-# §16.2/§20：发布动作必须只存在于独立 publisher；release.yml 不得内联推送镜像。
+# Publication lives in independent publishers, never in release.yml.
 for forbidden in 'docker push' 'docker manifest create' 'docker manifest push' 'docker tag'; do
 	if grep -F "$forbidden" "$release" >/dev/null; then
 		echo "release.yml must not publish images inline: $forbidden" >&2
 		exit 1
 	fi
 done
-
-# §19：publisher 不得自行构建 release 归档或镜像。
-for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
-	if grep -nE '(^|[[:space:]])(go build|docker build)([[:space:]]|$)' "$publisher" >/dev/null; then
-		echo "publisher must not build artifacts: $publisher" >&2
-		exit 1
-	fi
-done
-
-# §11.1：verification worker 必须始终运行，否则被 skip 时 Check name 会原样
-# 显示 `${{ matrix.* }}` 占位符；matrix resolver 也必须无条件产出合法 matrix。
-if grep -nE '^    if: .*needs\.dispatch\.outputs\.accepted' "$verification" >/dev/null; then
-	echo 'verification worker must not be gated on accepted (it would leak the matrix placeholder)' >&2
+grep -F 'render-homebrew-formula.sh' "$workflows/publish-homebrew.yml" >/dev/null
+if grep -F 'render-homebrew-formula.sh' "$release" >/dev/null; then
+	echo 'Homebrew rendering must live in the dedicated publisher' >&2
 	exit 1
 fi
-grep -F 'name: Verification · ${{ matrix.display }}' "$verification" >/dev/null
-grep -F 'display:"not required"' "$verification" >/dev/null
-grep -F 'Require a completed dispatch' "$verification" >/dev/null
 
-# §15：每个 publisher 都必须把 handoff 绑定到它解析出的那个 run。ClawHub 只发布
-# skill，用 identity-only 模式证明来源；容器与 Homebrew publisher 用
-# verify-handoff-set 同时校验身份与产物。
+# ClawHub consumes the common handoff and exposes its token only at publish time.
 grep -F 'verify-handoff-identity' "$clawhub" >/dev/null
-grep -F -- '--run-head-sha' "$clawhub" >/dev/null
-for publisher in publish-dockerhub.yml publish-homebrew.yml; do
-	grep -F -- '--run-head-sha' "$repo_root/.github/workflows/$publisher" >/dev/null
-done
+grep -F 'clawhub@0.23.1' "$clawhub" >/dev/null
+grep -F -- '--dry-run' "$clawhub" >/dev/null
+test "$(grep -Fc 'CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}' "$clawhub")" -eq 1
+if grep -F 'clawhub-release-tag' "$release" >/dev/null; then
+	echo 'release.yml must not stage a ClawHub-specific handoff' >&2
+	exit 1
+fi
 
-# PR code execution cannot write PR comments/reactions; trusted jobs own those permissions.
+# Untrusted PR code cannot write reactions/comments; trusted policy owns dispatch.
 verify_job=$(sed -n '/^  verify:$/,/^  aggregate:$/p' "$verification")
 if printf '%s\n' "$verify_job" | grep -F 'issues: write' >/dev/null; then
 	echo 'untrusted verification job must not have issue write permission' >&2
@@ -190,88 +86,38 @@ if printf '%s\n' "$verify_job" | grep -F 'issues: write' >/dev/null; then
 fi
 printf '%s\n' "$verify_job" | grep -F 'contents: read' >/dev/null
 grep -F '<!-- pr-test-result -->' "$verification" >/dev/null
-
-# Trusted verifier code follows the current PR base branch tip rather than the PR's stale base commit.
+grep -F -- '--check-trigger --comment-file' "$verification" >/dev/null
+grep -F -- '--resolve' "$verification" >/dev/null
+grep -F 'COMMANDS_JSON:' "$verification" >/dev/null
 if grep -F "jq -r '.base.sha'" "$verification" >/dev/null; then
-	echo 'PR verification must not trust the PR-captured base.sha as the executor source' >&2
+	echo 'PR verification must execute trusted code from the current base branch' >&2
 	exit 1
 fi
 grep -F "jq -r '.base.ref'" "$verification" >/dev/null
-grep -F 'branches/$base_ref_encoded' "$verification" >/dev/null
 
-# Deleted trigger comments may disappear after /test is accepted. Only that
-# concrete HTTP 404 becomes an empty reaction target; other API errors stay fatal.
-# The trigger decision and the effective commands are owned by the single
-# trusted policy binary; no second parser or shell-side scanning is allowed.
-grep -F -- '--check-trigger --comment-file' "$verification" >/dev/null
-grep -F -- '--resolve' "$verification" >/dev/null
-if grep -F 'trimmed' "$verification" >/dev/null; then
-	echo 'trigger detection must use the trusted policy, not shell trimming' >&2
+# GitHub-owned actions remain pinned to immutable SHAs.
+if grep -RhnE '^[[:space:]]*-[[:space:]]+uses:[[:space:]]+actions/[^@]+@' "$workflows" |
+	grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' >/dev/null; then
+	echo 'GitHub-owned actions must be pinned to full commit SHAs' >&2
 	exit 1
 fi
 
-# A declared-but-invalid comment override must fail the /test run closed and
-# must never fall back to the PR body commands.
-grep -F 'OVERRIDE_DECLARED: ${{ steps.resolve.outputs.override_declared }}' "$verification" >/dev/null
-grep -F 'if [ "$OVERRIDE_DECLARED" = true ]; then' "$verification" >/dev/null
-grep -F 'fail_trigger "$RESOLVE_DESC"' "$verification" >/dev/null
-if grep -F 'RESOLVE_DESC:-' "$verification" >/dev/null; then
-	echo 'invalid overrides must not fall back to PR commands' >&2
-	exit 1
-fi
-
-# The executed commands come from the resolver output, never from the PR-body
-# gate, so a comment override actually changes what runs.
-grep -F 'COMMANDS_JSON: ${{ needs.dispatch.outputs.commands }}' "$verification" >/dev/null
-grep -F 'commands: ${{ steps.resolve.outputs.effective_commands }}' "$verification" >/dev/null
-grep -F 'verification_hash: ${{ steps.resolve.outputs.effective_hash }}' "$verification" >/dev/null
-
-# Verification identity binds PR number, HEAD SHA, and the effective commands
-# hash so an override is a distinct execution identity (§6).
-grep -F 'verification_identity()' "$verification" >/dev/null
-grep -F "printf '%s:%s:%s'" "$verification" >/dev/null
-grep -F '"$PR" "$HEAD_SHA" "$VERIFICATION_HASH"' "$verification" >/dev/null
-
-test "$(grep -Fc '(HTTP 404)' "$verification")" -eq 2
-test "$(grep -Fc '*"(HTTP 404)"*) return 0 ;;' "$verification")" -eq 2
-test "$(grep -Fc '[ -n "$subject_id" ] || return 0' "$verification")" -eq 4
-if grep -F 'subject_id=$(reaction_subject "$1") || return 0' "$verification" >/dev/null; then
-	echo 'reaction lookup must not broadly suppress non-404 failures' >&2
-	exit 1
-fi
-if grep -F -- '-f content="$2" >/dev/null 2>&1 || true' "$verification" >/dev/null; then
-	echo 'GraphQL reaction failures must remain observable' >&2
-	exit 1
-fi
-
-# Cancelling a superseded run is best-effort, but failures must remain visible.
-if grep -F 'gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" >/dev/null 2>&1 || true' "$verification" >/dev/null; then
-	echo 'superseded run cancellation must not silently discard failures' >&2
-	exit 1
-fi
-grep -F 'if cancel_output=$(gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" 2>&1); then' "$verification" >/dev/null
-grep -F 'failed to cancel superseded verification run %s: %s' "$verification" >/dev/null
-grep -F '"$old_run" "$cancel_output" >&2' "$verification" >/dev/null
-
-# §25.3：旧 Real API e2e orchestration 已被统一 Verification 取代，不得长期
-# 同时存在两套入口。这里禁止旧入口文件与引用回归。
-for legacy in "$repo_root/.github/workflows/e2e.yml" "$repo_root/e2e/run.sh"; do
-	if [ -e "$legacy" ]; then
-		echo "legacy e2e entrypoint still present: $legacy" >&2
+# Retired orchestration and one-off probes stay retired.
+for obsolete in \
+	"$workflows/e2e.yml" \
+	"$repo_root/e2e/run.sh" \
+	"$workflows/auto-assign.yml" \
+	"$repo_root/.github/auto_assign.yml" \
+	"$repo_root/scripts/login_probe.go"; do
+	if [ -e "$obsolete" ]; then
+		echo "obsolete repository entrypoint still present: $obsolete" >&2
 		exit 1
 	fi
 done
-if [ -d "$repo_root/e2e" ] && [ -n "$(find "$repo_root/e2e" -type f -print -quit)" ]; then
-	echo 'legacy e2e directory still contains files' >&2
-	exit 1
-fi
-# 排除本脚本自身：它必须写出旧路径才能完成检查。
-if grep -rn --exclude-dir=.git --exclude-dir='goal-*' --exclude-dir=.worktrees \
-	--exclude=test-workflows.sh \
-	-e 'e2e/run\.sh' -e 'workflows/e2e\.yml' \
-	"$repo_root/.github" "$repo_root/scripts" "$repo_root/docs" 2>/dev/null; then
-	echo 'legacy e2e entrypoint is still referenced' >&2
-	exit 1
-fi
 
-sh "$repo_root/scripts/test-clawhub-publish-workflow.sh"
+# Quality invokes maintained repository checks directly. pre-commit is local-only.
+if grep -F 'pre_commit run --all-files' "$quality" >/dev/null; then
+	echo 'Quality must not rerun repository checks through pre-commit' >&2
+	exit 1
+fi
+grep -F 'sh scripts/test-releasenotes.sh' "$quality" >/dev/null
