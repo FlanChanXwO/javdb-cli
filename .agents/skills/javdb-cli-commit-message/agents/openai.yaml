@@ -1,0 +1,4 @@
+interface:
+  display_name: "JavDB CLI Commit Message"
+  short_description: "Write an accurate message for the staged diff."
+  default_prompt: "Use $javdb-cli-commit-message to describe the staged change."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "JavDB CLI Documentation"
+  short_description: "Align public documentation and portable agent skills."
+  default_prompt: "Use $javdb-cli-docs to update the affected documentation and skills."

@@ -7,139 +7,79 @@ license: MIT
 homepage: https://github.com/FlanChanXwO/javdb-cli
 tags: [javdb, cli, agent]
 name: javdb-cli
-description: 通过 javdb-cli 的 `javdb` 二进制检索 JavDB App API 的影片、人物、标签、榜单与合集，并在用户明确授权时管理账号、配置和观看标记。仅当用户明确提到 JavDB、javdb-cli、`javdb` 命令，或提供明显的 JavDB 编号/链接并要求操作时加载；不要用于泛搜索、泛成人内容或下载请求。每次执行前以 `javdb <command> --help` 核对当前可用参数。
+description: Operate the installed javdb CLI to search the JavDB App API, inspect movie and entity references, read lists, and perform explicitly authorized account, configuration, mark, or preview-asset actions. Use only for an explicit JavDB or javdb-cli task, a javdb command, or a clear JavDB reference with an operation request. Do not trigger for generic search, adult-content discovery, or downloading. Verify syntax with javdb COMMAND --help.
 ---
 
-# javdb-cli Operator
+# JavDB CLI Operator
 
-本 skill 让 agent 安全、准确地操作 `javdb`。命令语义以当前安装二进制的
-`javdb <command> --help` 为准；本文件只给出流程、安全边界与易混淆语义。
+Drive the installed `javdb` binary, not a guessed API or a source checkout. Read only the reference needed for the user's operation; no repository-maintenance skill or personal agent configuration is required.
 
-## 预检与账号检查
+## Preflight
 
-1. 运行 `javdb --version`。这是唯一默认环境检查；二进制不存在或不可执行时，说明阻塞原因。只有用户明确要求安装或修复时，才阅读 `references/install.md`，不得猜测安装方式。
-2. 不要在每轮会话枚举本地账号。只有认证、默认账号选择或用户明确要求时才运行 `javdb auth list`；账号存在不代表 token 有效。
-3. 仅在确实需要联网验证身份时运行 `javdb auth check --json`。它不会打印 token，但会发出 API 请求。
+1. Run `javdb --version`. If missing or not executable, report the blocker. Install only on an explicit installation/repair request using [install.md](references/install.md).
+2. Inspect the relevant `javdb COMMAND --help` before execution. Do not list accounts on every turn; use `auth list` only for an account decision or explicit request. A stored account is not proof of a valid token.
+3. Use networked `javdb auth check --json` only when identity validation is needed. Normal discovery does not authorize login, configuration repair, or host changes.
 
-## 不可违反的规则
+## Safety and authorization
 
-1. `~/.javdb-cli/auth.json` 含用户名、密码与 JWT（支持 POSIX 权限的平台使用 `0600`）。绝不在 commentary、结果、日志或代码块中回显、总结或转述这些值，也不读取该文件内容来“帮助排错”。
-2. 交互式 `javdb auth login` 仅在用户明确要求且能亲自输入凭据时运行。没有可交互终端时，不启动一个会永久等待的登录进程。
-3. 用户已经明确提供用户名和密码并明确要求登录时，才可使用 `auth login -u … -p …`；执行前说明凭据会进入本次命令的进程参数与记录。不要复述密码。
-4. 账号切换/删除、配置写入、观看标记和取消标记都是状态变更。必须有本次操作的明确用户指令；授权不自动延续至后续目标。
-5. 不接受 Cookie、浏览器会话或其他网页抓取替代方案。此 CLI 使用 App API；认证或 API 错误应原样说明，不要暗中换数据源、重试或伪造空结果。
-6. `auto_relogin=true` 会在默认账号 JWT 失效时，使用已保存密码静默重登**一次**。这是持久化配置，只有用户明确要求才可通过 `javdb config set auto_relogin true` 开启。
+- `~/.javdb-cli/auth.json` contains usernames, passwords, and JWTs. Never read, print, upload, quote, or summarize its contents. Supported POSIX systems use private `0600` permissions.
+- For login and credential handling, read [auth.md](references/auth.md). Do not launch a hidden prompt in an agent terminal the user cannot type into. Never request an undisclosed password in chat as a workaround.
+- Account/config changes, `mark`/`unmark`, cache clearing/refresh, updates, and file downloads require the user's explicit current target and action. Prior authorization does not extend to a new target. Reuse an already explicit instruction rather than asking the same question again.
+- Use the App API. Do not substitute browser cookies or scraping after an error. Existing optional-auth anonymous retry for magnets and explicitly enabled `auto_relogin` are documented product behavior, not permission to add other fallback or retry steps.
+- Image search uploads the image to AVScan or a configured provider. Explain that privacy effect and use only an authorized source. Media assets are previews/thumbnails, not full movies or magnet-target downloads.
 
-## 操作分级
+## Choose the operation
 
-| 类型 | 命令 | Agent 行为 |
-| --- | --- | --- |
-| 只读 | `search`、`detail`、`comments`、`magnets`、实体命令、`rankings`、`tags`、`browse`、`--version`、`config get/path`、`update --check` | 用户任务需要时执行 |
-| 软件更新 | `update` | 仅在用户明确要求升级时执行；会联网并替换二进制，或调用 Homebrew／`go install` |
-| 认证诊断 | `auth list/check` | 仅在账号选择或认证判定需要时执行 |
-| 远端状态写入 | `mark`、`unmark` | 执行前说明影片与将要设置/删除的状态 |
-| 本地账号/配置写入 | `auth login/use/remove`、`config set/unset` | 每次都需要明确授权 |
-| 本地缓存写入 | `tags --refresh` | 仅在用户要求刷新标签或允许重建缓存时执行 |
-| 本地资源写入 | `assets list` + `assets download` | 用户明确要求保存影片媒体资源时:先 `assets list` 看有什么,再管道到 `assets download` 精确落盘;不替换已有文件,也不下载完整影片或磁力目标 |
+| Task | Commands and scope |
+| --- | --- |
+| Read discovery/details | `search`, `detail`, `comments`, `magnets`, entity commands, `rankings`, `tags`, `browse`; see [discover.md](references/discover.md) |
+| Read authenticated lists | `top250`, `watched`, `want`, `recent`, `collections`, default `lists`; require the selected local account |
+| Diagnose identity | `auth list`, `auth check`; only when needed |
+| Change remote/local state | `mark`, `unmark`, `auth login/use/remove`, `config set/unset`; see [state.md](references/state.md) |
+| Save media assets | `assets list` then a scoped pipe into `assets download`; see [media.md](references/media.md) |
+| Inspect/update installation | `update --check --json` is read-only; actual `update` requires explicit authorization |
+| Manage caches | `tags --refresh` rebuilds tags; `cache reverse-search --clear` clears only reverse-search cache; use only for the requested cache task |
 
-`top250`、`watched`、`want`、`recent`、`collections` 与默认 `lists`
-需要默认登录账号。`magnets` 与 `detail --magnets` 无需登录即可使用：有默认账号时携带其
-token，token 失效则自动回退匿名请求。
+`magnets` and `detail --magnets` can run anonymously; a configured account is used when present, and a rejected optional token falls back to anonymous inside the CLI. Do not apply that behavior to authenticated list or write commands.
 
-## 输出与参数控制
+## Output and input contracts
 
-1. 先按用户的范围表达请求；仅在该命令 `--help` 显示 `--limit` 且用户给出条数时传入正数。不要为节省上下文擅自附加限额、页数、超时或重试次数。
-2. 小结果供人阅读时使用默认制表符文本；需要提取 ID、过滤或稳定字段时使用 `--json`，需要逐条管道信封或 fan-out 结果时使用 `--ndjson`。显式机器输出 flag 优先于 TTY 人类可读快捷路径。
-3. `--json` 只描述成功输出，并在适用时保留既有 legacy shape；`--ndjson` 输出可验证的 `javdb.pipeline/v1` 信封，fan-out 列表/合集结果分别把原始对象放在 `data.list`/`data.entity`。先检查命令退出状态；遇到认证、参数、网络或服务端错误时，报告 stderr 的真实原因，不要把它解析成 JSON 或伪装为“无结果”。
-   列表与合集的 fan-out NDJSON 是有意的 v1 machine-contract 迁移；每个 list/entity 信封必须有非空稳定 ID，缺少 ID 时显式失败，显示名称缺失时 `ref` 回退到 ID。消费旧聚合数据的程序必须按逐信封结果迁移，legacy 人类输出和显式聚合 `--json` 保持既有输出 shape；list/entity 缺少稳定 ID 时显式失败。
-4. `--all` 只在用户明确要求完整遍历时使用；它仅出现在实体/合集电影列表等支持的命令上。不要把它加到不支持的命令，也不要猜测 CLI 内部的分页行为。
-5. `--best` 会把 `magnets` 的结果缩为单个优先项（中字 > HD > 体积）。用户要完整列表时不要添加它。
-6. `comments` 每次只读一个页面，默认第 `1` 页、每页 `20` 条；不要为它附加 `--all` 或自动读取下一页。用户指定页码或条数时，原样传入正数。
-7. 影片媒体资产走两步:`javdb assets list ABC-123` 先看资产(编号只是位置),再用 selector 或 `--type` 过滤后管道到 `javdb assets download`。list 默认在最终选择后以有界并发流式 probe 图片尺寸/预览视频元数据；`--json/--ndjson` 可选增加 `width`、`height`、视频 `duration`（整数秒），TTY 显示 `SIZE`/`DURATION`，单项失败只省略字段。pipe 仍严格输出 `TYPE<TAB>URL`。可用 `config set assets.probe.enabled false` 关闭额外媒体请求，`assets.probe.concurrency` 默认 `4` 且必须为正数。`-d DIR` 自动命名(`image-001.jpg`/`video-001.mp4`),`-o PATH` 只接受恰好一个资产。两者都是本地资源写入,目标不能已存在,不表示支持完整影片或磁力下载。`assets download` stdout 每行只输出最终路径,无装饰文本。
+Use the user's requested scope. Supply a positive `--limit` only when supported and appropriate to that scope; never add an arbitrary limit, page cap, timeout, or retry to save context. `--all` is command-specific and only for an explicit exhaustive traversal. `comments` reads one selected page (default page 1, limit 20), not an automatic all-pages loop.
 
-## 命令速查
+TTY stdout defaults to human-readable text. Piped stdout normally uses stable text references/URIs; **explicit `--ndjson`** selects `javdb.pipeline/v1` envelopes. `--json` retains the command's aggregate/legacy shape where applicable and is mutually exclusive with `--ndjson`. Inspect exit status before parsing: errors can be plain stderr and empty stdout.
 
-执行前仍需用 `--help` 核对标志；以下示例是导航，不是稳定 API 合约。
+Most data commands accept non-TTY batch input. Explicit positional arguments plus non-empty stdin are ambiguous and fail. Login, password prompts, and `config set` are outside this generic pipeline path. Batch failures can preserve successful items and still exit nonzero; report both rather than calling them empty results.
+
+Movie/list/entity envelopes carry their actual kind and stable ID; list/entity payloads live in `data.list`/`data.entity`. Missing stable IDs fail, while a missing display name can use the ID as `ref`. A known movie ID bypasses number resolution; never infer one from a title. Assets use a separate `TYPE<TAB>URL` stream.
 
 ```text
-javdb --version
-javdb update --check --json
-javdb config path
-javdb config get host
-javdb auth list
-javdb auth check --json
-
-javdb search "ABC-123" --limit 5 --json
-javdb search "巨乳" --type actor --json
+javdb search "ABC-123" --json
+javdb search "QUERY" --type actor --json
 javdb detail ABC-123 --json
-javdb detail MOVIE_ID --id --json        # 仅当 MOVIE_ID 已确认是内部 ID
+javdb detail MOVIE_ID --id --json
 javdb comments ABC-123 --page 1 --limit 20 --json
-javdb magnets ABC-123 --cnsub --hd --json
-javdb magnets ABC-123 --best --json
-javdb assets list ABC-123 --type image 1-2 | javdb assets download -d ./images
-javdb assets list ABC-123 --type video | javdb assets download -o ./preview.mp4
-
-javdb tags --zone censored
-javdb browse --tag 巨乳 --main m --limit 20 --json
-javdb actor "山手梨愛" --main m --has-magnets --json
-javdb series SERIES_ID --page 1 --limit 20 --json
-javdb rankings movies --type fc2 --period week
-javdb top250 --limit 20
-
-javdb lists search "关键词" --zone all --json
+javdb lists search "QUERY" --zone all --ndjson
 javdb list LIST_ID --json
-javdb lists related ABC-123 --json
-
-javdb mark ABC-123 --want
-javdb unmark ABC-123
+javdb lists related ABC-123 --ndjson
+javdb search ABC --ndjson | javdb detail
+javdb rankings movies --type fc2 --period week
+javdb update --check --json
 ```
 
-所有数据命令可加的全局参数只有本次调用生效：`--proxy URL` 与
-`--host auto|mirror|main|URL`。`--proxy` 支持 http/https/socks4/socks4a/socks5/socks5h，
-必须带 host（socks 还需显式端口）；显式传入的空白值会直接报错，而不是静默覆盖继承代理后直连。
-默认 `auto` 验证缓存线路成功后会立即复用；只有缓存失效时才从 startup 配置发现候选、重选
-最快主机并改写 `~/.javdb-cli/route.json`；固定 `mirror`/`main`/绝对 URL 完全跳过线路发现。
-不要把未审阅的 URL 写入持久化配置。配置优先级为 CLI 参数 > 环境变量 > `config.toml` > 默认值。
+Replace placeholders only with verified values. Examples illustrate syntax, not permission to perform extra requests.
 
-## 关键语义与常见陷阱
+## Image search and integrated magnet search
 
-1. `detail NUMBER` 默认把参数作为番号解析；`--id` 表示内部 movie ID。没有可靠来源时不要猜测并加 `--id`。
-2. `list REF` 是某个公开/用户合集中的电影；不带子命令的 `lists` 是“我的合集”，需要认证。`lists show/search/related` 与 `list` 的含义不同；`lists search/related --ndjson` 每个列表输出一个带稳定 ID 的 `kind=list` 信封，`lists related` 收到带 ID 的 movie 信封时直接使用该 ID；缺少 list/entity 稳定 ID 时命令显式失败。
-3. `search --type` 可返回 `movie` 以外的维度。将搜索结果交给 `actor`、`series`、`maker`、`director`、`code` 或 `list` 前，使用 JSON 中的实际 ID/名称，不要从显示文本臆测。
-4. `tags` 的首次调用可能联网建立缓存；`--refresh` 会明确覆写该缓存。标签参数可用 ID、英文名或中文名，优先使用刚读取到的确切值。
-5. `mark` 必须在 `--watched` 与 `--want` 中二选一；`mark`/`unmark` 的番号定位会去除首尾空白，先按大小写不敏感的完整匹配处理；没有完整匹配时，只有唯一且无歧义的格式等价番号才接受；对应多个不同影片 ID 或只有模糊候选时失败，不选择搜索首项。管道 movie envelope 带非空 `id` 时直接使用该 ID；只有确认 raw 引用是内部 ID 时才使用 `--id`。`--content` 是要保存到远端的文本，提交前应让用户确认其内容与目标。
-6. `auth check`、TOP250 和用户列表的失败是认证或网络问题的信号，不应自动登录、重设账号或切换 `host`。只有用户明确要求时才改变配置或账号。`magnets`/`detail --magnets` 在 token 被拒时会自动回退匿名请求，其失败更可能是网络或服务端问题。
-7. `update --check --json` 是唯一可机器读取且不改写安装的更新方式。`update` 会独立解析 Release 代理并忽略 `--host`、`JAVDB_HOST` 与已配置 host，再按已检测的 Homebrew、`go install` 或 Release 压缩包渠道安装；开发构建会拒绝自更新。预发布版本只能在用户明确要求时加 `--prerelease`，且 Homebrew 渠道不支持它。
-8. `comments NUMBER` 默认把参数作为番号解析；`--id` 才是内部 movie ID。它只请求指定的一页，JSON 输出保留该页完整评论对象。
-9. 影片媒体资产:`javdb assets list ABC-123` 输出资产序列(TTY 带编号描述、尺寸和预览时长;管道为 `TYPE<TAB>URL`),机器输出保留 `type`/`url` 并在可用时增加 probe metadata;`javdb assets download` 消费该记录流并验证落盘。下载链路不要求自己解析 preview_images JSON、手写 Referer、调用 ffmpeg，也不为 list 解析完整媒体。该命令域只写入本地 thumbnail/preview 资源,不支持完整影片或磁力目标。失败时如实报告,不能把已包装的图片字节或不完整视频当作成功结果。
-10. `rankings movies --type` 与 `rankings playback --filter-by` 使用 `censored|uncensored|western|fc2`；三个排行命令的 `--period` 都使用 `day|week|month`。将这些 CLI 值原样传入，不要预先猜成数字分区或 `daily|weekly|monthly`。
-11. `search --zone` 与 `lists search --zone` 只使用 `censored|uncensored|western|fc2|all`；`search --filter-by` 的文档值为 `can_play|magnets|subtitle|single`。`magnets` 与集成搜索的 `--min-size` 必须为非负数，负小数也拒绝，零合法。
+`javdb search IMAGE_OR_URL [--source NAME] [--no-cache]` accepts JPEG/PNG/WEBP up to the existing 8 MiB limit and uploads to the selected provider. Candidates are resolved to JavDB through strict movie-number matching; one failed candidate can leave other output and a nonzero exit. Do not hide the failed candidate.
 
-## 以图搜番与管道
+Reverse-search caching defaults to 30 days, keyed by source and original-image SHA-256. `--no-cache` bypasses it for one search. `javdb cache reverse-search [--source NAME] [--clear]` addresses that cache only; do not delete unrelated local state.
 
-1. 以图搜番：`javdb search IMAGE|URL [--source NAME] [--no-cache]`。只接受 JPEG/PNG/WEBP
-   （≤ 8 MiB）；图片会上传到内置 AVScan 或已配置的外部 source，向用户说明这一隐私影响后再执行。
-   候选按严格番号精确匹配联动 JavDB 详情；某候选失败时输出会继续并以非零退出，不要把它当成
-   "无结果"。
-2. 反搜缓存：默认启用（30 天，按 source + 原图 SHA-256）。`javdb cache reverse-search
-   [--source NAME] [--clear]` 只清理反搜缓存；`--no-cache` 按次绕过。
-3. 管道：多数命令接受非 TTY stdin 批处理，TTY stdout 默认输出人类文本，非 TTY
-   stdout 默认输出稳定记录流（逐行 ref/URI）；显式 `--ndjson` 才输出
-   `javdb.pipeline/v1` NDJSON 信封（`--ndjson`/`--json` 互斥）。`--json` 可保留
-   producer 的 legacy 聚合 shape，但 `--ndjson` 按结果输出一个信封；例如
-   `javdb search SSIS --ndjson | javdb detail`。位置参数与非空 stdin 同时出现是歧义错误。
-   `auth login`、`config set` 与密码提示不使用管道 stdin。
-4. 一体化磁力搜索：`javdb search KEYWORD --magnets N` 一次完成搜索、筛选、排序和
-   磁力获取。`--cnsub`、`--hd`、`--min-size` 在排序前筛选；`--min-size` 必须为非负数，
-   零合法，负小数也拒绝。`N=0` 返回全部，`N>0` 取前 N。文本模式输出磁力 URI，NDJSON
-   输出 `kind=magnet` 信封。仅支持 movie 搜索。
+`javdb search QUERY --magnets N` combines movie search, filtering, sorting, and magnet lookup. `--cnsub`, `--hd`, and non-negative `--min-size` filter before sorting; zero is valid and negative fractional sizes fail. `N=0` requests all and positive N selects the first N. Text output contains magnet URIs; NDJSON contains `kind=magnet`. This option does not download the targets and is only for movie search.
 
-## 路由
+## Configuration and routing
 
-| 任务 | 读取 |
-| --- | --- |
-| 明确安装或修复 `javdb` | `references/install.md` |
-| 登录、账号检查、token 失效 | `references/auth.md` |
-| 搜索、详情、实体图导航、合集 | `references/discover.md` |
-| 标记、账号或配置变更 | `references/state.md` |
-| 网络、代理、空结果或命令失败 | `references/troubleshooting.md` |
+Precedence is CLI flags, environment, `config.toml`, then defaults. `--proxy URL` and `--host auto|mirror|main|URL` affect one invocation. Supported proxy schemes are HTTP/HTTPS/SOCKS4/SOCKS4A/SOCKS5/SOCKS5H; a host is required and SOCKS needs an explicit port. An explicitly blank proxy is an error, not a direct-connection override.
+
+CLI `host=auto` verifies and reuses `route.json`; when invalid, it discovers startup candidates and selects a route. Fixed `mirror`, `main`, or absolute URLs bypass discovery. Do not confuse the CLI default with the SDK constructor's mirror default or persist an unreviewed URL.
+
+Actual update resolves its own Release transport, ignoring data host selectors. It detects Homebrew, `go install`, or Release-archive installation; development builds refuse self-update. Use `--prerelease` only on request, and not for Homebrew. See [install.md](references/install.md) for verification boundaries and [troubleshooting.md](references/troubleshooting.md) for failures.

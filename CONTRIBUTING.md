@@ -47,6 +47,10 @@ Test public behavior through the public boundary whenever practical. Do not hide
 
 Real JavDB App API canaries are opt-in. Never run them with a user's local account unless that user has explicitly authorized it; never put a real token on a command line that may be stored in shell history.
 
+## Agent-assisted development
+
+Start with [AGENTS.md](AGENTS.md). The checked-in `javdb-cli-*` skills define Go design, focused testing, media integrity, review, PR, CI, and release workflows without personal global instructions or CCS. Clients without skill discovery can open their `SKILL.md` files directly. Agent contracts, maintenance/product skills, references, and UI metadata are English; public locale documentation remains bilingual.
+
 ## Documentation
 
 Update documentation in the same pull request when changing a command, flag, SDK API, configuration key, environment variable, output contract, authentication flow, proxy behavior, or known limitation.
@@ -64,12 +68,10 @@ Keep stable rules in one authoritative document and link to them elsewhere inste
 Before requesting review:
 
 - [ ] The change is focused and its user-visible behavior is explained.
-- [ ] New or changed code has focused tests that first demonstrated the failure.
-- [ ] `go test ./... -count=1` passes.
-- [ ] `go vet ./...` passes.
-- [ ] `sh scripts/build.sh` passes.
-- [ ] The release-sensitive checks pass (`scripts/test-package-release.sh`, `test-homebrew-formula.sh`, `test-workflows.sh`).
-- [ ] `python -m pre_commit run --all-files` passes when pre-commit is available.
+- [ ] Behavior changes have observed Red/Green and relevant regression evidence, or an explicitly accepted blocker; document-only work has document/link/metadata validation.
+- [ ] Applicable checks from [javdb-cli-test](.agents/skills/javdb-cli-test/SKILL.md) passed, including full/race/media/release checks when their scope applies; unrun checks are identified.
+- [ ] Required CI is evaluated on the current head and actual path classifier, not a presumed documentation exemption.
+- [ ] Existing pre-commit checks pass when installed and applicable; missing tooling is reported rather than installed silently.
 - [ ] `git diff --check` passes.
 - [ ] English and Simplified Chinese documentation are synchronized where required.
 - [ ] No credential, local state, or machine-specific artifact is included.

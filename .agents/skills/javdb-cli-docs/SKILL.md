@@ -1,24 +1,18 @@
 ---
 name: javdb-cli-docs
-description: Maintain javdb-cli documentation; locale and maintainer routing live in docs/maintainers/agents/documentation-guidelines.md.
+description: Edit javdb-cli public or maintainer documentation, repository agent contracts, maintenance skills, and the distributed operator skill. Use after changes to CLI/SDK behavior, configuration, architecture, test commands, PR policy, or publication workflows.
 ---
 
-# javdb-cli Docs
+# Maintain javdb-cli Documentation
 
-新增、修改或审查本仓库文档。文件职责与路由表以
-`docs/maintainers/agents/documentation-guidelines.md` 为准；本文件只定义流程，不复制路由表。
+Read `AGENTS.md` and [the documentation guidelines](../../../docs/maintainers/agents/documentation-guidelines.md). Establish behavior from the relevant implementation/tests and workflow before writing it down; do not copy Pixiv-specific layers, tooling, authentication, or release semantics.
 
-## 流程
+Update the actual owner: README for entry/install, locale CLI/SDK pages for public contracts, `docs/maintainers/` for engineering details, and `.agents/skills/` for task workflows. Keep root agent instructions short with precise routes. Public English/Simplified Chinese pages describe the same behavior; maintainer agent instructions, both skill trees, references, and UI metadata are English.
 
-1. 读取文档规范，确定内容应落在 locale、maintainer 文档、`changelog/` 或产品 skill。
-2. 按目标 locale 写作；命令、路径、包名和 code-id 保持英文。
-3. 修改已翻译的 public contract 时保持行为语义对应；允许自然调整句式，不得让不同语言出现不同契约。
-4. 发布说明只写入 `changelog/`：release-prep PR 直接更新目标版本的双语 notes；feature PR 不填写 release-note metadata。
-5. 构建、发布、workflow 或 CI 门禁文档变化时，同步检查 `docs/maintainers/development.md`、相关 workflow 测试和 README；不要只更新用户 locale 文档。
-6. 同一规则只写一处，其他位置使用链接路由；完成后检查链接、locale 导航和 `git diff --check`，并运行受影响的脚本门禁。
+For CLI changes, verify arguments, number versus internal-ID semantics, output modes/cardinality, batch errors, authentication, and side effects. Preserve the asset stream's separate contract. Explain optional probe metadata and partial failures without inventing success. Read code or help before changing default-host or retry claims.
 
-## 约束
+Maintenance skill names start with `javdb-cli-`; the distributed product skill remains `javdb-cli`. Keep descriptions task-specific and workflows usable through direct file reading without global skills. Product bundles must work outside a checkout: include required references and use official public URLs rather than broken repository-relative links.
 
-- 不把长篇架构或发布说明写回 `AGENTS.md` 或根目录兼容 stub。
-- 不为纯内部整理新增用户可见 changelog 条目；是否记录由 release-prep PR 根据实际用户影响决定。
-- 当前项目没有 MCP server，文档不得宣称支持 MCP。
+Do not invent mandatory PR release-note fields or changelog fragments. Ordinary PRs state changes, verification and the current checklist; only authorized release preparation changes versioned bilingual notes and skill versions. Do not publish a skill merely because its instructions changed.
+
+Validate metadata, local links, referenced files and commands, and English skill text. Read the result as a fresh contributor with no CCS setup. Run `git diff --check` and relevant existing script/tool checks; no separate documentation test framework is required. Root instructions are not automatically docs-only according to CI's path policy. Report the checks actually performed, not a claimed application regression run.

@@ -1,19 +1,28 @@
-# 检索与导航工作流
+# Discovery and Navigation
 
-先判断用户是在找影片、人物还是合集，并按需求选择命令：
+Use the main skill's preflight and verify current flags with `--help`. Identify whether the user wants a movie, person/entity, collection, ranking, or comment page before choosing a command.
 
-1. 番号/关键词：`javdb search QUERY --json`。结果可能是 movie、actor、series、maker、director、code 或 list；先读取实际类型和 ID。需要逐条交给下游命令时使用 `--ndjson`。
-2. 单部影片：`javdb detail ABC-123 --json`。只有已知内部 ID 时才加 `--id`。详情中的系列、演员、厂牌、导演和标签 ID 可作为下一次实体命令的输入。
-3. 实体片单：`javdb actor|series|maker|director|code|list REF --json`。用户要求可下载内容时可加 `--main m --has-magnets`；不要把这两个过滤器误称为全量结果。
-4. 主题浏览：先 `javdb tags --zone ZONE` 取得准确标签，再 `javdb browse --tag TAG --json`。需要重建缓存时，用户应明确要求 `tags --refresh`。
-5. 合集：用 `javdb lists search QUERY --zone all --ndjson` 找公开合集时，每个结果都是带稳定 `id`/`ref` 且原始对象位于 `data.list` 的 list 信封；缺少稳定 ID 时显式失败，显示名称缺失时 `ref` 回退到 ID。用 `javdb list LIST_ID` 读取其中影片。`lists related` 收到带 movie `id` 的信封时直接使用该 ID。不要将认证的“我的合集”默认命令 `javdb lists` 误作公开搜索。
-6. 收藏实体：`javdb collections actors|series|codes|makers|directors --ndjson` 每个实体输出一个对应单数 kind 的信封，原始实体位于 `data.entity`；实体缺少稳定 ID 时显式失败，显示名称缺失时 `ref` 回退到 ID；需要兼容聚合结果时使用 `--json`。
-7. 磁力：`javdb magnets ABC-123 --json` 无需登录即可获取磁力链接；已保存默认账号 token 时自动带上，token 失效则回退匿名。用户要求一条推荐结果时才加 `--best`；需要指定条件可用 `--cnsub`、`--hd`、`--min-size`，其中 `--min-size` 必须为非负数（零合法，负小数也拒绝），并在回应中说明过滤条件。
-8. 排行：`javdb rankings movies|actors|playback --json` 无需登录；`javdb top250 --json` 需要登录。影片与播放排行的结果字段为 `movies`，演员排行为 `actors`。需要仅保留有磁力的影片时加 `--has-magnets`，不要把过滤后结果误称为完整榜单。
-9. 评论：`javdb comments ABC-123 --page 1 --limit 20 --json` 每次只取所选一页；不要自动读取后续页，也不要把页面评论误称为全量评论。
-10. 本地资源：只有用户明确要求写入本机文件时，才执行 `javdb assets list ABC-123` 查看资产（顺序固定：thumbnail、cover、preview 图、preview 视频；编号只是过滤后列表的位置），再用 selector（如 `1-4`、`1,3-5`）或 `--type image|video` 过滤，管道到 `javdb assets download`（`-d DIR` 自动命名，`-o PATH` 仅限单个资产）。该命令域只保存 thumbnail/preview 资源，不下载完整影片或磁力目标；绝不替换已有文件。
+## Resolve references
 
-每个阶段先检查退出码；API 返回错误、空结果或认证失败均应如实呈现，而不是更换主机、代理、账号或关键字来“补救”。
+- `javdb search QUERY --json` can return movie, actor, series, maker, director, code, or list results. Inspect the actual kind and ID; use `--ndjson` for a typed downstream pipeline.
+- `javdb detail ABC-123 --json` resolves a movie number. Add `--id` only for a verified internal movie ID. Returned entity/tag IDs can drive subsequent commands without another guessed search.
+- `javdb actor|series|maker|director|code|list REF --json` reads the relevant entity's movies. `--main m --has-magnets` is a filter, not evidence of a complete catalog; use it only for the requested scope.
+- Read `javdb tags --zone ZONE` before using an exact tag ID/name in `browse --tag TAG`. Tags may populate a cache on first use; `--refresh` explicitly rebuilds it and requires the requested refresh scope.
 
-媒体下载边界：MP4 每段仅支持一个 H.264 PID 和至多一个 AAC-LC PID（每 ADTS 帧一个 raw data block），只重封装 channel_configuration 1（mono）和 2（stereo）；多轨或其他 AAC profile/block/channel configuration 明确失败；timed ID3 不写入 MP4。
-TS 发布前校验媒体结构与视频时间轴，ADTS 原文保留，不套用 MP4 的 profile/block/channel configuration 限制。
+## Lists and collections
+
+`javdb lists search QUERY --zone all --ndjson` emits `kind=list` envelopes with stable IDs and raw objects in `data.list`; `javdb list LIST_ID` reads a list's movies. Default `javdb lists` means the authenticated account's lists, not public list search. `lists related` uses a non-empty movie-envelope ID directly.
+
+`javdb collections actors|series|codes|makers|directors --ndjson` emits one singular-kind envelope per entity, with `data.entity`. Missing stable IDs fail; missing names can fall back to IDs as references. Use explicit `--json` when the consumer needs the existing aggregate shape. Do not pass aggregate JSON to a consumer that expects envelope lines.
+
+## Magnets, rankings, and comments
+
+`javdb magnets ABC-123 --json` permits anonymous use and has the existing optional-token fallback. `--best` selects one preferred item (subtitles, HD, then size); omit it when the user wants all results. Apply `--cnsub`, `--hd`, or non-negative `--min-size` only for requested criteria and state those filters.
+
+`rankings movies|actors|playback` is public; `top250` requires an account. Movie/playback results use `movies`, actor ranking uses `actors`. Movie `--type` and playback `--filter-by` accept `censored|uncensored|western|fc2`; periods are `day|week|month`. Do not substitute numeric zones or invented `daily|weekly` spellings.
+
+`search --zone` and `lists search --zone` accept `censored|uncensored|western|fc2|all`. Search filter values are `can_play|magnets|subtitle|single`. Verify command-specific flag combinations with installed help.
+
+`javdb comments ABC-123 --page 1 --limit 20 --json` reads that page only and keeps complete comment objects. `--id` means a verified internal ID. Do not add `--all`, fetch extra pages without scope, or call one page all comments.
+
+At each stage, preserve errors and output completeness. Do not change keywords, accounts, proxy, or host simply to manufacture results. For preview assets, use [media.md](media.md); for a remote mark, use [state.md](state.md).

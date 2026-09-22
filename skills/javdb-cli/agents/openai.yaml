@@ -1,0 +1,4 @@
+interface:
+  display_name: "JavDB CLI"
+  short_description: "Operate JavDB with explicit scope and safe state changes."
+  default_prompt: "Use $javdb-cli for the requested JavDB operation and report real outcomes."

@@ -1,21 +1,25 @@
 # Review Checklist
 
-## 边界与兼容性
+Apply only the sections the diff touches. Every reported finding needs a concrete trigger, location, impact, and evidence; the checklist is not a mandate to invent extra layers or tests.
 
-- `cmd/javdb` 是否仍只委托 CLI？
-- CLI 是否只通过公开 `sdk/` facade（`package javdb`）执行远程 JavDB 操作？
-- 是否把协议、签名或 HTTP 细节错误地暴露为公开 SDK 契约？
-- CLI flag、JSON 字段和文本列是否保持既有脚本/agent 的兼容性？
+## Architecture and compatibility
 
-## 凭据与状态
+- Keep the entry point thin and remote CLI operations on the public SDK; preserve protocol/signature ownership below it.
+- Apply the local development skill's Go conventions, consumer interfaces, context/error handling, and lifetime rules.
+- Preserve existing public compatibility exceptions without widening them. Verify flags, default behavior, text columns, JSON shape, NDJSON identity, cardinality, and exit status.
+- Keep asset streams distinct from general pipeline envelopes. Exact identifiers must drive writes, not ambiguous search results.
 
-- 是否避免打印、记录或测试夹带密码、JWT、`auth.json` 内容？
-- 是否把账号、配置、tag cache 和远程 watch/want 操作视为显式状态变化？
-- 错误是否暴露真因，而非伪造成正常空结果或成功？
+## Credentials, files, and transport
 
-## 测试与文档
+- Keep passwords/JWTs/account files, signed URLs, and raw secret-bearing payloads out of logs, fixtures, and PRs.
+- Require explicit account/config/cache/remote-state actions; preserve only the documented optional-auth and auto-relogin contracts.
+- Verify configuration precedence and fixed/automatic host routing. Avoid guessed proxy changes or network fallbacks.
+- Preserve cancellation, complete validated media, no-replace output, cleanup, and visible partial failures.
+- Preserve updater signature/origin/version/platform and archive/binary hash verification before replacement; no unverified candidate execution.
 
-- 是否为行为变更补充或更新聚焦测试？
-- 是否运行相关的 `go test`、race、vet、构建与脚本检查？
-- 是否同步两个 locale 的 public contract、README、skill 和 changelog？
-- 新文档链接是否指向 `docs/<locale>/` 或 `docs/maintainers/` 的权威路径？
+## Tests and delivery
+
+- Check actual pre-implementation Red and relevant Green/regression evidence for behavior changes, or documented exceptions. For document-only changes, validate the documents instead of inventing application tests.
+- Select related tests, race/vet/build and script checks proportionately; honor mandatory CI and distinguish local, native, and live evidence.
+- Synchronize affected public locales and product instructions. Ordinary PRs do not require versioned changelog edits or removed release metadata.
+- Validate new links and task routes. Keep unrun, skipped, failed, and pending results visible; do not equate a local self-review with maintainer approval.

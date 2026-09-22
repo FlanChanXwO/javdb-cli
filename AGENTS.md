@@ -1,29 +1,50 @@
-# AGENTS.md
+# javdb-cli Agent Contract
 
-`javdb-cli` 是 JavDB App JSON API 的 Go CLI 与公开 SDK。默认离线验证：
+This repository provides the `javdb` CLI and the public Go SDK at `github.com/FlanChanXwO/javdb-cli/sdk` (`package javdb`).
 
-```bash
-go test ./...
-sh scripts/build.sh
-```
+## Start here
 
-## 架构边界
+Read the relevant checked-in skill before its task. No personal `AGENTS.md`, CCS configuration, global skill installation, or particular agent client is required. If `.agents/skills` is not discovered automatically, open the linked `SKILL.md` directly; do not install another workflow to read it.
 
-- `cmd/javdb` 只委托 `internal/cli`。
-- `internal/cli` 负责 Cobra、输入和输出；远程 JavDB 操作只通过顶层 `sdk/` public facade。
-- `sdk/`（声明为 `package javdb`）是唯一公开 Go SDK；协议实现位于 `internal/javdb/appapi` 与 `internal/javdb/protocol/*`。
-- `internal/config` 管理本机配置；`internal/storage/auth` 与 `internal/storage/tags` 管理本机状态。
-- `internal/update` 只负责显式更新的 Release 检查、来源识别与校验替换；`internal/cli` 只负责
-  `javdb update` 的 flag、输出和配置代理解析。
-- 不提交密码、JWT、`auth.json`、tag cache、构建产物或本机配置。
+| Task | Local instructions |
+| --- | --- |
+| Implement, debug, refactor, or design Go changes | [javdb-cli-develop](.agents/skills/javdb-cli-develop/SKILL.md) |
+| Select tests, run Red/Green, or validate changes | [javdb-cli-test](.agents/skills/javdb-cli-test/SKILL.md) |
+| Change image, HLS, or media publication behavior | [javdb-cli-media](.agents/skills/javdb-cli-media/SKILL.md) |
+| Edit documentation or either kind of skill | [javdb-cli-docs](.agents/skills/javdb-cli-docs/SKILL.md) |
+| Review a diff or assess a PR | [javdb-cli-review](.agents/skills/javdb-cli-review/SKILL.md) |
+| Prepare, update, or verify a PR | [javdb-cli-pr](.agents/skills/javdb-cli-pr/SKILL.md) |
+| Diagnose checks or operate an authorized workflow run | [javdb-cli-ci](.agents/skills/javdb-cli-ci/SKILL.md) |
+| Prepare release notes or recover a publisher | [javdb-cli-release-notes](.agents/skills/javdb-cli-release-notes/SKILL.md) |
+| Write a commit message from staged changes | [javdb-cli-commit-message](.agents/skills/javdb-cli-commit-message/SKILL.md) |
 
-## 变更路由
+[The product skill](skills/javdb-cli/SKILL.md) teaches use of the installed CLI; it is separate from maintenance instructions. Use `javdb-cli-` for maintenance skill names and retain `javdb-cli` for the product skill.
 
-- 命令、flag、JSON、配置或认证行为：更新两个 locale 的 CLI reference、README 与 `skills/javdb-cli/`。
-- 公开 SDK：更新两个 locale 的 SDK 文档与 `docs/maintainers/architecture.md`。
-- 构建或发布：更新 `docs/maintainers/development.md`、workflow 测试和 README。
-- 用户可感知的变化：仅经授权的 release-prep PR 更新 `changelog/vX.Y.Z/` 下的双语版本说明；PR
-  不再填写 release-note metadata。
+## Non-negotiable boundaries
 
-完整协作规则、审查清单与文档边界见 `docs/maintainers/agents/`；架构细节见
-`docs/maintainers/architecture.md`。
+- `cmd/javdb` delegates to `internal/cli`. The CLI root assembles the command tree; `commands/<command>` owns arguments and presentation. Remote operations go through `sdk/`, never directly through App API or signature/HTTP protocol packages.
+- Keep configuration and authentication lifecycle in `cli/client`, auth-store opening in `cli/authstore`, projections in `cli/result`, and reusable entity queries in `cli/entity`. The App API root is the real client composition layer, not a new forwarding facade.
+- Preserve `Client.API()` and taxonomy `*tags.Doc` as existing public compatibility exceptions; do not expand the public surface with more internal types or remove these exceptions as incidental cleanup.
+- Configuration precedence is CLI flags, environment, file, then defaults. CLI `host=auto` validates/reuses a cached route or explicitly reselects it; fixed hosts bypass discovery. Do not confuse this with the SDK constructor's host default.
+- Preserve `javdb.pipeline/v1`, stable IDs, legacy JSON shapes, and ordered batch errors. Non-TTY default text is not NDJSON; `--ndjson` is explicit. Assets use their own `TYPE<TAB>URL` stream, not pipeline envelopes.
+- `auth.json` contains passwords and JWTs. Never read real credentials into debugging output or commit credentials, downloads, caches, private URLs, or local state. Existing optional-auth anonymous retry and explicitly configured auto-relogin are intentional contracts, not permission to add new fallbacks.
+- Media owns image validation, HLS decryption, TS/MP4 integrity, and no-replace publication. Save only verified complete artifacts, preserve old targets on failure, and do not advertise full-movie or magnet-target downloads.
+- Preserve update signature, origin, tag, platform, archive, and binary-hash verification. The JavDB updater must not execute an unverified candidate binary. Checksums alone are not its trust root.
+- Return meaningful cancellation, network, authentication, upstream, and filesystem failures. Add limits, truncation, retries, timeouts, or fallbacks only when evidence justifies them, with an explanation and regression proof.
+
+## Working agreement
+
+- Establish scope and acceptance evidence before editing. Use the smallest existing mechanism that meets the requirement; avoid speculative abstractions, dependencies, or symmetry with another repository. This project has no MCP server or Rust component.
+- Read branch/status and preserve unrelated work. Use an isolated worktree when needed, explicit working directories, and available tools only. Prefer semantic definitions/references for code changes; disclose an unavailable LSP and verify with targeted search, compiler, and tests instead.
+- Source changes require an observed failing test before implementation, followed by Green and relevant regression. Obtain an explicit exception when a meaningful Red is blocked. Documentation-only changes require document/link/metadata checks instead of artificial runtime tests.
+- Use the Go version in `go.mod`, `gofmt`, and the existing test/vet/hook stack. The develop/test skills define Go design, error, concurrency, and test rules independently of global skills.
+- Obtain approval before installing tools or adding dependencies. Explain necessity, alternatives, and material security, license, build, deployment, and lockfile effects; avoid incidental upgrades.
+- Explain network access and material side effects. Real API tests, credential access, image uploads, persistent configuration, and state mutations need explicit authorization and targets; ordinary regression stays offline.
+- Keep multi-step progress visible using a plan tool when available or a short checklist otherwise. Restore verified state before continuing; record consequential decisions in the existing issue/PR rather than generating process documents by habit.
+- Keep agent instructions, bridges, both kinds of skill, skill references, and UI metadata English. Maintain the existing public English/Simplified Chinese documentation contracts. Reply in the user's requested language, not a repository owner's private default.
+- Review meaningful changes and report exact checks, outcomes, blockers, and artifact locations. Do not translate skipped, unavailable, or pending evidence into success. A local review does not satisfy remote approval requirements.
+- A PR request does not authorize a merge, release, tag change, branch-protection change, or production-secret access. Release actions require version-specific approval.
+
+## References
+
+[Architecture](docs/maintainers/architecture.md), [development](docs/maintainers/development.md), [agent documentation](docs/maintainers/agents/index.md), [CLI contract](docs/en/cli-reference.md), and [contributing](CONTRIBUTING.md) describe ownership and public behavior. Workflow files, `ci/platforms.json`, and manifests own executable settings; verify discrepancies instead of inferring a policy from stale prose.

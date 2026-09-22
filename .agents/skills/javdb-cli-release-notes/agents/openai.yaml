@@ -1,0 +1,4 @@
+interface:
+  display_name: "JavDB CLI Releases"
+  short_description: "Prepare audited notes and recover approved publishers."
+  default_prompt: "Use $javdb-cli-release-notes for the explicitly authorized release scope."
