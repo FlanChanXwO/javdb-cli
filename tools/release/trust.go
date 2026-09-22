@@ -228,8 +228,29 @@ func (client githubReleaseClient) get(path string, destination any) error {
 	return nil
 }
 
+// gitEnv returns the environment for spawning git against an explicit
+// repository root. Git gives an inherited GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE
+// precedence over `-C`, so a caller that exports GIT_* (notably the pre-commit
+// hook runner, which exports them while running hooks) would silently retarget
+// every repository operation. Strip them and pin the repo root explicitly.
+func gitEnv(repoRoot string) []string {
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "GIT_") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env,
+		"GIT_DIR="+filepath.Join(repoRoot, ".git"),
+		"GIT_WORK_TREE="+repoRoot,
+		"GIT_INDEX_FILE="+filepath.Join(repoRoot, ".git", "index"),
+	)
+}
+
 func runGit(repoRoot string, args ...string) error {
 	command := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
+	command.Env = gitEnv(repoRoot)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
@@ -239,6 +260,7 @@ func runGit(repoRoot string, args ...string) error {
 
 func captureGit(repoRoot string, args ...string) (string, error) {
 	command := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
+	command.Env = gitEnv(repoRoot)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
