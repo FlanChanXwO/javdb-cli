@@ -159,6 +159,43 @@ func verifyHandoffArtifactsAt(handoff releaseHandoff, distDir, containerDir, che
 	if err := compareArtifacts(handoff.ContainerArtifacts, containerDir, containerArtifactNames); err != nil {
 		return fmt.Errorf("container artifacts: %w", err)
 	}
+	return verifyHandoffChecksums(handoff, checksumsPath)
+}
+
+// verifyHandoffSectionAt 只校验 handoff 中某一个 section 的产物。downstream
+// publisher 往往只下载它需要发布的那类产物（例如 Homebrew 只拿 release 归档、
+// 容器 publisher 只拿镜像 tar），因此必须能按 section 校验而不强制下载全部。
+func verifyHandoffSectionAt(handoff releaseHandoff, section, dir, checksumsPath string) error {
+	if err := verifyHandoffIdentity(handoff); err != nil {
+		return err
+	}
+	switch section {
+	case handoffSectionProduction:
+		if len(handoff.ProductionArtifacts) == 0 {
+			return errors.New("handoff has no production artifacts")
+		}
+		if err := compareArtifacts(handoff.ProductionArtifacts, dir, releaseArtifactNames); err != nil {
+			return fmt.Errorf("production artifacts: %w", err)
+		}
+	case handoffSectionContainer:
+		if len(handoff.ContainerArtifacts) == 0 {
+			return errors.New("handoff has no container artifacts")
+		}
+		if err := compareArtifacts(handoff.ContainerArtifacts, dir, containerArtifactNames); err != nil {
+			return fmt.Errorf("container artifacts: %w", err)
+		}
+	default:
+		return fmt.Errorf("unknown handoff section %q", section)
+	}
+	return verifyHandoffChecksums(handoff, checksumsPath)
+}
+
+const (
+	handoffSectionProduction = "production"
+	handoffSectionContainer  = "container"
+)
+
+func verifyHandoffChecksums(handoff releaseHandoff, checksumsPath string) error {
 	if handoff.Checksums != "" {
 		sum, err := hashFile(checksumsPath)
 		if err != nil {
@@ -349,6 +386,7 @@ func verifyHandoffSetCommand(args []string) {
 	runID := set.Int64("run-id", 0, "optional expected Release workflow run ID")
 	tag := set.String("tag", "", "optional expected immutable release tag")
 	checksumsPath := set.String("checksums", "", "optional checksums.txt path (default: <dist-dir>/checksums.txt)")
+	section := set.String("section", "", "verify only one section: production or container")
 	_ = set.Parse(args)
 	if *handoffPath == "" {
 		fatal(errors.New("handoff is required"))
@@ -374,7 +412,15 @@ func verifyHandoffSetCommand(args []string) {
 	if *tag != "" && handoff.Tag != *tag {
 		fatal(fmt.Errorf("handoff tag = %q, want %q", handoff.Tag, *tag))
 	}
-	if err := verifyHandoffArtifactsAt(handoff, *distDir, *containerDir, resolvedChecksums); err != nil {
+	if *section != "" {
+		dir := *distDir
+		if *section == handoffSectionContainer {
+			dir = *containerDir
+		}
+		if err := verifyHandoffSectionAt(handoff, *section, dir, resolvedChecksums); err != nil {
+			fatal(err)
+		}
+	} else if err := verifyHandoffArtifactsAt(handoff, *distDir, *containerDir, resolvedChecksums); err != nil {
 		fatal(err)
 	}
 	outputPath := strings.TrimSpace(os.Getenv("GITHUB_OUTPUT"))

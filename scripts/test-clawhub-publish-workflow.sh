@@ -32,9 +32,9 @@ grep -F 'types:' "$clawhub_workflow" >/dev/null
 grep -F 'permissions: {}' "$clawhub_workflow" >/dev/null
 grep -F 'actions: read' "$clawhub_workflow" >/dev/null
 grep -F 'contents: read' "$clawhub_workflow" >/dev/null
-grep -F 'name: clawhub-release-tag' "$clawhub_workflow" >/dev/null
-grep -F "path: $github_expr{{ runner.temp }}/clawhub-release-tag" "$clawhub_workflow" >/dev/null
-grep -F 'handoff_dir="$RUNNER_TEMP/clawhub-release-tag"' "$clawhub_workflow" >/dev/null
+grep -F 'name: prepared-release-metadata' "$clawhub_workflow" >/dev/null
+grep -F "run-id: $github_expr{{ steps.handoff.outputs.run_id }}" "$clawhub_workflow" >/dev/null
+grep -F 'release_run_id must be a positive decimal number' "$clawhub_workflow" >/dev/null
 grep -F 'tools/release verify-source' "$clawhub_workflow" >/dev/null
 grep -F 'tools/release verify-published-release' "$clawhub_workflow" >/dev/null
 grep -F 'tools/release verify-handoff' "$clawhub_workflow" >/dev/null
@@ -60,8 +60,13 @@ grep -F "CLAWHUB_TOKEN: $github_expr{{ secrets.CLAWHUB_TOKEN }}" "$clawhub_workf
 grep -F -- '--dry-run' "$clawhub_workflow" >/dev/null
 
 test "$(grep -c "CLAWHUB_TOKEN: $github_expr{{ secrets.CLAWHUB_TOKEN }}" "$clawhub_workflow")" = 1
-grep -F 'name: Hand off the immutable release tag to ClawHub' "$release_workflow" >/dev/null
-grep -F 'clawhub-release-tag/release-tag' "$release_workflow" >/dev/null
+# ClawHub 是独立 publisher：它从 Release 的 immutable handoff 解析产物身份，
+# release.yml 不再为它单独准备 handoff artifact。
+if grep -F 'clawhub-release-tag' "$release_workflow" >/dev/null; then
+	echo 'release.yml must not stage a ClawHub-specific handoff' >&2
+	exit 1
+fi
+grep -F 'release/release-handoff.json' "$release_workflow" >/dev/null
 
 for field in slug version displayName summary license homepage tags name description; do
 	grep -Eq "^$field: " "$skill" || {

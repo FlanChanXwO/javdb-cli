@@ -117,7 +117,6 @@ jobs:
     outputs:
       release: ${{ steps.release.outputs.matrix }}
       container: ${{ steps.container.outputs.matrix }}
-      homebrew: ${{ steps.homebrew.outputs.matrix }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -135,10 +134,6 @@ jobs:
         id: container
         shell: bash
         run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
-      - name: Resolve Homebrew platforms
-        id: homebrew
-        shell: bash
-        run: go run ./tools/platformmatrix --capability homebrew --github-output "$GITHUB_OUTPUT"
 
   build:
     name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -386,7 +381,7 @@ jobs:
 
   approve_release:
     name: Approve release publication
-    needs: [prepare_release, verify_homebrew_formula]
+    needs: [prepare_release]
     runs-on: ubuntu-24.04
     environment: release-approval
     permissions: {}
@@ -397,7 +392,7 @@ jobs:
 
   publish:
     name: Publish release and container images
-    needs: [validate, approve_release, prepare_release, build_container, verify_homebrew_formula]
+    needs: [validate, approve_release, prepare_release, build_container]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -452,11 +447,6 @@ jobs:
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
             --tag "$RELEASE_TAG"
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
 
       - name: Sign the already prepared release archives
         shell: bash
@@ -589,56 +579,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
-      - name: Prepare the exact Homebrew formula commit
-        if: vars.HOMEBREW_TAP_DEPLOY_ENABLED == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(cat staging-formula/formula-name)" = javdb-cli
-          test -f staging-formula/javdb-cli.rb
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
-          git -C "$tap_dir" config user.name github-actions[bot]
-          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          mkdir -p "$tap_dir/Formula"
-          cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
-          git -C "$tap_dir" add -- Formula/javdb-cli.rb
-          test "$(git -C "$tap_dir" diff --cached --name-only)" = Formula/javdb-cli.rb
-          git -C "$tap_dir" commit -m "$RELEASE_TAG: update javdb-cli formula"
-
-      - name: Push the verified Homebrew formula
-        if: vars.HOMEBREW_TAP_DEPLOY_ENABLED == 'true'
-        shell: bash
-        env:
-          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
-          umask 077
-          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
-          trap 'rm -f "$key_path"' EXIT HUP INT TERM
-          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
-          chmod 600 "$key_path"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
-          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
-            git -C "$tap_dir" push origin HEAD:main
-
-      # ClawHub 发布 workflow 只信任这个由已公开 Release 生成的 tag handoff；
-      # 不从 workflow_run 的 head_branch 推断版本，也不重新读取 main。
-      - name: Hand off the immutable release tag to ClawHub
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p clawhub-release-tag
-          printf '%s\n' "$RELEASE_TAG" > clawhub-release-tag/release-tag
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: clawhub-release-tag
-          path: clawhub-release-tag/release-tag
-          if-no-files-found: error
-          retention-days: 1
 
   build_container:
     name: Build container ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -735,102 +675,3 @@ jobs:
           if-no-files-found: error
           # 保留足够久以便恢复已发布镜像；镜像引用 git 存储（不是依赖重新构建的易失资产）。
           retention-days: 90
-
-  render_homebrew_formula:
-    name: Render Homebrew formula
-    needs: [validate, prepare_release]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: prepared-release-metadata
-          path: prepared-release
-
-      - name: Render the formula from prepared checksums
-        shell: bash
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p staging-formula
-          bash scripts/render-homebrew-formula.sh \
-            --version "$VERSION" \
-            --checksums prepared-release/dist/checksums.txt \
-            --output staging-formula/javdb-cli.rb
-          printf '%s\n' javdb-cli > staging-formula/formula-name
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-          if-no-files-found: error
-          retention-days: 1
-
-  verify_homebrew_formula:
-    name: Verify Homebrew on ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: [render_homebrew_formula, resolve_platforms]
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.homebrew) }}
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-${{ matrix.artifact }}
-          path: release-assets
-
-      - name: Install the prepared archive through the staging formula
-        shell: bash
-        run: |
-          set -euo pipefail
-          formula_name=$(cat staging-formula/formula-name)
-          test "$formula_name" = javdb-cli
-          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/javdb-cli.rb | LC_ALL=C sort)"
-          version="${RELEASE_TAG#v}"
-          archive="javdb-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-          test -f "release-assets/$archive"
-          public_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$archive"
-          grep -F "url \"$public_url\"" staging-formula/javdb-cli.rb >/dev/null
-          cp staging-formula/javdb-cli.rb staging-formula/javdb-cli-verify.rb
-          if [ '${{ matrix.goos }}' = linux ]; then
-            staging_dir="$(pwd)/staging-formula"
-            assets_dir="$(pwd)/release-assets"
-            sed -i "s|$public_url|file:///release-assets/$archive|g" staging-formula/javdb-cli-verify.rb
-            docker run --rm \
-              --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
-              --mount "type=bind,src=$assets_dir,dst=/release-assets,readonly" \
-              --env RELEASE_TAG \
-              --env HOMEBREW_NO_AUTO_UPDATE=1 \
-              --env HOMEBREW_NO_ENV_HINTS=1 \
-              --entrypoint bash \
-              homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd \
-              -euo pipefail -c '
-                brew tap-new javdb-cli-release/staging --no-git
-                tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
-                cp /staging-formula/javdb-cli-verify.rb "$tap_dir/Formula/javdb-cli.rb"
-                brew install --formula javdb-cli-release/staging/javdb-cli
-                javdb --version | grep -F "javdb version ${RELEASE_TAG#v} ("
-              '
-          else
-            sed -i '' "s|$public_url|file://$(pwd)/release-assets/$archive|g" staging-formula/javdb-cli-verify.rb
-            brew tap-new javdb-cli-release/staging --no-git
-            brew trust --tap javdb-cli-release/staging
-            tap_dir="$(brew --repository)/Library/Taps/javdb-cli-release/homebrew-staging"
-            cp staging-formula/javdb-cli-verify.rb "$tap_dir/Formula/javdb-cli.rb"
-            brew install --formula javdb-cli-release/staging/javdb-cli
-            javdb --version | grep -F "javdb version ${RELEASE_TAG#v} ("
-          fi
