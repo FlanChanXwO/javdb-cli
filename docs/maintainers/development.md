@@ -281,3 +281,5 @@ environment；旧兼容阶段已经结束，当前版本使用根 `--version`，
 只读 `github.token`。不得创建额外 tag、修改已发布资产或编造 PR 来源。
 
 改 workflow、目标矩阵、打包或 Formula 时，同步改脚本测试、README 安装说明和本页。
+
+<!-- docs-only verification probe -->
