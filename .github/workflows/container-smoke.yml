@@ -36,9 +36,8 @@ jobs:
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
   resolve_platforms:
-    name: Resolve container matrix
+    name: Container setup
     needs: classify_changes
-    if: needs.classify_changes.outputs.container_required == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -55,29 +54,52 @@ jobs:
       - name: Resolve container platforms
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+        env:
+          REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
+        run: |
+          set -euo pipefail
+          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
+          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里说明
+          # 跳过原因，并落到便宜的 ubuntu runner，不占用容器 runner。
+          if [ "$REQUIRED" = true ]; then
+            raw=$(go run ./tools/platformmatrix --capability container)
+            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
+          else
+            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
+          fi
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   container_smoke:
     needs: [classify_changes, resolve_platforms]
-    if: needs.classify_changes.outputs.container_required == 'true'
-    name: Container smoke ${{ matrix.goos }}/${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
+    # 这里刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
+    # `${{ matrix.* }}` 占位符。改为始终运行 + step 级跳过，并让非必需平台
+    # 落到便宜的 ubuntu runner 上，避免占用重平台 runner。
+    name: Container smoke · ${{ matrix.display }}
+    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
+      - name: Require container work for this change
+        if: matrix.required != 'true'
+        shell: bash
+        run: printf '%s\n' 'Container smoke is not required for this change.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Build the smoke Linux binary
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -91,6 +113,7 @@ jobs:
             --output dist/javdb
 
       - name: Build the container image
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -100,6 +123,7 @@ jobs:
             -t "javdb-cli-smoke:${{ matrix.goarch }}" .
 
       - name: Verify OCI labels
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +142,7 @@ jobs:
             | grep -Fx 'MIT'
 
       - name: Verify non-root user
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -128,6 +153,7 @@ jobs:
           fi
 
       - name: Verify exact smoke version
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -135,6 +161,7 @@ jobs:
           printf '%s\n' "$version" | grep -F 'javdb version 0.0.0-smoke (2026-01-01)'
 
       - name: Verify state path and permissions
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -144,6 +171,7 @@ jobs:
           test "$state_mode" = 700
 
       - name: Verify working directory and write access
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -153,6 +181,7 @@ jobs:
             'touch /work/container-smoke && test -f /work/container-smoke'
 
       - name: Verify embedded license
+        if: matrix.required == 'true'
         shell: bash
         run: |
           docker run --rm --entrypoint sh javdb-cli-smoke:${{ matrix.goarch }} -c \
@@ -174,11 +203,20 @@ jobs:
           MATRIX_RESULT: ${{ needs.container_smoke.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
+          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Container configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$RESOLVE_RESULT" != success ]; then
+            echo '::error::Container configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$MATRIX_RESULT" != success ]; then
+            echo '::error::Container smoke failed on one or more required platforms.'
+            exit 1
+          fi
+          # §12.2：合法跳过必须解释原因。
           if [ "$CONTAINER_REQUIRED" != true ]; then
-            test "$RESOLVE_RESULT" = skipped
-            test "$MATRIX_RESULT" = skipped
-          else
-            test "$RESOLVE_RESULT" = success
-            test "$MATRIX_RESULT" = success
+            printf '%s\n' 'Container smoke is not required for this change.'
           fi

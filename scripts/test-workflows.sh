@@ -20,7 +20,43 @@ grep -F 'name: Quality gate' "$quality" >/dev/null
 grep -F 'name: Platform smoke gate' "$platform" >/dev/null
 grep -F 'name: Container smoke gate' "$container" >/dev/null
 grep -F "context='PR template gate'" "$metadata" >/dev/null
-grep -F "context='PR test command gate'" "$metadata" >/dev/null
+grep -F "context='PR commands gate'" "$metadata" >/dev/null
+
+# 用户可见 Check name 只回答「检查什么」：
+#  - 每个 job 必须有显式 name，否则 GitHub 直接暴露内部 job id；
+#  - setup job 不得使用内部实现词（Resolve ... matrix）。
+# 注意：运行中的 matrix job 名称会被 GitHub 追加整个 matrix tuple，且被 skip 的 job
+# 不会展开 name 中的表达式，所以只能约束 job id 与 setup 名称。
+python3 - "$repo_root/.github/workflows" <<'PY'
+import sys, pathlib, yaml
+root = pathlib.Path(sys.argv[1])
+failures = []
+for path in sorted(root.glob('*.yml')):
+    doc = yaml.safe_load(path.read_text())
+    for job_id, spec in (doc.get('jobs') or {}).items():
+        if not spec.get('name'):
+            failures.append(f'{path.name}: job {job_id!r} has no user-facing name')
+if failures:
+    print('\n'.join(failures), file=sys.stderr)
+    sys.exit(1)
+PY
+
+if grep -F 'Resolve platform matrix' "$platform" "$container" >/dev/null 2>&1; then
+	echo 'setup jobs must use user-facing names' >&2
+	exit 1
+fi
+grep -F 'name: Platform setup' "$platform" >/dev/null
+grep -F 'name: Container setup' "$container" >/dev/null
+
+# §12.1 aggregate 失败必须给出可操作原因，不能只留退出码。
+grep -F 'Platform smoke failed on one or more required platforms.' "$platform" >/dev/null
+grep -F 'Container smoke failed on one or more required platforms.' "$container" >/dev/null
+grep -F 'Required quality checks did not complete successfully.' "$quality" >/dev/null
+grep -F 'Platform configuration could not be resolved.' "$platform" >/dev/null
+
+# §12.2 合法 skip 必须解释原因。
+grep -F 'Documentation-only change; platform smoke is not required.' "$platform" >/dev/null
+grep -F 'Container smoke is not required for this change.' "$container" >/dev/null
 
 # Platform sets are resolved from the shared registry rather than copied into workflows.
 grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
@@ -70,6 +106,37 @@ grep -F 'branches/$base_ref_encoded' "$verification" >/dev/null
 
 # Deleted trigger comments may disappear after /test is accepted. Only that
 # concrete HTTP 404 becomes an empty reaction target; other API errors stay fatal.
+# The trigger decision and the effective commands are owned by the single
+# trusted policy binary; no second parser or shell-side scanning is allowed.
+grep -F -- '--check-trigger --comment-file' "$verification" >/dev/null
+grep -F -- '--resolve' "$verification" >/dev/null
+if grep -F 'trimmed' "$verification" >/dev/null; then
+	echo 'trigger detection must use the trusted policy, not shell trimming' >&2
+	exit 1
+fi
+
+# A declared-but-invalid comment override must fail the /test run closed and
+# must never fall back to the PR body commands.
+grep -F 'OVERRIDE_DECLARED: ${{ steps.resolve.outputs.override_declared }}' "$verification" >/dev/null
+grep -F 'if [ "$OVERRIDE_DECLARED" = true ]; then' "$verification" >/dev/null
+grep -F 'fail_trigger "$RESOLVE_DESC"' "$verification" >/dev/null
+if grep -F 'RESOLVE_DESC:-' "$verification" >/dev/null; then
+	echo 'invalid overrides must not fall back to PR commands' >&2
+	exit 1
+fi
+
+# The executed commands come from the resolver output, never from the PR-body
+# gate, so a comment override actually changes what runs.
+grep -F 'COMMANDS_JSON: ${{ needs.dispatch.outputs.commands }}' "$verification" >/dev/null
+grep -F 'commands: ${{ steps.resolve.outputs.effective_commands }}' "$verification" >/dev/null
+grep -F 'verification_hash: ${{ steps.resolve.outputs.effective_hash }}' "$verification" >/dev/null
+
+# Verification identity binds PR number, HEAD SHA, and the effective commands
+# hash so an override is a distinct execution identity (§6).
+grep -F 'verification_identity()' "$verification" >/dev/null
+grep -F "printf '%s:%s:%s'" "$verification" >/dev/null
+grep -F '"$PR" "$HEAD_SHA" "$VERIFICATION_HASH"' "$verification" >/dev/null
+
 test "$(grep -Fc '(HTTP 404)' "$verification")" -eq 2
 test "$(grep -Fc '*"(HTTP 404)"*) return 0 ;;' "$verification")" -eq 2
 test "$(grep -Fc '[ -n "$subject_id" ] || return 0' "$verification")" -eq 4

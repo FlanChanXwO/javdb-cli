@@ -16,7 +16,7 @@ concurrency:
 permissions: {}
 
 jobs:
-  # 与 Quality gate 使用相同的严格文档白名单，避免纯文档改动占用六个平台 runner。
+  # 与 Quality gate 使用相同的严格文档白名单，避免纯文档改动执行六个平台的重活。
   classify_changes:
     name: Classify change scope
     runs-on: ubuntu-24.04
@@ -38,9 +38,8 @@ jobs:
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
   resolve_platforms:
-    name: Resolve platform matrix
+    name: Platform setup
     needs: classify_changes
-    if: needs.classify_changes.outputs.platform_required == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -57,30 +56,52 @@ jobs:
       - name: Resolve smoke platforms
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
+        env:
+          REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
+        run: |
+          set -euo pipefail
+          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
+          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里说明
+          # 跳过原因，并落到便宜的 ubuntu runner，不占用六个平台 runner。
+          if [ "$REQUIRED" = true ]; then
+            raw=$(go run ./tools/platformmatrix --capability smoke)
+            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
+          else
+            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04", capabilities:[]}]}')
+          fi
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   packaged_binary_smoke:
     needs: [classify_changes, resolve_platforms]
-    # 纯文档改动不运行矩阵；静态 job 名称避免 job-level skip 时渲染未展开的 matrix 表达式。
-    if: needs.classify_changes.outputs.docs_only != 'true'
-    name: Packaged binary smoke
-    runs-on: ${{ matrix.runner }}
+    # 刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
+    # `${{ matrix.* }}` 占位符。改为始终运行，非必需变更落到便宜的
+    # ubuntu-24.04 并跳过全部重活。
+    name: Platform smoke · ${{ matrix.display }}
+    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
+      - name: Mark the change as not requiring platform smoke
+        if: matrix.required != 'true'
+        shell: bash
+        run: printf '%s\n' 'Documentation-only change; platform smoke is not required.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Require the declared native target
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -88,6 +109,7 @@ jobs:
           test "$(go env GOARCH)" = '${{ matrix.goarch }}'
 
       - name: Test and vet on the native platform
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -95,11 +117,12 @@ jobs:
           go vet ./...
 
       - name: Test with the race detector where Go supports it
-        if: contains(matrix.capabilities, 'race')
+        if: matrix.required == 'true' && contains(matrix.capabilities, 'race')
         shell: bash
         run: go test -race ./... -count=1
 
       - name: Build, package, extract, and smoke the native binary
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -120,7 +143,7 @@ jobs:
           "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
           grep -F "javdb version ${version}" "$RUNNER_TEMP/javdb-version.txt"
 
-  # 稳定汇总 job 是唯一受保护的平台检查；文档变更接受矩阵 skipped，代码变更要求 success。
+  # 稳定汇总 job 是唯一受保护的平台检查；非必需变更接受内部跳过，代码变更要求实际成功。
   platform_smoke_gate:
     name: Platform smoke gate
     needs:
@@ -135,17 +158,25 @@ jobs:
         shell: bash
         env:
           CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
-          DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
           PLATFORM_REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
           RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
           MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
+          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Platform configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$RESOLVE_RESULT" != success ]; then
+            echo '::error::Platform configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$MATRIX_RESULT" != success ]; then
+            echo '::error::Platform smoke failed on one or more required platforms.'
+            exit 1
+          fi
+          # §12.2：合法跳过必须解释原因，否则 reviewer 只看到 success。
           if [ "$PLATFORM_REQUIRED" != true ]; then
-            test "$RESOLVE_RESULT" = skipped
-            test "$MATRIX_RESULT" = skipped
-          else
-            test "$RESOLVE_RESULT" = success
-            test "$MATRIX_RESULT" = success
+            printf '%s\n' 'Documentation-only change; platform smoke is not required.'
           fi

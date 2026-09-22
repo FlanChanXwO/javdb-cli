@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   triage:
+    name: Triage pull request
     runs-on: ubuntu-24.04
     steps:
       - name: Ensure triage labels exist
