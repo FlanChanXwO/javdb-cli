@@ -163,6 +163,16 @@ for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
 	fi
 done
 
+# §11.1：verification worker 必须始终运行，否则被 skip 时 Check name 会原样
+# 显示 `${{ matrix.* }}` 占位符；matrix resolver 也必须无条件产出合法 matrix。
+if grep -nE '^    if: .*needs\.dispatch\.outputs\.accepted' "$verification" >/dev/null; then
+	echo 'verification worker must not be gated on accepted (it would leak the matrix placeholder)' >&2
+	exit 1
+fi
+grep -F 'name: Verification · ${{ matrix.display }}' "$verification" >/dev/null
+grep -F 'display:"not required"' "$verification" >/dev/null
+grep -F 'Require a completed dispatch' "$verification" >/dev/null
+
 # §15：每个 publisher 都必须把 handoff 绑定到它解析出的那个 run。ClawHub 只发布
 # skill，用 identity-only 模式证明来源；容器与 Homebrew publisher 用
 # verify-handoff-set 同时校验身份与产物。

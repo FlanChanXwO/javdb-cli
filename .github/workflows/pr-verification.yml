@@ -341,16 +341,16 @@ jobs:
 
       - name: Resolve trusted verification platforms
         id: matrix
-        if: steps.authorize.outputs.accepted == 'true'
+        # 无条件运行：下游 verify job 直接 fromJSON 这个 output，而被 skip 的
+        # matrix job 不会展开 name 里的表达式（§11.1）。始终产出合法 matrix，
+        # 否则非触发 /test 会让 Check name 显示原始 `${{ matrix.display }}`。
+        if: ${{ always() }}
         shell: bash
         env:
           EXECUTE: ${{ steps.coordinate.outputs.execute }}
         run: |
           set -euo pipefail
-          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
-          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里
-          # 说明跳过原因，并落到便宜的 ubuntu runner。
-          if [ "$EXECUTE" = true ]; then
+          if [ "${EXECUTE:-}" = true ]; then
             raw=$(go run ./tools/platformmatrix --capability verification)
             matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
           else
@@ -361,10 +361,11 @@ jobs:
   verify:
     name: Verification · ${{ matrix.display }}
     needs: dispatch
-    # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
-    # `${{ matrix.* }}` 占位符。非必需时降到便宜 runner 并在 step 层跳过。
-    # matrix 只在 accepted 时解析，因此必须同时要求 accepted，否则 fromJSON 会拿到空串。
-    if: ${{ always() && needs.dispatch.outputs.accepted == 'true' }}
+    # §11.1：worker 始终运行，因为被 skip 的 matrix job 不会展开 name 中的
+    # `${{ matrix.* }}`，GitHub 会直接显示占位符。非执行时 matrix 只含一个
+    # 说明性占位条目，并落到便宜的 ubuntu runner，所有重活 step 均被跳过。
+    # dispatch 被 skip（非 PR 的 issue 评论）时不产生这个 job。
+    if: ${{ always() && needs.dispatch.result != 'skipped' }}
     runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
@@ -373,8 +374,16 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
     steps:
+      # dispatch 失败时仍要保留失败信号：名字必须干净，但结论不能变成成功。
+      - name: Require a completed dispatch
+        if: matrix.required != 'true' && needs.dispatch.result != 'success'
+        shell: bash
+        run: |
+          echo '::error::Verification dispatch did not complete successfully.'
+          exit 1
+
       - name: Mark verification as not required
-        if: matrix.required != 'true'
+        if: matrix.required != 'true' && needs.dispatch.result == 'success'
         shell: bash
         run: printf '%s\n' 'No live verification commands are declared for this run.'
 
