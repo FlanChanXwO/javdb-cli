@@ -181,7 +181,7 @@ docker build --build-arg REVISION="$(git rev-parse HEAD)" --build-arg VERSION=v0
 手动恢复只接受明确的 `release_run_id`；publisher 之间互不依赖，也不再增加人工审批边界。
 镜像变更（`Dockerfile` / `.dockerignore` / `container-smoke.yml` /
 `scripts/build-release.sh` / `go.mod` / `go.sum` / `cmd/**` / `internal/**` /
-`sdk/**` / `LICENSE`）由 `container-smoke` workflow 在 PR 与 main 上验证。
+`sdk/**` / `LICENSE`）由 `container-smoke` workflow 在 PR 上验证。
 
 `javdb update` 依赖 Release 中与当前目标严格匹配的 archive、`release-manifest.json` 和
 `release-manifest.sig`。安装器按固定顺序验证官方 URL、清单的 Ed25519 签名、仓库/tag/平台绑定、
@@ -233,25 +233,28 @@ v0.6.1 是发布桥：交付签名清单更新器；旧兼容阶段已经结束�
 
 ## CI 与发布
 
-1. Quality workflow 在 PR 与 `main` 上运行范围分类；仅限 README、贡献指南、changelog、docs、skills、
-   repo-local skills 和 Issue/PR template 的改动走文档门禁，其他路径运行格式、测试、vet、构建和静态脚本门禁。
-2. Platform smoke workflow 对代码改动在六个原生 runner 测试、打包、解包并执行 `javdb --version`；
-   纯文档改动直接跳过矩阵。`Platform smoke gate` 是唯一受保护的平台检查：文档改动要求矩阵 skipped，
-   代码改动要求矩阵成功。
-3. feature PR 不填写 release-note metadata；`changelog/unreleased/` 仅是可选人工草稿区。release-prep PR
+1. Quality workflow 在 PR 与 stable release tag push 上运行；PR 中仅限 README、贡献指南、changelog、
+   docs、skills、repo-local skills 和 Issue/PR template 的改动走文档门禁，其他 PR 与 release tag
+   运行格式、测试、vet、构建和静态脚本门禁。
+2. Platform smoke workflow 对代码改动并行派发六个原生 runner，测试、打包、解包并执行
+   `javdb --version`。worker 由 `workflow_dispatch` 承载，不进入 PR Checks；PR 只显示
+   `Platform smoke gate`，失败时在该 gate 中列出失败或不可用的平台。纯文档改动不派发 worker。
+3. Container smoke 采用相同的 gate/worker 模式，只对容器相关改动并行验证
+   `linux/amd64` 与 `linux/arm64`；PR 只显示 `Container smoke gate`。
+4. feature PR 不填写 release-note metadata；`changelog/unreleased/` 仅是可选人工草稿区。release-prep PR
    直接编辑 `changelog/vX.Y.Z/{en.md,zh-CN.md}`，同步两个 changelog 索引，再运行 `validate`。
-4. `vX.Y.Z` tag 必须不可变且可追溯到 `main`。Release workflow 校验版本化双语 notes 与来源，
+5. `vX.Y.Z` tag 必须不可变且可追溯到 `main`。Release workflow 校验版本化双语 notes 与来源，
    构建六个平台归档和容器材料，生成并验证签名清单、checksum 与
    `release/release-handoff.json`。所有材料准备完成后才进入唯一的
    `release-approval` 人工审批，随后创建并公开 GitHub Release。
-5. 成功的 Release 会分别触发 `publish-dockerhub.yml`、`publish-homebrew.yml` 和
+6. 成功的 Release 会分别触发 `publish-dockerhub.yml`、`publish-homebrew.yml` 和
    `publish-clawhub.yml`。三个 publisher 都从 immutable handoff 解析精确的 Release run，
    不重新构建 release 产物，也不互相串行依赖。Docker publisher 发布已验证镜像；
    Homebrew publisher 从已发布 checksum 渲染并验证 Formula，并在启用时更新 tap；
    ClawHub publisher 校验 skill 来源后执行无凭据 dry-run，再在最终发布步骤读取 token。
    自动触发之外的恢复流程只接受正整数 `release_run_id`，不使用 tag 或 latest 猜测来源。
-6. `.github/CODEOWNERS` 将默认 review 路由到唯一维护者；它只会为未来 PR 请求 reviewer，不能让 PR 作者批准自己的 PR，也不替代 `main` 的分支保护要求。
-7. `publish-clawhub.yml` 通过 Release 的通用 immutable handoff 解析并 checkout 精确 tag，验证
+7. `.github/CODEOWNERS` 将默认 review 路由到唯一维护者；它只会为未来 PR 请求 reviewer，不能让 PR 作者批准自己的 PR，也不替代 `main` 的分支保护要求。
+8. `publish-clawhub.yml` 通过 Release 的通用 immutable handoff 解析并 checkout 精确 tag，验证
    它属于默认分支，并跳过未改变的 `skills/javdb-cli/`。若该 skill 在发布区间发生变更，
    `skills/javdb-cli/SKILL.md` 的 front matter `version` 必须同步为目标发布版本；未变更时保留上一版本，
    不应为发版机械改号。README 两个 locale 中 ClawHub 的当前 skill 版本也必须与该 front matter 一致。

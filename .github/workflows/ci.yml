@@ -5,8 +5,8 @@ on:
     branches:
       - main
   push:
-    branches:
-      - main
+    tags:
+      - 'v[0-9]*'
   workflow_dispatch: {}
 
 concurrency:
@@ -17,12 +17,9 @@ permissions: {}
 
 jobs:
   # 仅允许严格的文档白名单跳过代码质量门禁；其他任何改动均运行完整质量检查。
-  classify_changes:
-    name: Classify change scope
+  quality_gate:
+    name: Quality gate
     runs-on: ubuntu-24.04
-    outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
-      quality_required: ${{ steps.scope.outputs.quality_required }}
     permissions:
       contents: read
     steps:
@@ -37,50 +34,33 @@ jobs:
           base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-  quality:
-    name: Quality checks
-    needs: classify_changes
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - name: Check Go formatting
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: test -z "$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
 
       - name: Test
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: go test ./... -count=1
 
       - name: Test with race detector
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: go test -race ./... -count=1
 
       - name: Vet
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: go vet ./...
 
       - name: Build local binary
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: sh scripts/build.sh
 
       - name: Version smoke
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -88,7 +68,7 @@ jobs:
           grep -F 'javdb version' /tmp/javdb-version.txt >/dev/null
 
       - name: Test release packaging and workflow policy
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           sh scripts/test-package-release.sh
@@ -97,27 +77,194 @@ jobs:
           sh scripts/test-workflows.sh
           sh scripts/test-releasenotes.sh
 
-  quality_gate:
-    name: Quality gate
-    needs: [classify_changes, quality]
-    if: ${{ always() }}
+  platform_smoke_gate:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: Platform smoke gate
     runs-on: ubuntu-24.04
-    permissions: {}
+    permissions:
+      actions: write
+      contents: read
     steps:
-      - name: Require expected quality outcome
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch pull request head
         shell: bash
         env:
-          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
-          QUALITY_RESULT: ${{ needs.quality.result }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          # §12.1：aggregate 失败必须给出可操作原因，而不是只留
-          # `Process completed with exit code 1.`；详细错误仍在 worker 日志。
-          if [ "$CLASSIFY_RESULT" != success ]; then
-            echo '::error::Required quality checks did not complete successfully.'
-            exit 1
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"
+          test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
+
+      - uses: ./.github/actions/classify-change-scope
+        id: scope
+        with:
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+
+      - name: Explain skipped platform smoke
+        if: ${{ steps.scope.outputs.platform_required != 'true' }}
+        shell: bash
+        run: |
+          echo '::notice title=Platform smoke::Not required for this documentation-only change.'
+          printf '%s\n' '### Platform smoke' '' 'Not required for this documentation-only change.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch parallel platform workers
+        if: ${{ steps.scope.outputs.platform_required == 'true' }}
+        id: dispatch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          worker_ref="$DEFAULT_BRANCH"
+          if ! grep -Fx 'name: Platform smoke workers' .github/workflows/platform-smoke.yml >/dev/null; then
+            worker_ref='ci/smoke-worker-bootstrap'
           fi
-          if [ "$QUALITY_RESULT" != success ]; then
-            echo '::error::Required quality checks did not complete successfully.'
-            exit 1
+          payload=$(jq -nc \
+            --arg ref "$worker_ref" \
+            --arg pr_number "$PR" \
+            --arg head_sha "$HEAD_SHA" \
+            '{ref:$ref, return_run_details:true, inputs:{pr_number:$pr_number, head_sha:$head_sha}}')
+          response=$(gh api --method POST \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$REPO/actions/workflows/platform-smoke.yml/dispatches" \
+            --input - <<<"$payload")
+          run_id=$(printf '%s' "$response" | jq -r '.workflow_run_id')
+          test -n "$run_id"
+          test "$run_id" != null
+          printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Require all platform workers
+        if: ${{ steps.scope.outputs.platform_required == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$RUN_ID"
+          if gh run watch "$RUN_ID" --repo "$REPO" --exit-status; then
+            echo '::notice title=Platform smoke::All required native platforms passed.'
+            printf '%s\n' '### Platform smoke' '' 'All required native platforms passed in parallel.' '' "Worker run: $run_url" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          failures=$(gh api --method GET "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+            -f filter=all \
+            -f per_page=100 \
+            --jq '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
+          [ -n "$failures" ] || failures='worker workflow did not finish successfully'
+          message=$(printf '%s\n' "$failures" | paste -sd ';' -)
+          echo "::error title=Platform smoke failed::$message"
+          {
+            printf '%s\n' '### Platform smoke failed' ''
+            printf '%s\n' "$failures" | sed 's/^/- /'
+            printf '\nWorker run: %s\n' "$run_url"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+  container_smoke_gate:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: Container smoke gate
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch pull request head
+        shell: bash
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"
+          test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
+
+      - uses: ./.github/actions/classify-change-scope
+        id: scope
+        with:
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+
+      - name: Explain skipped container smoke
+        if: ${{ steps.scope.outputs.container_required != 'true' }}
+        shell: bash
+        run: |
+          echo '::notice title=Container smoke::Not required for this change.'
+          printf '%s\n' '### Container smoke' '' 'Not required for this change.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch parallel container workers
+        if: ${{ steps.scope.outputs.container_required == 'true' }}
+        id: dispatch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          worker_ref="$DEFAULT_BRANCH"
+          if ! grep -Fx 'name: Container smoke workers' .github/workflows/container-smoke.yml >/dev/null; then
+            worker_ref='ci/smoke-worker-bootstrap'
+          fi
+          payload=$(jq -nc \
+            --arg ref "$worker_ref" \
+            --arg pr_number "$PR" \
+            --arg head_sha "$HEAD_SHA" \
+            '{ref:$ref, return_run_details:true, inputs:{pr_number:$pr_number, head_sha:$head_sha}}')
+          response=$(gh api --method POST \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$REPO/actions/workflows/container-smoke.yml/dispatches" \
+            --input - <<<"$payload")
+          run_id=$(printf '%s' "$response" | jq -r '.workflow_run_id')
+          test -n "$run_id"
+          test "$run_id" != null
+          printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Require all container workers
+        if: ${{ steps.scope.outputs.container_required == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$RUN_ID"
+          if gh run watch "$RUN_ID" --repo "$REPO" --exit-status; then
+            echo '::notice title=Container smoke::All required container platforms passed.'
+            printf '%s\n' '### Container smoke' '' 'All required container platforms passed in parallel.' '' "Worker run: $run_url" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          failures=$(gh api --method GET "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+            -f filter=all \
+            -f per_page=100 \
+            --jq '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
+          [ -n "$failures" ] || failures='worker workflow did not finish successfully'
+          message=$(printf '%s\n' "$failures" | paste -sd ';' -)
+          echo "::error title=Container smoke failed::$message"
+          {
+            printf '%s\n' '### Container smoke failed' ''
+            printf '%s\n' "$failures" | sed 's/^/- /'
+            printf '\nWorker run: %s\n' "$run_url"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
