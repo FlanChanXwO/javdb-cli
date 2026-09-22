@@ -30,6 +30,7 @@ jobs:
       issues: write
       pull-requests: write
     outputs:
+      accepted: ${{ steps.authorize.outputs.accepted }}
       execute: ${{ steps.coordinate.outputs.execute }}
       head_sha: ${{ steps.authorize.outputs.head_sha }}
       head_repo: ${{ steps.authorize.outputs.head_repo }}
@@ -172,16 +173,6 @@ jobs:
             --whitelist tools/verification/command-whitelist.txt \
             --cli javdb \
             --github-output "$GITHUB_OUTPUT"
-
-      - name: Resolve trusted verification platforms
-        id: matrix
-        if: >-
-          steps.authorize.outputs.accepted == 'true' &&
-          steps.policy.outputs.template_ok == 'true' &&
-          steps.resolve.outputs.resolve_ok == 'true' &&
-          steps.resolve.outputs.effective_count != '0'
-        shell: bash
-        run: go run ./tools/platformmatrix --capability verification --github-output "$GITHUB_OUTPUT"
 
       - name: Coordinate duplicate and superseded runs
         id: coordinate
@@ -352,11 +343,33 @@ jobs:
             printf 'identity=%s\n' "$identity"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve trusted verification platforms
+        id: matrix
+        if: steps.authorize.outputs.accepted == 'true'
+        shell: bash
+        env:
+          EXECUTE: ${{ steps.coordinate.outputs.execute }}
+        run: |
+          set -euo pipefail
+          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
+          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里
+          # 说明跳过原因，并落到便宜的 ubuntu runner。
+          if [ "$EXECUTE" = true ]; then
+            raw=$(go run ./tools/platformmatrix --capability verification)
+            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
+          else
+            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
+          fi
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+
   verify:
-    name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Verification · ${{ matrix.display }}
     needs: dispatch
-    if: needs.dispatch.outputs.execute == 'true'
-    runs-on: ${{ matrix.runner }}
+    # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
+    # `${{ matrix.* }}` 占位符。非必需时降到便宜 runner 并在 step 层跳过。
+    # matrix 只在 accepted 时解析，因此必须同时要求 accepted，否则 fromJSON 会拿到空串。
+    if: ${{ always() && needs.dispatch.outputs.accepted == 'true' }}
+    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
     strategy:
@@ -364,18 +377,26 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
     steps:
+      - name: Mark verification as not required
+        if: matrix.required != 'true'
+        shell: bash
+        run: printf '%s\n' 'No live verification commands are declared for this run.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           path: _trusted
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: _trusted/go.mod
           cache: false
 
       - name: Initialize infrastructure-failure result
+        if: matrix.required == 'true'
         shell: bash
         working-directory: _trusted
         run: |
@@ -384,6 +405,7 @@ jobs:
           go run ./tools/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           repository: ${{ needs.dispatch.outputs.head_repo }}
           ref: ${{ needs.dispatch.outputs.head_sha }}
@@ -391,11 +413,13 @@ jobs:
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: pr/go.mod
           cache: true
 
       - name: Build the exact PR binary
+        if: matrix.required == 'true'
         shell: bash
         working-directory: pr
         run: |
@@ -411,6 +435,7 @@ jobs:
           printf 'VERIFICATION_HOME=%s\n' "$RUNNER_TEMP/verification-home" >> "$GITHUB_ENV"
 
       - name: Execute declared verification
+        if: matrix.required == 'true'
         shell: bash
         working-directory: _trusted
         env:
@@ -427,7 +452,7 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/verification-home"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
+        if: matrix.required == 'true'
         with:
           name: verification-result-${{ matrix.artifact }}
           path: ${{ runner.temp }}/verification-result/${{ matrix.artifact }}.json

@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   add-reviewers:
+    name: Assign reviewers
     runs-on: ubuntu-24.04
     steps:
       - name: Auto assign reviewers

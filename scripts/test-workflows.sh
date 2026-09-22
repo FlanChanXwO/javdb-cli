@@ -22,6 +22,32 @@ grep -F 'name: Container smoke gate' "$container" >/dev/null
 grep -F "context='PR template gate'" "$metadata" >/dev/null
 grep -F "context='PR commands gate'" "$metadata" >/dev/null
 
+# 用户可见 Check name 只回答「检查什么」：
+#  - 每个 job 必须有显式 name，否则 GitHub 直接暴露内部 job id；
+#  - setup job 不得使用内部实现词（Resolve ... matrix）。
+# 注意：运行中的 matrix job 名称会被 GitHub 追加整个 matrix tuple，且被 skip 的 job
+# 不会展开 name 中的表达式，所以只能约束 job id 与 setup 名称。
+python3 - "$repo_root/.github/workflows" <<'PY'
+import sys, pathlib, yaml
+root = pathlib.Path(sys.argv[1])
+failures = []
+for path in sorted(root.glob('*.yml')):
+    doc = yaml.safe_load(path.read_text())
+    for job_id, spec in (doc.get('jobs') or {}).items():
+        if not spec.get('name'):
+            failures.append(f'{path.name}: job {job_id!r} has no user-facing name')
+if failures:
+    print('\n'.join(failures), file=sys.stderr)
+    sys.exit(1)
+PY
+
+if grep -F 'Resolve platform matrix' "$platform" "$container" >/dev/null 2>&1; then
+	echo 'setup jobs must use user-facing names' >&2
+	exit 1
+fi
+grep -F 'name: Platform setup' "$platform" >/dev/null
+grep -F 'name: Container setup' "$container" >/dev/null
+
 # Platform sets are resolved from the shared registry rather than copied into workflows.
 grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
 grep -F './tools/platformmatrix --capability container' "$container" >/dev/null

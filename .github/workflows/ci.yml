@@ -38,6 +38,7 @@ jobs:
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
   quality:
+    name: Quality checks
     needs: classify_changes
     runs-on: ubuntu-24.04
     permissions:
