@@ -168,6 +168,31 @@ func verifyHandoffArtifactsAt(handoff releaseHandoff, distDir, containerDir, che
 	return verifyHandoffChecksums(handoff, checksumsPath)
 }
 
+// verifyHandoffIdentityOnly 校验 handoff 的身份，并要求调用方解析出的 run 与
+// handoff 记录一致，但不要求本地已下载任何产物。
+//
+// 有些 publisher 只发布 handoff 里的一小部分内容（例如 ClawHub 只发布 skill），
+// 它们仍必须证明「读取的 handoff 来自被我信任的那个 run」，否则等于跳过了 §15
+// 的 trusted handoff 校验；同时又不该被迫下载与它无关的归档和镜像。
+func verifyHandoffIdentityOnly(handoff releaseHandoff, expectedRunID int64, expectedRepository, expectedTag, expectedRunHeadSHA string) error {
+	if err := verifyHandoffIdentity(handoff); err != nil {
+		return err
+	}
+	if expectedRunID != 0 && handoff.ReleaseRunID != expectedRunID {
+		return fmt.Errorf("handoff release_run_id = %d, want %d", handoff.ReleaseRunID, expectedRunID)
+	}
+	if expectedRepository != "" && handoff.Repository != expectedRepository {
+		return fmt.Errorf("handoff repository = %q, want %q", handoff.Repository, expectedRepository)
+	}
+	if expectedTag != "" && handoff.Tag != expectedTag {
+		return fmt.Errorf("handoff tag = %q, want %q", handoff.Tag, expectedTag)
+	}
+	if expectedRunHeadSHA != "" && handoff.RunHeadSHA != expectedRunHeadSHA {
+		return fmt.Errorf("handoff run_head_sha = %q, want %q", handoff.RunHeadSHA, expectedRunHeadSHA)
+	}
+	return nil
+}
+
 // verifyHandoffSectionAt 只校验 handoff 中某一个 section 的产物。downstream
 // publisher 往往只下载它需要发布的那类产物（例如 Homebrew 只拿 release 归档、
 // 容器 publisher 只拿镜像 tar），因此必须能按 section 校验而不强制下载全部。
@@ -472,4 +497,37 @@ func writeHandoffOutputs(path string, handoff releaseHandoff) error {
 		}
 	}
 	return nil
+}
+
+// verifyHandoffIdentityCommand 供只发布 handoff 中部分内容的 publisher 使用：
+// 它证明 handoff 来自被解析的那个 run，而不要求本地已下载任何产物（§15）。
+func verifyHandoffIdentityCommand(args []string) {
+	set := flag.NewFlagSet("verify-handoff-identity", flag.ExitOnError)
+	handoffPath := set.String("handoff", "", "release handoff JSON path")
+	runID := set.Int64("run-id", 0, "expected Release workflow run ID")
+	repository := set.String("repository", "", "expected repository in owner/name form")
+	tag := set.String("tag", "", "expected immutable release tag")
+	runHeadSHA := set.String("run-head-sha", "", "expected release run head SHA")
+	_ = set.Parse(args)
+	if *handoffPath == "" {
+		fatal(errors.New("handoff is required"))
+	}
+	body, err := os.ReadFile(*handoffPath)
+	if err != nil {
+		fatal(err)
+	}
+	var handoff releaseHandoff
+	if err := json.Unmarshal(body, &handoff); err != nil {
+		fatal(fmt.Errorf("decode handoff: %w", err))
+	}
+	if err := verifyHandoffIdentityOnly(handoff, *runID, *repository, *tag, *runHeadSHA); err != nil {
+		fatal(err)
+	}
+	outputPath := strings.TrimSpace(os.Getenv("GITHUB_OUTPUT"))
+	if outputPath != "" {
+		if err := writeHandoffOutputs(outputPath, handoff); err != nil {
+			fatal(err)
+		}
+	}
+	fmt.Fprintf(os.Stdout, "handoff identity verified: %s run %d\n", handoff.Tag, handoff.ReleaseRunID)
 }

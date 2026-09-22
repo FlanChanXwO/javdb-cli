@@ -397,9 +397,10 @@ jobs:
     needs: [validate, approve_release, prepare_release, build_container]
     runs-on: ubuntu-24.04
     environment: release
+    # §23：容器镜像的 registry 推送已交给独立 publisher；这里只创建
+    # GitHub Release，因此不再需要 packages: write。
     permissions:
       contents: write
-      packages: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -494,86 +495,6 @@ jobs:
           expected=$(find dist -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)
           actual=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | LC_ALL=C sort)
           test "$actual" = "$expected"
-
-      - name: Load the verified container images
-        shell: bash
-        run: |
-          set -euo pipefail
-          go run ./tools/release verify-container-set --dir containers
-          for archive in containers/javdb-cli-*.tar; do
-            docker load --input "$archive"
-          done
-
-      - name: Log in to the GHCR
-        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
-        with:
-          registry: docker.io
-          username: flanchanxwo
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-      - name: Publish registry-defined container images and manifests
-        shell: bash
-        run: |
-          set -euo pipefail
-          : > "$RUNNER_TEMP/ghcr-container-refs"
-          : > "$RUNNER_TEMP/dockerhub-container-refs"
-          for archive in containers/javdb-cli-*.tar; do
-            artifact=$(basename "$archive" .tar)
-            artifact="${artifact#javdb-cli-}"
-            image="javdb-cli:${RELEASE_TAG}-${artifact}"
-            ghcr_ref="ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-${artifact}"
-            dockerhub_ref="flanchanxwo/javdb-cli:${RELEASE_TAG}-${artifact}"
-            docker tag "$image" "$ghcr_ref"
-            docker push "$ghcr_ref"
-            docker tag "$image" "$dockerhub_ref"
-            docker push "$dockerhub_ref"
-            printf '%s\n' "$ghcr_ref" >> "$RUNNER_TEMP/ghcr-container-refs"
-            printf '%s\n' "$dockerhub_ref" >> "$RUNNER_TEMP/dockerhub-container-refs"
-          done
-          mapfile -t ghcr_refs < "$RUNNER_TEMP/ghcr-container-refs"
-          mapfile -t dockerhub_refs < "$RUNNER_TEMP/dockerhub-container-refs"
-          test "${#ghcr_refs[@]}" -gt 0
-          test "${#ghcr_refs[@]}" = "${#dockerhub_refs[@]}"
-          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" "${ghcr_refs[@]}"
-          docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
-          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" "${dockerhub_refs[@]}"
-          docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"
-
-      - name: Promote latest only for the newest stable tag
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
-            --jq '.[].ref | sub("refs/tags/"; "")' \
-            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
-            | sort -V | tail -n 1)
-          if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
-            mapfile -t ghcr_refs < "$RUNNER_TEMP/ghcr-container-refs"
-            mapfile -t dockerhub_refs < "$RUNNER_TEMP/dockerhub-container-refs"
-            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" "${ghcr_refs[@]}"
-            docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
-            docker manifest create "flanchanxwo/javdb-cli:latest" "${dockerhub_refs[@]}"
-            docker manifest push "flanchanxwo/javdb-cli:latest"
-          else
-            printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
-              "$RELEASE_TAG" "$latest_stable_tag"
-          fi
-
-      - name: Verify the Docker Hub manifest is public
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker logout docker.io
-          docker manifest inspect "docker.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" >/dev/null
 
       - name: Publish the GitHub Release
         shell: bash
