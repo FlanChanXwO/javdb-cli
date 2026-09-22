@@ -393,7 +393,7 @@ jobs:
         run: echo "Release materials are prepared and verified."
 
   publish:
-    name: Publish release and container images
+    name: Sign and publish GitHub Release
     needs: [validate, approve_release, prepare_release, build_container]
     runs-on: ubuntu-24.04
     environment: release
