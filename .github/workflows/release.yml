@@ -338,6 +338,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           go run ./tools/release write-handoff \
@@ -347,6 +348,7 @@ jobs:
             --workflow 'Release' \
             --tag "$RELEASE_TAG" \
             --commit-sha "$TAG_COMMIT" \
+            --run-head-sha "$RUN_HEAD_SHA" \
             --version "$VERSION" \
             --dist-dir dist \
             --container-dir containers \

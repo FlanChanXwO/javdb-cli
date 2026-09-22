@@ -92,6 +92,7 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ steps.handoff.outputs.run_id }}
+          RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
         run: |
           set -euo pipefail
           # Homebrew 只发布 release 归档，因此只校验 production section；容器
@@ -104,7 +105,8 @@ jobs:
             --container-dir containers \
             --checksums release-assets/checksums.txt \
             --repository "$REPOSITORY" \
-            --run-id "$RUN_ID"
+            --run-id "$RUN_ID" \
+            --run-head-sha "$RUN_HEAD_SHA"
 
       - name: Render the formula from prepared checksums
         shell: bash

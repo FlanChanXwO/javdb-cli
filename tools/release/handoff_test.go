@@ -52,6 +52,7 @@ func TestReleaseHandoffBindsIdentityAndChecksums(t *testing.T) {
 		Workflow:     "Release",
 		Tag:          "v" + version,
 		CommitSHA:    strings.Repeat("a", 40),
+		RunHeadSHA:   strings.Repeat("a", 40),
 		Version:      version,
 		DistDir:      dist,
 		ContainerDir: containers,
@@ -121,6 +122,7 @@ func TestVerifyHandoffArtifactsRejectsTamperedBytes(t *testing.T) {
 		Workflow:     "Release",
 		Tag:          "v" + version,
 		CommitSHA:    strings.Repeat("b", 40),
+		RunHeadSHA:   strings.Repeat("b", 40),
 		Version:      version,
 		DistDir:      dist,
 		ContainerDir: containers,
@@ -155,6 +157,7 @@ func TestVerifyHandoffArtifactsRejectsIncompleteSet(t *testing.T) {
 		Workflow:     "Release",
 		Tag:          "v" + version,
 		CommitSHA:    strings.Repeat("c", 40),
+		RunHeadSHA:   strings.Repeat("c", 40),
 		Version:      version,
 		DistDir:      dist,
 		ContainerDir: containers,
@@ -177,6 +180,7 @@ func TestVerifyHandoffArtifactsRejectsIncompleteSet(t *testing.T) {
 		"run id":     func(h *releaseHandoff) { h.ReleaseRunID = 0 },
 		"tag":        func(h *releaseHandoff) { h.Tag = "" },
 		"commit":     func(h *releaseHandoff) { h.CommitSHA = "" },
+		"run head":   func(h *releaseHandoff) { h.RunHeadSHA = "" },
 		"workflow":   func(h *releaseHandoff) { h.Workflow = "" },
 	} {
 		broken := handoff

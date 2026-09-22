@@ -26,6 +26,7 @@ type releaseHandoff struct {
 	Workflow            string            `json:"workflow"`
 	Tag                 string            `json:"tag"`
 	CommitSHA           string            `json:"commit_sha"`
+	RunHeadSHA          string            `json:"run_head_sha"`
 	Version             string            `json:"version"`
 	ProductionArtifacts []handoffArtifact `json:"production_artifacts"`
 	ContainerArtifacts  []handoffArtifact `json:"container_artifacts"`
@@ -47,6 +48,7 @@ type releaseHandoffInput struct {
 	Workflow     string
 	Tag          string
 	CommitSHA    string
+	RunHeadSHA   string
 	Version      string
 	DistDir      string
 	ContainerDir string
@@ -63,6 +65,7 @@ func writeReleaseHandoff(input releaseHandoffInput) (releaseHandoff, error) {
 		Workflow:          input.Workflow,
 		Tag:               input.Tag,
 		CommitSHA:         input.CommitSHA,
+		RunHeadSHA:        input.RunHeadSHA,
 		Version:           input.Version,
 	}
 	if err := verifyHandoffIdentity(handoff); err != nil {
@@ -126,6 +129,9 @@ func verifyHandoffIdentity(handoff releaseHandoff) error {
 	}
 	if strings.TrimSpace(handoff.CommitSHA) == "" {
 		return errors.New("handoff commit_sha is required")
+	}
+	if strings.TrimSpace(handoff.RunHeadSHA) == "" {
+		return errors.New("handoff run_head_sha is required")
 	}
 	if strings.TrimSpace(handoff.Version) == "" {
 		return errors.New("handoff version is required")
@@ -349,6 +355,7 @@ func writeHandoffCommand(args []string) {
 	workflow := set.String("workflow", "Release", "expected Release workflow name")
 	tag := set.String("tag", "", "immutable release tag")
 	commitSHA := set.String("commit-sha", "", "immutable release tag commit SHA")
+	runHeadSHA := set.String("run-head-sha", "", "release workflow run head SHA")
 	version := set.String("version", "", "release version without v")
 	distDir := set.String("dist-dir", "dist", "production artifact directory")
 	containerDir := set.String("container-dir", "containers", "container artifact directory")
@@ -364,6 +371,7 @@ func writeHandoffCommand(args []string) {
 		Workflow:     *workflow,
 		Tag:          *tag,
 		CommitSHA:    *commitSHA,
+		RunHeadSHA:   *runHeadSHA,
 		Version:      *version,
 		DistDir:      *distDir,
 		ContainerDir: *containerDir,
@@ -385,6 +393,7 @@ func verifyHandoffSetCommand(args []string) {
 	repository := set.String("repository", "", "optional expected repository")
 	runID := set.Int64("run-id", 0, "optional expected Release workflow run ID")
 	tag := set.String("tag", "", "optional expected immutable release tag")
+	headSHA := set.String("run-head-sha", "", "optional expected release run head SHA")
 	checksumsPath := set.String("checksums", "", "optional checksums.txt path (default: <dist-dir>/checksums.txt)")
 	section := set.String("section", "", "verify only one section: production or container")
 	_ = set.Parse(args)
@@ -411,6 +420,12 @@ func verifyHandoffSetCommand(args []string) {
 	}
 	if *tag != "" && handoff.Tag != *tag {
 		fatal(fmt.Errorf("handoff tag = %q, want %q", handoff.Tag, *tag))
+	}
+	// §15：publisher 必须确认自己读取的 handoff 确实由所解析出的那个 run 产生。
+	// 这里比对 handoff 记录的 run head SHA 与调用方从该 run 读到的 head SHA；
+	// 它是自校验的，不会把 tag commit 与 dispatch 分支头混为一谈。
+	if *headSHA != "" && handoff.RunHeadSHA != *headSHA {
+		fatal(fmt.Errorf("handoff run_head_sha = %q, want %q", handoff.RunHeadSHA, *headSHA))
 	}
 	if *section != "" {
 		dir := *distDir

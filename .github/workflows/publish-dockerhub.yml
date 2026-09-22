@@ -97,6 +97,7 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ steps.handoff.outputs.run_id }}
+          RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
         run: |
           set -euo pipefail
           # 容器 publisher 只发布镜像 tar，因此只校验 container section。
@@ -107,7 +108,8 @@ jobs:
             --container-dir containers \
             --checksums prepared/dist/checksums.txt \
             --repository "$REPOSITORY" \
-            --run-id "$RUN_ID"
+            --run-id "$RUN_ID" \
+            --run-head-sha "$RUN_HEAD_SHA"
 
       - name: Load the verified container images
         shell: bash
