@@ -156,6 +156,10 @@ jobs:
       - name: Resolve effective verification commands
         id: resolve
         if: steps.authorize.outputs.accepted == 'true'
+        # A fatal resolver error (for example a missing whitelist) must still
+        # leave the coordinate step running so the trigger gets an explicit
+        # failure result and reaction instead of silent silence.
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
