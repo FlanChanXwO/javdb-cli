@@ -53,7 +53,7 @@ opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/mai
 
 - 保持 `README.md` 与 `README.zh-CN.md` 的行为语义对应。
 - 保持 `docs/en/` 与 `docs/zh-CN/` 下两个语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
-- 按文件职责更新 `docs/sdk.md` / `docs/sdk.zh-CN.md`、`docs/maintainers/architecture.md` 或 `docs/maintainers/development.md`。
+- 按文件职责更新 `docs/en/sdk.md` / `docs/zh-CN/sdk.md`、`docs/maintainers/architecture.md` 或 `docs/maintainers/development.md`。
 - 发布说明由 release-prep PR 直接维护在 `changelog/vX.Y.Z/{en.md,zh-CN.md}`；英文与简体中文条目必须对应，每条都要包含 PR 或 direct commit 来源，并同步更新两个 changelog 索引。具体流程见[开发流程](docs/maintainers/development.md)。
 - CLI 命令、flag 或安全语义变化时检查 `skills/javdb-cli/`。
 

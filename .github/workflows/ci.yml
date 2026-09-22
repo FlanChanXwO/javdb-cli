@@ -95,13 +95,7 @@ jobs:
           sh scripts/test-build-platform.sh
           sh scripts/test-homebrew-formula.sh
           sh scripts/test-workflows.sh
-
-      - name: Run pre-commit checks
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-        shell: bash
-        run: |
-          python -m pip install --disable-pip-version-check pre-commit==4.6.0
-          python -m pre_commit run --all-files
+          sh scripts/test-releasenotes.sh
 
   quality_gate:
     name: Quality gate
