@@ -14,6 +14,7 @@ container="$repo_root/.github/workflows/container-smoke.yml"
 release="$repo_root/.github/workflows/release.yml"
 verification="$repo_root/.github/workflows/pr-verification.yml"
 metadata="$repo_root/.github/workflows/pr-metadata.yml"
+clawhub="$repo_root/.github/workflows/publish-clawhub.yml"
 
 # Branch protection relies on these stable aggregate names.
 grep -F 'name: Quality gate' "$quality" >/dev/null
@@ -146,12 +147,29 @@ for publisher in publish-dockerhub.yml publish-homebrew.yml; do
 	grep -F 'environment: release' "$repo_root/.github/workflows/$publisher" >/dev/null
 done
 
+# §16.2/§20：发布动作必须只存在于独立 publisher；release.yml 不得内联推送镜像。
+for forbidden in 'docker push' 'docker manifest create' 'docker manifest push' 'docker tag'; do
+	if grep -F "$forbidden" "$release" >/dev/null; then
+		echo "release.yml must not publish images inline: $forbidden" >&2
+		exit 1
+	fi
+done
+
 # §19：publisher 不得自行构建 release 归档或镜像。
 for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
 	if grep -nE '(^|[[:space:]])(go build|docker build)([[:space:]]|$)' "$publisher" >/dev/null; then
 		echo "publisher must not build artifacts: $publisher" >&2
 		exit 1
 	fi
+done
+
+# §15：每个 publisher 都必须把 handoff 绑定到它解析出的那个 run。ClawHub 只发布
+# skill，用 identity-only 模式证明来源；容器与 Homebrew publisher 用
+# verify-handoff-set 同时校验身份与产物。
+grep -F 'verify-handoff-identity' "$clawhub" >/dev/null
+grep -F -- '--run-head-sha' "$clawhub" >/dev/null
+for publisher in publish-dockerhub.yml publish-homebrew.yml; do
+	grep -F -- '--run-head-sha' "$repo_root/.github/workflows/$publisher" >/dev/null
 done
 
 # PR code execution cannot write PR comments/reactions; trusted jobs own those permissions.

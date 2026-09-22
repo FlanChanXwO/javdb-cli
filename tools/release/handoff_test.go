@@ -190,3 +190,40 @@ func TestVerifyHandoffArtifactsRejectsIncompleteSet(t *testing.T) {
 		}
 	}
 }
+
+// ClawHub 只发布 skill（不发布 release 归档或镜像），因此它需要一个只校验
+// handoff 身份、不要求本地已下载产物的模式；否则 publisher 要么跳过校验，
+// 要么被迫下载它根本不需要的产物（§15/§19）。
+func TestVerifyHandoffIdentityOnly(t *testing.T) {
+	handoff := releaseHandoff{
+		Repository:   "FlanChanXwO/javdb-cli",
+		ReleaseRunID: 12,
+		Workflow:     "Release",
+		Tag:          "v1.2.3",
+		CommitSHA:    strings.Repeat("d", 40),
+		RunHeadSHA:   strings.Repeat("d", 40),
+		Version:      "1.2.3",
+	}
+	if err := verifyHandoffIdentityOnly(handoff, 12, "FlanChanXwO/javdb-cli", "v1.2.3", strings.Repeat("d", 40)); err != nil {
+		t.Fatalf("identity-only verify: %v", err)
+	}
+	// 身份或 run 绑定不符必须失败，这样才能证明 handoff 来自被解析的那个 run。
+	for name, call := range map[string]func() error{
+		"run id": func() error {
+			return verifyHandoffIdentityOnly(handoff, 13, "FlanChanXwO/javdb-cli", "v1.2.3", strings.Repeat("d", 40))
+		},
+		"repo": func() error {
+			return verifyHandoffIdentityOnly(handoff, 12, "other/repo", "v1.2.3", strings.Repeat("d", 40))
+		},
+		"tag": func() error {
+			return verifyHandoffIdentityOnly(handoff, 12, "FlanChanXwO/javdb-cli", "v9.9.9", strings.Repeat("d", 40))
+		},
+		"run head": func() error {
+			return verifyHandoffIdentityOnly(handoff, 12, "FlanChanXwO/javdb-cli", "v1.2.3", strings.Repeat("e", 40))
+		},
+	} {
+		if err := call(); err == nil {
+			t.Fatalf("mismatched %s must be rejected", name)
+		}
+	}
+}

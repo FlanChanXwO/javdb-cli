@@ -69,11 +69,22 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.handoff.outputs.run_id }}
 
-      - name: Resolve the immutable release tag
+      - name: Resolve and verify the immutable release tag
         id: release_tag
         shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.handoff.outputs.run_id }}
+          RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
         run: |
           set -euo pipefail
+          # §15：ClawHub 只发布 skill，不下载 release 归档或镜像，因此用
+          # identity-only 模式证明这份 handoff 确实来自刚解析出的那个 run。
+          go run ./tools/release verify-handoff-identity \
+            --handoff prepared/release/release-handoff.json \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-head-sha "$RUN_HEAD_SHA"
           release_tag=$(jq -r '.tag' prepared/release/release-handoff.json)
           test -n "$release_tag"
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
