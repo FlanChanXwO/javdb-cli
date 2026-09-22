@@ -37,10 +37,6 @@ jobs:
       base_sha: ${{ steps.authorize.outputs.base_sha }}
       commands: ${{ steps.resolve.outputs.effective_commands }}
       verification_hash: ${{ steps.resolve.outputs.effective_hash }}
-      resolve_ok: ${{ steps.resolve.outputs.resolve_ok }}
-      resolve_desc: ${{ steps.resolve.outputs.resolve_desc }}
-      override_declared: ${{ steps.resolve.outputs.override_declared }}
-      effective_count: ${{ steps.resolve.outputs.effective_count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       identity: ${{ steps.coordinate.outputs.identity }}
     steps:

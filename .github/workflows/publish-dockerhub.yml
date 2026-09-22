@@ -1,0 +1,198 @@
+name: Publish container images
+
+# Release 在有所有产物已准备并验证后才交接 handoff。GITHUB_TOKEN 创建的 Release
+# 不会再触发 release 事件，因此使用 workflow_run 作为受信任的异步 handoff。
+on:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+  # §17：手动恢复只接受原始的 release_run_id，不接受 tag/latest/模糊解析。
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Original trusted Release workflow run ID
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish container images
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    # §23/§24：environment: release 承载 Docker Hub 专属凭据；它不配置
+    # required_reviewers，因此全链路仍只有 release-approval 一个审批边界。
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    steps:
+      # §18/§19：publisher 只做 resolve → read handoff → download → verify → publish。
+      # 这里绝不构建镜像，也绝不从 tag 名或 run 元数据推断产物身份。
+      - name: Resolve the trusted release run
+        id: handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            run_id="$INPUT_RUN_ID"
+          else
+            run_id="$EVENT_RUN_ID"
+          fi
+          case "$run_id" in
+            ''|*[!0-9]*) echo "release_run_id must be a positive decimal number: $run_id" >&2; exit 1 ;;
+          esac
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
+          test "$(printf '%s' "$run" | jq -r '.name')" = 'Release'
+          test "$(printf '%s' "$run" | jq -r '.conclusion')" = success
+          test "$(printf '%s' "$run" | jq -r '.repository.full_name')" = "$GITHUB_REPOSITORY"
+          printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$(printf '%s' "$run" | jq -r '.head_sha')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.handoff.outputs.head_sha }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download the prepared handoff and container artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: prepared-release-metadata
+          path: prepared
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.handoff.outputs.run_id }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: verified-container-*
+          path: containers
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.handoff.outputs.run_id }}
+
+      # §15/§19：发布前重新校验 handoff 的 identity 与每个 tar 的 checksum，
+      # 确保推送的是 Release run 原始产生并验证过的同一批 bytes。
+      - name: Verify the immutable handoff and container bytes
+        id: verify
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.handoff.outputs.run_id }}
+          RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # 容器 publisher 只发布镜像 tar，因此只校验 container section。
+          go run ./tools/release verify-handoff-set \
+            --handoff prepared/release/release-handoff.json \
+            --section container \
+            --dist-dir prepared/dist \
+            --container-dir containers \
+            --checksums prepared/dist/checksums.txt \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-head-sha "$RUN_HEAD_SHA"
+
+      - name: Load the verified container images
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./tools/release verify-container-set --dir containers
+          for archive in containers/javdb-cli-*.tar; do
+            docker load --input "$archive"
+          done
+
+      - name: Log in to the GHCR
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          registry: docker.io
+          username: flanchanxwo
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Push the registry-defined images and manifests
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_TAG"
+          : > "$RUNNER_TEMP/ghcr-container-refs"
+          : > "$RUNNER_TEMP/dockerhub-container-refs"
+          for archive in containers/javdb-cli-*.tar; do
+            artifact=$(basename "$archive" .tar)
+            artifact="${artifact#javdb-cli-}"
+            image="javdb-cli:${RELEASE_TAG}-${artifact}"
+            ghcr_ref="ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}-${artifact}"
+            dockerhub_ref="flanchanxwo/javdb-cli:${RELEASE_TAG}-${artifact}"
+            docker tag "$image" "$ghcr_ref"
+            docker push "$ghcr_ref"
+            docker tag "$image" "$dockerhub_ref"
+            docker push "$dockerhub_ref"
+            printf '%s\n' "$ghcr_ref" >> "$RUNNER_TEMP/ghcr-container-refs"
+            printf '%s\n' "$dockerhub_ref" >> "$RUNNER_TEMP/dockerhub-container-refs"
+          done
+          mapfile -t ghcr_refs < "$RUNNER_TEMP/ghcr-container-refs"
+          mapfile -t dockerhub_refs < "$RUNNER_TEMP/dockerhub-container-refs"
+          test "${#ghcr_refs[@]}" -gt 0
+          test "${#ghcr_refs[@]}" = "${#dockerhub_refs[@]}"
+          docker manifest create "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" "${ghcr_refs[@]}"
+          docker manifest push "ghcr.io/flanchanxwo/javdb-cli:${RELEASE_TAG}"
+          docker manifest create "flanchanxwo/javdb-cli:${RELEASE_TAG}" "${dockerhub_refs[@]}"
+          docker manifest push "flanchanxwo/javdb-cli:${RELEASE_TAG}"
+
+      - name: Promote latest only for the newest stable tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("refs/tags/"; "")' \
+            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+            | sort -V | tail -n 1)
+          if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
+            mapfile -t ghcr_refs < "$RUNNER_TEMP/ghcr-container-refs"
+            mapfile -t dockerhub_refs < "$RUNNER_TEMP/dockerhub-container-refs"
+            docker manifest create "ghcr.io/flanchanxwo/javdb-cli:latest" "${ghcr_refs[@]}"
+            docker manifest push "ghcr.io/flanchanxwo/javdb-cli:latest"
+            docker manifest create "flanchanxwo/javdb-cli:latest" "${dockerhub_refs[@]}"
+            docker manifest push "flanchanxwo/javdb-cli:latest"
+          else
+            printf 'Skipping latest promotion: %s is not the newest stable tag (%s)\n' \
+              "$RELEASE_TAG" "$latest_stable_tag"
+          fi
+
+      - name: Verify the Docker Hub manifest is public
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker logout docker.io
+          docker manifest inspect "docker.io/flanchanxwo/javdb-cli:${RELEASE_TAG}" >/dev/null

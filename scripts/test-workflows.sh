@@ -63,7 +63,15 @@ grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null
 grep -F './tools/platformmatrix --capability container' "$container" >/dev/null
 grep -F './tools/platformmatrix --capability verification' "$verification" >/dev/null
 grep -F './tools/platformmatrix --capability release' "$release" >/dev/null
-grep -F './tools/platformmatrix --capability homebrew' "$release" >/dev/null
+# Homebrew 现在是独立 publisher：release.yml 只负责 build/package 与准备材料，
+# 不再内联渲染或验证 formula。
+if grep -F 'render-homebrew-formula.sh' "$release" >/dev/null; then
+	echo 'Homebrew rendering must live in the dedicated publisher' >&2
+	exit 1
+fi
+homebrew="$repo_root/.github/workflows/publish-homebrew.yml"
+grep -F 'render-homebrew-formula.sh' "$homebrew" >/dev/null
+grep -F 'workflow_run:' "$homebrew" >/dev/null
 
 # Release bytes are built once on fresh production runners, then prepared and approved.
 grep -F 'build_production:' "$release" >/dev/null
@@ -76,16 +84,75 @@ grep -F 'prepare_release:' "$release" >/dev/null
 grep -F 'go run ./tools/release verify-artifact-set' "$release" >/dev/null
 grep -F 'go run ./tools/release verify-source' "$release" >/dev/null
 
-# Exactly one human approval boundary. Publication environments must not require another approval.
+# §14：生产归档与容器镜像各只构建一次（build once）。
+test "$(grep -Fc 'sh scripts/build-platform.sh' "$release")" -eq 1
+test "$(grep -Fc 'docker build' "$release")" -eq 1
+
+# §15：preparation 阶段固化 immutable handoff，publish 阶段只校验后复用。
+grep -F 'write-handoff' "$release" >/dev/null
+grep -F -- '--output release/release-handoff.json' "$release" >/dev/null
+grep -F 'release/release-handoff.json' "$release" >/dev/null
+test "$(grep -Fc 'verify-handoff-set' "$release")" -ge 2
+grep -F -- '--checksums prepared/dist/checksums.txt' "$release" >/dev/null
+
+# §19：publisher 不得出现任何生产性重建。
+for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+	if grep -nE '(^|[^a-z-])(go build|docker build|build-platform\.sh|build-release\.sh|package-release)' "$publisher" >/dev/null; then
+		echo "publisher must not rebuild release artifacts: $publisher" >&2
+		exit 1
+	fi
+done
+
+# §17：手动恢复只接受 release_run_id，不接受 tag/latest 等模糊解析。
+for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+	grep -F 'workflow_run:' "$publisher" >/dev/null
+	grep -F 'release_run_id:' "$publisher" >/dev/null
+	grep -F 'release_run_id must be a positive decimal number' "$publisher" >/dev/null
+	if grep -nE 'latest successful run|latest release|inputs\.tag|latest_release' "$publisher" >/dev/null; then
+		echo "publisher must not accept fuzzy recovery inputs: $publisher" >&2
+		exit 1
+	fi
+done
+
+# §20：publisher 之间必须独立，不得互相 needs 形成串行链。
+for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+	if grep -nE 'needs:.*publish' "$publisher" >/dev/null; then
+		echo "publishers must run independently: $publisher" >&2
+		exit 1
+	fi
+done
+
+# §24：整个 Release pipeline 只允许一个 release-approval 人工审批边界。
 test "$(grep -Fc 'environment: release-approval' "$release")" -eq 1
-grep -F 'environment: release' "$release" >/dev/null
 approval_line=$(grep -n '^  approve_release:$' "$release" | cut -d: -f1)
 publish_line=$(grep -n '^  publish:$' "$release" | cut -d: -f1)
 test "$approval_line" -lt "$publish_line"
 
-# Approval must happen after the archive, container, and Homebrew verification work.
+# 审批必须发生在所有产物准备与验证之后。
 approval_job=$(sed -n '/^  approve_release:$/,/^  publish:$/p' "$release")
-printf '%s\n' "$approval_job" | grep -F 'needs: [prepare_release, verify_homebrew_formula]' >/dev/null
+printf '%s\n' "$approval_job" | grep -F 'needs: [prepare_release]' >/dev/null
+
+# §24：publisher environment 可以承载 secret，但不得再要求 reviewer approval。
+# 只检查 YAML 键，忽略注释中的说明文字。
+for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+	if grep -nE '^[[:space:]]*(required_reviewers|reviewers):' "$publisher" >/dev/null; then
+		echo "publisher must not add a second approval boundary: $publisher" >&2
+		exit 1
+	fi
+done
+
+# §23：需要 environment 级 secret 的 publisher 必须声明 environment: release。
+for publisher in publish-dockerhub.yml publish-homebrew.yml; do
+	grep -F 'environment: release' "$repo_root/.github/workflows/$publisher" >/dev/null
+done
+
+# §19：publisher 不得自行构建 release 归档或镜像。
+for publisher in "$repo_root"/.github/workflows/publish-*.yml; do
+	if grep -nE '(^|[[:space:]])(go build|docker build)([[:space:]]|$)' "$publisher" >/dev/null; then
+		echo "publisher must not build artifacts: $publisher" >&2
+		exit 1
+	fi
+done
 
 # PR code execution cannot write PR comments/reactions; trusted jobs own those permissions.
 verify_job=$(sed -n '/^  verify:$/,/^  aggregate:$/p' "$verification")
