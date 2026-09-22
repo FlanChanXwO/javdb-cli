@@ -1,7 +1,7 @@
 name: Publish ClawHub skill
 
 on:
-  # Release 只有在所有发布与 Homebrew gate 成功后才交接不可变 tag。
+  # Release 只有在产物准备、校验与人工审批全部成功后才交接 immutable handoff。
   # GITHUB_TOKEN 创建的 Release 不会再触发第二个 release 事件，因此使用
   # workflow_run 作为受信任的异步 handoff。
   workflow_run:
