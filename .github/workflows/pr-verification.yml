@@ -152,7 +152,7 @@ jobs:
         if: >-
           steps.authorize.outputs.accepted == 'true' &&
           steps.policy.outputs.template_ok == 'true' &&
-          steps.policy.outputs.test_ok == 'true' &&
+          steps.policy.outputs.commands_ok == 'true' &&
           steps.policy.outputs.command_count != '0'
         shell: bash
         run: go run ./tools/platformmatrix --capability verification --github-output "$GITHUB_OUTPUT"
@@ -168,8 +168,8 @@ jobs:
           COMMENT_ID: ${{ steps.authorize.outputs.comment_id }}
           HEAD_SHA: ${{ steps.authorize.outputs.head_sha }}
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
-          TEST_OK: ${{ steps.policy.outputs.test_ok }}
-          TEST_DESC: ${{ steps.policy.outputs.test_desc }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
+          COMMANDS_DESC: ${{ steps.policy.outputs.commands_desc }}
           COMMAND_COUNT: ${{ steps.policy.outputs.command_count }}
           VERIFICATION_HASH: ${{ steps.policy.outputs.verification_hash }}
         run: |
@@ -242,7 +242,7 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           }
 
-          if [ "$TEMPLATE_OK" != true ] || [ "$TEST_OK" != true ]; then
+          if [ "$TEMPLATE_OK" != true ] || [ "$COMMANDS_OK" != true ]; then
             fail_trigger "The current PR metadata or verification declaration is invalid."
             exit 0
           fi

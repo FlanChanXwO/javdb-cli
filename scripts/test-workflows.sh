@@ -20,7 +20,7 @@ grep -F 'name: Quality gate' "$quality" >/dev/null
 grep -F 'name: Platform smoke gate' "$platform" >/dev/null
 grep -F 'name: Container smoke gate' "$container" >/dev/null
 grep -F "context='PR template gate'" "$metadata" >/dev/null
-grep -F "context='PR test command gate'" "$metadata" >/dev/null
+grep -F "context='PR commands gate'" "$metadata" >/dev/null
 
 # Platform sets are resolved from the shared registry rather than copied into workflows.
 grep -F './tools/platformmatrix --capability smoke' "$platform" >/dev/null

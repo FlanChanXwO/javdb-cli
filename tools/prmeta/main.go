@@ -25,11 +25,19 @@ var (
 type result struct {
 	TemplateOK   bool
 	TemplateDesc string
-	TestOK       bool
-	TestDesc     string
+	CommandsOK   bool
+	CommandsDesc string
 	Commands     verificationpolicy.Commands
 	Hash         string
 }
+
+// commandFence is the only fenced block prmeta recognises. Every other fence
+// language (including the retired `test` fence) is ordinary Markdown.
+const commandFence = "commands"
+
+// htmlEscapedFence is the entity-encoded form of ```; only the commands
+// language is rejected so callers cannot smuggle a declaration past detection.
+const htmlEscapedFence = "&#96;&#96;&#96;"
 
 func main() {
 	bodyPath := flag.String("body-file", "", "pull request body file")
@@ -64,16 +72,16 @@ func main() {
 	if err := writeGitHubOutput(*githubOutput, validation); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("template_ok=%t\ntest_ok=%t\nverification_hash=%s\n",
-		validation.TemplateOK, validation.TestOK, validation.Hash)
-	if !validation.TemplateOK || !validation.TestOK {
+	fmt.Printf("template_ok=%t\ncommands_ok=%t\nverification_hash=%s\n",
+		validation.TemplateOK, validation.CommandsOK, validation.Hash)
+	if !validation.TemplateOK || !validation.CommandsOK {
 		os.Exit(1)
 	}
 }
 
 func validate(body string, whitelist *verificationpolicy.Whitelist, cliName, workspace string) result {
 	clean := htmlComment.ReplaceAllString(body, "")
-	answer := result{TemplateOK: true, TestOK: true}
+	answer := result{TemplateOK: true, CommandsOK: true}
 	var missing []string
 	if !headingChanges.MatchString(clean) {
 		missing = append(missing, "Changes")
@@ -86,58 +94,70 @@ func validate(body string, whitelist *verificationpolicy.Whitelist, cliName, wor
 	}
 	if len(missing) > 0 {
 		answer.TemplateOK = false
-		answer.TemplateDesc = "Missing required section(s): " + strings.Join(missing, ", ")
+		answer.TemplateDesc = "Missing required PR section(s): " + strings.Join(missing, ", ") + "."
 	} else if uncheckedChecklist.MatchString(clean) {
 		answer.TemplateOK = false
-		answer.TemplateDesc = "Complete every required checklist item."
+		answer.TemplateDesc = "Complete all required checklist items."
 	} else {
-		answer.TemplateDesc = "PR template is complete."
+		answer.TemplateDesc = "Required PR sections and checklist are complete."
 	}
 
-	blocks, err := testBlocks(clean)
+	blocks, err := commandBlocks(clean)
 	if err != nil {
-		answer.TestOK = false
-		answer.TestDesc = err.Error()
+		answer.CommandsOK = false
+		answer.CommandsDesc = err.Error()
 		return answer
 	}
 	if len(blocks) == 0 {
-		answer.TestDesc = "No live verification commands declared."
+		// Zero declared blocks is valid: consumers treat it as no default commands.
+		answer.CommandsDesc = "No default verification commands declared."
 		return answer
 	}
 	if len(blocks) > 1 {
-		answer.TestOK = false
-		answer.TestDesc = "Verification may contain at most one fenced test block."
+		answer.CommandsOK = false
+		answer.CommandsDesc = "Only one fenced commands block is allowed."
 		return answer
 	}
-	for lineNumber, raw := range strings.Split(blocks[0], "\n") {
+	index := 0
+	for _, raw := range strings.Split(blocks[0], "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" {
 			continue
 		}
+		index++
 		command, err := verificationpolicy.ParseLine(line)
 		if err != nil {
-			answer.TestOK = false
-			answer.TestDesc = fmt.Sprintf("Verification line %d: %v", lineNumber+1, err)
+			answer.CommandsOK = false
+			answer.CommandsDesc = fmt.Sprintf("Command %d is invalid: %v", index, err)
 			return answer
 		}
 		if err := whitelist.ValidateStatic(command, cliName); err != nil {
-			answer.TestOK = false
-			answer.TestDesc = fmt.Sprintf("Verification line %d: %v", lineNumber+1, err)
+			answer.CommandsOK = false
+			answer.CommandsDesc = fmt.Sprintf("Command %d is not allowed: %v", index, err)
 			return answer
 		}
 		answer.Commands.Commands = append(answer.Commands.Commands, command)
 	}
 	if len(answer.Commands.Commands) == 0 {
-		answer.TestOK = false
-		answer.TestDesc = "The fenced test block must contain at least one command."
+		answer.CommandsOK = false
+		answer.CommandsDesc = "The commands block must contain at least one command."
 		return answer
 	}
 	answer.Hash = verificationpolicy.NormalizeAndHash(answer.Commands)
-	answer.TestDesc = fmt.Sprintf("%d verification command(s) accepted.", len(answer.Commands.Commands))
+	answer.CommandsDesc = commandCountDescription(len(answer.Commands.Commands))
 	return answer
 }
 
-func testBlocks(body string) ([]string, error) {
+// commandCountDescription renders the §8.2 stable gate wording. Exactly one
+// declared command reads in the singular; every other count is plural.
+func commandCountDescription(count int) string {
+	if count == 1 {
+		return "1 default verification command accepted."
+	}
+	return fmt.Sprintf("%d default verification commands accepted.", count)
+}
+
+func commandBlocks(body string) ([]string, error) {
 	lines := strings.Split(body, "\n")
 	var blocks []string
 	var current []string
@@ -145,10 +165,11 @@ func testBlocks(body string) ([]string, error) {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if !inTest {
-			if strings.HasPrefix(trimmed, "&#96;&#96;&#96;") {
-				return nil, errors.New("HTML-escaped verification fences are not supported")
+			if strings.HasPrefix(trimmed, htmlEscapedFence) &&
+				strings.TrimSpace(strings.TrimPrefix(trimmed, htmlEscapedFence)) == commandFence {
+				return nil, errors.New("HTML-escaped commands fences are not supported")
 			}
-			if len(trimmed) >= 7 && trimmed[:3] == string([]byte{96, 96, 96}) && strings.TrimSpace(trimmed[3:]) == "test" {
+			if len(trimmed) >= 7 && trimmed[:3] == string([]byte{96, 96, 96}) && strings.TrimSpace(trimmed[3:]) == commandFence {
 				inTest = true
 				current = nil
 			}
@@ -162,7 +183,7 @@ func testBlocks(body string) ([]string, error) {
 		current = append(current, line)
 	}
 	if inTest {
-		return nil, errors.New("Verification test fence is not closed.")
+		return nil, errors.New("The commands block is not closed.")
 	}
 	return blocks, nil
 }
@@ -181,11 +202,11 @@ func writeGitHubOutput(path string, validation result) error {
 		return err
 	}
 	_, err = fmt.Fprintf(file,
-		"template_ok=%t\ntemplate_desc=%s\ntest_ok=%t\ntest_desc=%s\nverification_hash=%s\ncommands=%s\ncommand_count=%d\n",
+		"template_ok=%t\ntemplate_desc=%s\ncommands_ok=%t\ncommands_desc=%s\nverification_hash=%s\ncommands=%s\ncommand_count=%d\n",
 		validation.TemplateOK,
 		oneLine(validation.TemplateDesc),
-		validation.TestOK,
-		oneLine(validation.TestDesc),
+		validation.CommandsOK,
+		oneLine(validation.CommandsDesc),
 		validation.Hash,
 		commands,
 		len(validation.Commands.Commands),
