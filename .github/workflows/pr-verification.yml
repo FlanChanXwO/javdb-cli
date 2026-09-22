@@ -34,8 +34,12 @@ jobs:
       head_sha: ${{ steps.authorize.outputs.head_sha }}
       head_repo: ${{ steps.authorize.outputs.head_repo }}
       base_sha: ${{ steps.authorize.outputs.base_sha }}
-      commands: ${{ steps.policy.outputs.commands }}
-      verification_hash: ${{ steps.policy.outputs.verification_hash }}
+      commands: ${{ steps.resolve.outputs.effective_commands }}
+      verification_hash: ${{ steps.resolve.outputs.effective_hash }}
+      resolve_ok: ${{ steps.resolve.outputs.resolve_ok }}
+      resolve_desc: ${{ steps.resolve.outputs.resolve_desc }}
+      override_declared: ${{ steps.resolve.outputs.override_declared }}
+      effective_count: ${{ steps.resolve.outputs.effective_count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       identity: ${{ steps.coordinate.outputs.identity }}
     steps:
@@ -83,10 +87,12 @@ jobs:
             comment_body="$EVENT_COMMENT_BODY"
             commenter="$EVENT_COMMENTER"
           fi
-          trimmed="$comment_body"
-          trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
-          trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-          if [ "$trimmed" != /test ]; then
+          printf '%s' "$comment_body" > "$RUNNER_TEMP/comment-body.md"
+          # §5.1: the trigger must be the first non-empty line, exactly /test.
+          # The trusted policy owns this decision so the workflow never scans
+          # the whole comment for the marker and never grows a second parser.
+          trigger=$(go run ./tools/prmeta --check-trigger --comment-file "$RUNNER_TEMP/comment-body.md")
+          if [ "$trigger" != "trigger=true" ]; then
             printf '%s\n' 'accepted=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -124,6 +130,9 @@ jobs:
           fi
 
           add_reaction "$comment_id" EYES
+          # Capture the PR body once here so the metadata gate and the effective
+          # command resolution below read the exact same revision (§8.3).
+          gh api "repos/$REPO/pulls/$pr" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
           {
             printf '%s\n' 'accepted=true'
             printf 'pr=%s\n' "$pr"
@@ -140,20 +149,33 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ steps.authorize.outputs.pr }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
           go run ./tools/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist tools/verification/command-whitelist.txt --cli javdb --github-output "$GITHUB_OUTPUT"
+
+      - name: Resolve effective verification commands
+        id: resolve
+        if: steps.authorize.outputs.accepted == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A comment commands block fully replaces the PR declaration and an
+          # invalid declaration fails closed instead of falling back (§5.3/§5.4).
+          go run ./tools/prmeta \
+            --resolve \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            --comment-file "$RUNNER_TEMP/comment-body.md" \
+            --whitelist tools/verification/command-whitelist.txt \
+            --cli javdb \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Resolve trusted verification platforms
         id: matrix
         if: >-
           steps.authorize.outputs.accepted == 'true' &&
           steps.policy.outputs.template_ok == 'true' &&
-          steps.policy.outputs.commands_ok == 'true' &&
-          steps.policy.outputs.command_count != '0'
+          steps.resolve.outputs.resolve_ok == 'true' &&
+          steps.resolve.outputs.effective_count != '0'
         shell: bash
         run: go run ./tools/platformmatrix --capability verification --github-output "$GITHUB_OUTPUT"
 
@@ -168,10 +190,11 @@ jobs:
           COMMENT_ID: ${{ steps.authorize.outputs.comment_id }}
           HEAD_SHA: ${{ steps.authorize.outputs.head_sha }}
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
-          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
-          COMMANDS_DESC: ${{ steps.policy.outputs.commands_desc }}
-          COMMAND_COUNT: ${{ steps.policy.outputs.command_count }}
-          VERIFICATION_HASH: ${{ steps.policy.outputs.verification_hash }}
+          RESOLVE_OK: ${{ steps.resolve.outputs.resolve_ok }}
+          RESOLVE_DESC: ${{ steps.resolve.outputs.resolve_desc }}
+          OVERRIDE_DECLARED: ${{ steps.resolve.outputs.override_declared }}
+          EFFECTIVE_COUNT: ${{ steps.resolve.outputs.effective_count }}
+          VERIFICATION_HASH: ${{ steps.resolve.outputs.effective_hash }}
         run: |
           set -euo pipefail
 
@@ -220,12 +243,19 @@ jobs:
               -f subjectId="$subject_id" \
               -f content="$2" >/dev/null
           }
+          # §6: identity binds the PR, the HEAD commit, and the commands that
+          # actually run. The hash is the effective hash, so an override is a
+          # genuinely different execution identity from the PR default.
+          verification_identity() {
+            printf '%s:%s:%s' "$PR" "$HEAD_SHA" "$VERIFICATION_HASH"
+          }
           fail_trigger() {
             local reason="$1"
             remove_reaction "$COMMENT_ID" EYES
             add_reaction "$COMMENT_ID" THUMBS_DOWN
-            local state
-            state=$(jq -nc --arg identity "$HEAD_SHA:$VERIFICATION_HASH" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment}]}")
+            local identity
+            identity=$(verification_identity)
+            state=$(jq -nc --arg identity "$identity" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment}]}")
             {
               printf '%s\n' '<!-- pr-test-result -->'
               printf '<!-- pr-test-state:%s -->\n\n' "$state"
@@ -238,20 +268,31 @@ jobs:
             write_comment "$(find_result_comment)" "$RUNNER_TEMP/result-comment.md" >/dev/null
             {
               printf '%s\n' 'execute=false'
-              printf 'identity=%s:%s\n' "$HEAD_SHA" "$VERIFICATION_HASH"
+              printf 'identity=%s\n' "$identity"
             } >> "$GITHUB_OUTPUT"
           }
 
-          if [ "$TEMPLATE_OK" != true ] || [ "$COMMANDS_OK" != true ]; then
-            fail_trigger "The current PR metadata or verification declaration is invalid."
+          if [ "$TEMPLATE_OK" != true ]; then
+            fail_trigger "The current PR metadata is invalid."
             exit 0
           fi
-          if [ "$COMMAND_COUNT" = 0 ]; then
+          # The resolver already accounts for the PR declaration, so a valid
+          # comment override is not vetoed by a stale PR commands block (§5.3),
+          # while a declared-but-invalid override still fails closed (§5.4).
+          if [ "$RESOLVE_OK" != true ]; then
+            if [ "$OVERRIDE_DECLARED" = true ]; then
+              fail_trigger "$RESOLVE_DESC"
+            else
+              fail_trigger "The current PR verification declaration is invalid."
+            fi
+            exit 0
+          fi
+          if [ "$EFFECTIVE_COUNT" = 0 ]; then
             fail_trigger "No live verification commands are declared in the PR Verification section."
             exit 0
           fi
 
-          identity="$HEAD_SHA:$VERIFICATION_HASH"
+          identity=$(verification_identity)
           trigger=$(jq -nc --argjson comment "$COMMENT_ID" "{comment_id:\$comment}")
           comment_id=$(find_result_comment)
           old_state=

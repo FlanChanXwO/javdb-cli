@@ -70,6 +70,37 @@ grep -F 'branches/$base_ref_encoded' "$verification" >/dev/null
 
 # Deleted trigger comments may disappear after /test is accepted. Only that
 # concrete HTTP 404 becomes an empty reaction target; other API errors stay fatal.
+# The trigger decision and the effective commands are owned by the single
+# trusted policy binary; no second parser or shell-side scanning is allowed.
+grep -F -- '--check-trigger --comment-file' "$verification" >/dev/null
+grep -F -- '--resolve' "$verification" >/dev/null
+if grep -F 'trimmed' "$verification" >/dev/null; then
+	echo 'trigger detection must use the trusted policy, not shell trimming' >&2
+	exit 1
+fi
+
+# A declared-but-invalid comment override must fail the /test run closed and
+# must never fall back to the PR body commands.
+grep -F 'OVERRIDE_DECLARED: ${{ steps.resolve.outputs.override_declared }}' "$verification" >/dev/null
+grep -F 'if [ "$OVERRIDE_DECLARED" = true ]; then' "$verification" >/dev/null
+grep -F 'fail_trigger "$RESOLVE_DESC"' "$verification" >/dev/null
+if grep -F 'RESOLVE_DESC:-' "$verification" >/dev/null; then
+	echo 'invalid overrides must not fall back to PR commands' >&2
+	exit 1
+fi
+
+# The executed commands come from the resolver output, never from the PR-body
+# gate, so a comment override actually changes what runs.
+grep -F 'COMMANDS_JSON: ${{ needs.dispatch.outputs.commands }}' "$verification" >/dev/null
+grep -F 'commands: ${{ steps.resolve.outputs.effective_commands }}' "$verification" >/dev/null
+grep -F 'verification_hash: ${{ steps.resolve.outputs.effective_hash }}' "$verification" >/dev/null
+
+# Verification identity binds PR number, HEAD SHA, and the effective commands
+# hash so an override is a distinct execution identity (§6).
+grep -F 'verification_identity()' "$verification" >/dev/null
+grep -F "printf '%s:%s:%s'" "$verification" >/dev/null
+grep -F '"$PR" "$HEAD_SHA" "$VERIFICATION_HASH"' "$verification" >/dev/null
+
 test "$(grep -Fc '(HTTP 404)' "$verification")" -eq 2
 test "$(grep -Fc '*"(HTTP 404)"*) return 0 ;;' "$verification")" -eq 2
 test "$(grep -Fc '[ -n "$subject_id" ] || return 0' "$verification")" -eq 4
