@@ -12,6 +12,7 @@ verification="$workflows/pr-verification.yml"
 metadata="$workflows/pr-metadata.yml"
 smoke_gates="$workflows/pr-smoke-gates.yml"
 clawhub="$workflows/publish-clawhub.yml"
+scope_rules="$repo_root/.github/ci-change-scope.gitignore"
 
 # Optional Quality work uses a job-level condition so GitHub renders the
 # required Quality gate as skipped instead of a successful shell job.
@@ -43,6 +44,7 @@ if grep -F 'platform-smoke.yml' "$metadata" >/dev/null ||
 fi
 grep -F '  pull_request_target:' "$smoke_gates" >/dev/null
 grep -F 'types: [opened, reopened, ready_for_review, synchronize]' "$smoke_gates" >/dev/null
+grep -F '!/.github/workflows/pr-smoke-gates.yml' "$scope_rules" >/dev/null
 grep -F 'name: Platform smoke gate' "$smoke_gates" >/dev/null
 grep -F 'name: Container smoke gate' "$smoke_gates" >/dev/null
 grep -F "needs.classify.outputs.platform_required == 'true'" "$smoke_gates" >/dev/null
