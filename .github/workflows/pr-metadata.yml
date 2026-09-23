@@ -21,6 +21,7 @@ jobs:
       checks: write
       contents: read
       issues: write
+      statuses: write
     steps:
       - name: Resolve the protected base branch tip
         id: base
@@ -62,7 +63,7 @@ jobs:
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
           go run ./tools/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist tools/verification/command-whitelist.txt --cli javdb --github-output "$GITHUB_OUTPUT"
 
-      - name: Publish stable PR gate checks
+      - name: Publish stable PR gate statuses
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,29 +84,18 @@ jobs:
           metadata_is_current() {
             gh api "repos/$REPO/pulls/$PR" | jq -j '.body // ""' > "$current_body"
             if ! cmp -s "$event_body" "$current_body"; then
-              echo 'PR body changed since this event; skipping stale metadata check publication.'
+              echo 'PR body changed since this event; skipping stale metadata status publication.'
               return 1
             fi
           }
-          publish_gate() {
-            name=$1
-            ok=$2
-            summary=$3
-            conclusion=failure
-            [ "$ok" = true ] && conclusion=success
-            payload=$(jq -nc \
-              --arg name "$name" \
-              --arg head_sha "$HEAD_SHA" \
-              --arg conclusion "$conclusion" \
-              --arg details_url "$RUN_URL" \
-              --arg summary "$summary" \
-              '{name:$name, head_sha:$head_sha, status:"completed", conclusion:$conclusion, details_url:$details_url, output:{title:$name, summary:$summary}}')
-            gh api --method POST "repos/$REPO/check-runs" --input - <<<"$payload" >/dev/null
-          }
+          template_state=failure
+          commands_state=failure
+          [ "$TEMPLATE_OK" = true ] && template_state=success
+          [ "$COMMANDS_OK" = true ] && commands_state=success
           metadata_is_current || exit 0
-          publish_gate 'PR template gate' "$TEMPLATE_OK" "$TEMPLATE_DESC"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$template_state" -f context='PR template gate' -f description="${TEMPLATE_DESC:0:140}" -f target_url="$RUN_URL"
           metadata_is_current || exit 0
-          publish_gate 'PR commands gate' "$COMMANDS_OK" "$COMMANDS_DESC"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$commands_state" -f context='PR commands gate' -f description="${COMMANDS_DESC:0:140}" -f target_url="$RUN_URL"
 
       - name: Fetch pull request head for trusted smoke classification
         id: smoke_head
