@@ -23,6 +23,6 @@ Substitute the real body file. A passing local parser proves syntax only, not li
 
 Push/create/update only the authorized branch/PR. Verify checks, reviews, and mergeability on the current head SHA and use [javdb-cli-ci](../javdb-cli-ci/SKILL.md) for failures. Report passed, failed, pending, and skipped distinctly. Never force-push, merge, tag, or publish because the PR text is valid.
 
-Include the head's commit statuses as well as check runs. Platform/Container worker runs execute under the trusted base ref; follow their aggregate status links instead of treating the absence of a PR-head workflow run as missing smoke evidence. Identify not-required skips separately from executed passes.
+Include the head's commit statuses as well as check runs. Platform/Container worker runs execute under the trusted base ref; follow the smoke Check Run details URL instead of treating the absence of a PR-head workflow run as missing smoke evidence. Keep skipped checks distinct from executed passes.
 
 Return the PR URL, commit, validation, and unresolved blockers. Local self-review does not count as a maintainer approval.
