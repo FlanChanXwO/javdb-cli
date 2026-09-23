@@ -31,20 +31,12 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || inputs.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
-
-      - name: Require the requested source
-        if: ${{ inputs.head_sha != '' }}
-        shell: bash
-        env:
-          HEAD_SHA: ${{ inputs.head_sha }}
-        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          cache: false
 
       - name: Resolve native platform matrix
         id: matrix
@@ -69,7 +61,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+
+      - name: Require the requested source
+        if: ${{ inputs.head_sha != '' }}
+        shell: bash
+        env:
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
 
       - name: Require the declared native target
         shell: bash
@@ -110,3 +109,60 @@ jobs:
           test -f "$smoked_binary"
           "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
           grep -F "javdb version ${version}" "$RUNNER_TEMP/javdb-version.txt"
+
+  publish:
+    if: ${{ always() && inputs.head_sha != '' }}
+    needs: [setup, worker]
+    name: Publish platform smoke result
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      statuses: write
+    steps:
+      - name: Publish aggregate platform smoke status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          SETUP_RESULT: ${{ needs.setup.result }}
+          WORKER_RESULT: ${{ needs.worker.result }}
+        run: |
+          set -euo pipefail
+          state=failure
+          description='Platform smoke failed on one or more required platforms.'
+          failures=
+          if [ "$SETUP_RESULT" != success ]; then
+            description='Platform configuration could not be resolved.'
+          elif [ "$WORKER_RESULT" = success ]; then
+            state=success
+            description='All required native platforms passed.'
+          else
+            failures=$(gh api --method GET "repos/$REPO/actions/runs/$GITHUB_RUN_ID/jobs" \
+              -f filter=all \
+              -f per_page=100 \
+              --jq '.jobs[] | select(.name | startswith("Native platform - ")) | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
+            if [ -n "$failures" ]; then
+              message=$(printf '%s\n' "$failures" | paste -sd ';' -)
+              description="Platform smoke failed: $message"
+            fi
+          fi
+          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state="$state" \
+            -f context='Platform smoke gate' \
+            -f description="${description:0:140}" \
+            -f target_url="$run_url" >/dev/null
+          if [ "$state" = success ]; then
+            printf '%s\n' '### Platform smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Platform smoke failed::$description"
+            {
+              printf '%s\n' '### Platform smoke failed' ''
+              if [ -n "$failures" ]; then
+                printf '%s\n' "$failures" | sed 's/^/- /'
+              else
+                printf '%s\n' "- $description"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
