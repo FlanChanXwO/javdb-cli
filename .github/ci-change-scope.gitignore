@@ -42,3 +42,5 @@
 !/tools/platformmatrix/**
 !/.github/workflows/container-smoke.yml
 !/scripts/build-release.sh
+
+# E2E probe: this temporary branch verifies Quality-only scope and will not be merged.
