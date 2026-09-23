@@ -37,6 +37,13 @@ grep -F 'actions: write' "$metadata" >/dev/null
 grep -F 'checks: write' "$metadata" >/dev/null
 grep -F 'platform-smoke.yml' "$metadata" >/dev/null
 grep -F 'container-smoke.yml' "$metadata" >/dev/null
+grep -F "publish_gate 'PR template gate'" "$metadata" >/dev/null
+grep -F "publish_gate 'PR commands gate'" "$metadata" >/dev/null
+if grep -F 'statuses: write' "$metadata" >/dev/null ||
+	grep -F 'statuses/$HEAD_SHA' "$metadata" >/dev/null; then
+	echo 'PR metadata gates must use app-bound Check Runs, not legacy commit statuses' >&2
+	exit 1
+fi
 if grep -F 'return_run_details' "$metadata" >/dev/null; then
 	echo '2026-03-10 workflow dispatch must not send removed return_run_details' >&2
 	exit 1
