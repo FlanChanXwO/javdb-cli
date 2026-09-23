@@ -44,7 +44,7 @@ func TestReleaseHandoffBindsIdentityAndChecksums(t *testing.T) {
 	)
 	appendPlatformArtifacts(t, containers, version, "javdb-cli-linux-amd64.tar")
 
-	output := filepath.Join(t.TempDir(), "release-handoff.json")
+	output := filepath.Join(t.TempDir(), "release", "release-handoff.json")
 	handoff, err := writeReleaseHandoff(releaseHandoffInput{
 		Repository:   "FlanChanXwO/javdb-cli",
 		RunID:        4242,

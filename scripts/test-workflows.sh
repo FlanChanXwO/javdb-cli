@@ -98,6 +98,9 @@ grep -F './tools/platformmatrix --capability release' "$release" >/dev/null
 # Release artifacts are built once, bound to an immutable handoff, then reused.
 test "$(grep -Fc 'sh scripts/build-platform.sh' "$release")" -eq 1
 test "$(grep -Fc 'docker build' "$release")" -eq 1
+release_dir_line=$(grep -nF 'mkdir -p release' "$release" | head -1 | cut -d: -f1)
+handoff_line=$(grep -nF 'go run ./tools/release write-handoff' "$release" | head -1 | cut -d: -f1)
+test -n "$release_dir_line" && test -n "$handoff_line" && test "$release_dir_line" -lt "$handoff_line"
 grep -F 'write-handoff' "$release" >/dev/null
 grep -F -- '--output release/release-handoff.json' "$release" >/dev/null
 grep -F 'verify-handoff-set' "$release" >/dev/null
@@ -140,6 +143,12 @@ fi
 
 # ClawHub consumes the common handoff and exposes its token only at publish time.
 grep -F 'verify-handoff-identity' "$clawhub" >/dev/null
+clawhub_checkout_line=$(grep -nF 'uses: actions/checkout@' "$clawhub" | head -1 | cut -d: -f1)
+clawhub_setup_go_line=$(grep -nF 'uses: actions/setup-go@' "$clawhub" | head -1 | cut -d: -f1)
+clawhub_identity_line=$(grep -nF 'go run ./tools/release verify-handoff-identity' "$clawhub" | head -1 | cut -d: -f1)
+test -n "$clawhub_checkout_line" && test -n "$clawhub_setup_go_line" && test -n "$clawhub_identity_line"
+test "$clawhub_checkout_line" -lt "$clawhub_identity_line"
+test "$clawhub_setup_go_line" -lt "$clawhub_identity_line"
 grep -F 'clawhub@0.23.1' "$clawhub" >/dev/null
 grep -F -- '--dry-run' "$clawhub" >/dev/null
 test "$(grep -Fc 'CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}' "$clawhub")" -eq 1

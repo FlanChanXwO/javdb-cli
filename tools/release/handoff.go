@@ -102,6 +102,9 @@ func writeReleaseHandoff(input releaseHandoffInput) (releaseHandoff, error) {
 		return releaseHandoff{}, err
 	}
 	if input.Output != "" {
+		if err := os.MkdirAll(filepath.Dir(input.Output), 0o755); err != nil {
+			return releaseHandoff{}, fmt.Errorf("create handoff output directory: %w", err)
+		}
 		if err := os.WriteFile(input.Output, append(encoded, '\n'), 0o600); err != nil {
 			return releaseHandoff{}, err
 		}
