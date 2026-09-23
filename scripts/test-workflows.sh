@@ -98,6 +98,9 @@ grep -F './tools/platformmatrix --capability release' "$release" >/dev/null
 # Release artifacts are built once, bound to an immutable handoff, then reused.
 test "$(grep -Fc 'sh scripts/build-platform.sh' "$release")" -eq 1
 test "$(grep -Fc 'docker build' "$release")" -eq 1
+release_dir_line=$(grep -nF 'mkdir -p release' "$release" | head -1 | cut -d: -f1)
+handoff_line=$(grep -nF 'go run ./tools/release write-handoff' "$release" | head -1 | cut -d: -f1)
+test -n "$release_dir_line" && test -n "$handoff_line" && test "$release_dir_line" -lt "$handoff_line"
 grep -F 'write-handoff' "$release" >/dev/null
 grep -F -- '--output release/release-handoff.json' "$release" >/dev/null
 grep -F 'verify-handoff-set' "$release" >/dev/null
