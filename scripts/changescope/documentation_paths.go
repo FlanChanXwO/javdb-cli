@@ -13,8 +13,8 @@ var documentationOnlyPolicy = documentationPathPolicy{
 		"CONTRIBUTING.md":                  {},
 		"CHANGELOG.md":                     {},
 		".gitignore":                       {},
-		".pre-commit-config.yaml":           {},
-		".github/CODEOWNERS":                {},
+		".pre-commit-config.yaml":          {},
+		".github/CODEOWNERS":               {},
 		".github/PULL_REQUEST_TEMPLATE.md": {},
 	},
 	directoryPrefixes: []string{
