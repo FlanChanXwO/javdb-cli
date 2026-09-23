@@ -122,11 +122,24 @@ jobs:
           printf '%s\n' javdb-cli > staging-formula/formula-name
 
       - name: Prepare the exact Homebrew formula commit
+        id: formula
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
+          printf 'publish=false\n' >> "$GITHUB_OUTPUT"
+          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("refs/tags/"; "")' \
+            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+            | sort -V | tail -n 1)
+          test -n "$latest_stable_tag"
+          if [ "$RELEASE_TAG" != "$latest_stable_tag" ]; then
+            printf 'Skipping Homebrew publication: %s is not the newest stable tag (%s).\n' \
+              "$RELEASE_TAG" "$latest_stable_tag"
+            exit 0
+          fi
           test "$(cat staging-formula/formula-name)" = javdb-cli
           test -f staging-formula/javdb-cli.rb
           tap_dir="$RUNNER_TEMP/homebrew-tap"
@@ -136,19 +149,34 @@ jobs:
           mkdir -p "$tap_dir/Formula"
           cp staging-formula/javdb-cli.rb "$tap_dir/Formula/javdb-cli.rb"
           git -C "$tap_dir" add -- Formula/javdb-cli.rb
+          if git -C "$tap_dir" diff --cached --quiet -- Formula/javdb-cli.rb; then
+            printf 'Formula already matches %s; nothing to publish.\n' "$RELEASE_TAG"
+            exit 0
+          fi
           test "$(git -C "$tap_dir" diff --cached --name-only)" = Formula/javdb-cli.rb
           git -C "$tap_dir" commit -m "$RELEASE_TAG: update javdb-cli formula"
-          if git -C "$tap_dir" diff --quiet HEAD^ HEAD -- Formula/javdb-cli.rb; then
-            printf 'Formula already matches %s; nothing to publish.\n' "$RELEASE_TAG"
-          fi
+          printf 'publish=true\n' >> "$GITHUB_OUTPUT"
 
       # §23：该 publisher 只持有 Homebrew tap 的部署密钥。
       - name: Push the verified Homebrew formula
+        if: steps.formula.outputs.publish == 'true'
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
+          latest_stable_tag=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | sub("refs/tags/"; "")' \
+            | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+            | sort -V | tail -n 1)
+          test -n "$latest_stable_tag"
+          if [ "$RELEASE_TAG" != "$latest_stable_tag" ]; then
+            printf 'Skipping Homebrew publication: %s is not the newest stable tag (%s).\n' \
+              "$RELEASE_TAG" "$latest_stable_tag"
+            exit 0
+          fi
           test -n "$HOMEBREW_TAP_DEPLOY_KEY"
           umask 077
           key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
