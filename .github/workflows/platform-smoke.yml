@@ -13,11 +13,6 @@ on:
         required: false
         default: ''
         type: string
-      check_run_id:
-        description: PR gate check run to complete
-        required: false
-        default: ''
-        type: string
 
 concurrency:
   group: platform-smoke-worker-${{ inputs.pr_number || github.ref }}
@@ -114,61 +109,3 @@ jobs:
           test -f "$smoked_binary"
           "./$smoked_binary" --version | tee "$RUNNER_TEMP/javdb-version.txt"
           grep -F "javdb version ${version}" "$RUNNER_TEMP/javdb-version.txt"
-
-  publish:
-    if: ${{ always() && inputs.check_run_id != '' }}
-    needs: [setup, worker]
-    name: Publish platform smoke result
-    runs-on: ubuntu-24.04
-    permissions:
-      actions: read
-      checks: write
-    steps:
-      - name: Publish aggregate platform smoke status
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          SETUP_RESULT: ${{ needs.setup.result }}
-          WORKER_RESULT: ${{ needs.worker.result }}
-        run: |
-          set -euo pipefail
-          state=failure
-          description='Platform smoke failed on one or more required platforms.'
-          failures=
-          if [ "$SETUP_RESULT" != success ]; then
-            description='Platform configuration could not be resolved.'
-          elif [ "$WORKER_RESULT" = success ]; then
-            state=success
-            description='All required native platforms passed.'
-          else
-            failures=$(gh api --method GET "repos/$REPO/actions/runs/$GITHUB_RUN_ID/jobs" \
-              -f filter=all \
-              -f per_page=100 \
-              --jq '.jobs[] | select(.name | startswith("Native platform - ")) | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
-            if [ -n "$failures" ]; then
-              message=$(printf '%s\n' "$failures" | paste -sd ';' -)
-              description="Platform smoke failed: $message"
-            fi
-          fi
-          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
-          gh api --method PATCH "repos/$REPO/check-runs/$CHECK_RUN_ID" \
-            -f status=completed \
-            -f conclusion="$state" \
-            -f details_url="$run_url" \
-            -f 'output[title]=Platform smoke gate' \
-            -f "output[summary]=$description" >/dev/null
-          if [ "$state" = success ]; then
-            printf '%s\n' '### Platform smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error title=Platform smoke failed::$description"
-            {
-              printf '%s\n' '### Platform smoke failed' ''
-              if [ -n "$failures" ]; then
-                printf '%s\n' "$failures" | sed 's/^/- /'
-              else
-                printf '%s\n' "- $description"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
