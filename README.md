@@ -328,3 +328,5 @@ large or compatibility-sensitive changes first.
 
 - **Website:** [javdb.com](https://javdb.com)
 - **App Download:** [GitHub Releases](https://github.com/bdvajstudio/javdb/releases)
+
+<!-- temporary CI docs-only audit -->
