@@ -1,0 +1,183 @@
+name: PR smoke gates
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: pr-smoke-gates-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Classify smoke scope
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.outputs.outputs.ready }}
+      platform_required: ${{ steps.outputs.outputs.platform_required }}
+      container_required: ${{ steps.outputs.outputs.container_required }}
+      base_ref: ${{ steps.outputs.outputs.base_ref }}
+      head_sha: ${{ steps.outputs.outputs.head_sha }}
+      pr_number: ${{ steps.outputs.outputs.pr_number }}
+    steps:
+      - name: Resolve the protected base branch tip
+        id: base
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
+          test -n "$base_ref"
+          test "$base_ref" != null
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
+          test -n "$sha"
+          printf 'ref=%s\n' "$base_ref" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.base.outputs.sha }}
+
+      - name: Fetch pull request head for trusted smoke classification
+        id: head
+        continue-on-error: true
+        shell: bash
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"
+          test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
+
+      - name: Classify smoke scope with trusted policy
+        if: ${{ steps.head.outcome == 'success' }}
+        id: scope
+        continue-on-error: true
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
+      - name: Export trusted smoke inputs
+        id: outputs
+        if: ${{ always() }}
+        shell: bash
+        env:
+          HEAD_OUTCOME: ${{ steps.head.outcome }}
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+          PLATFORM_REQUIRED: ${{ steps.scope.outputs.platform_required }}
+          CONTAINER_REQUIRED: ${{ steps.scope.outputs.container_required }}
+          BASE_REF: ${{ steps.base.outputs.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          ready=false
+          if [ "$HEAD_OUTCOME" = success ] && [ "$SCOPE_OUTCOME" = success ]; then
+            ready=true
+          fi
+          printf 'ready=%s\n' "$ready" >> "$GITHUB_OUTPUT"
+          printf 'platform_required=%s\n' "${PLATFORM_REQUIRED:-false}" >> "$GITHUB_OUTPUT"
+          printf 'container_required=%s\n' "${CONTAINER_REQUIRED:-false}" >> "$GITHUB_OUTPUT"
+          printf 'base_ref=%s\n' "$BASE_REF" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          printf 'pr_number=%s\n' "$PR" >> "$GITHUB_OUTPUT"
+
+  platform_smoke_gate:
+    name: Platform smoke gate
+    needs: classify
+    if: >-
+      ${{
+        always() &&
+        (needs.classify.outputs.ready != 'true' || needs.classify.outputs.platform_required == 'true')
+      }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Require trusted smoke classification
+        env:
+          SMOKE_READY: ${{ needs.classify.outputs.ready }}
+        run: test "$SMOKE_READY" = true
+
+      - name: Run trusted platform smoke workers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ needs.classify.outputs.base_ref }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+          PR: ${{ needs.classify.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg ref "$BASE_REF" \
+            --arg pr_number "$PR" \
+            --arg head_sha "$HEAD_SHA" \
+            '{ref:$ref, inputs:{pr_number:$pr_number, head_sha:$head_sha}}')
+          response=$(gh api --method POST \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$REPO/actions/workflows/platform-smoke.yml/dispatches" \
+            --input - <<<"$payload")
+          RUN_ID=$(printf '%s' "$response" | jq -r '.workflow_run_id')
+          case "$RUN_ID" in
+            ''|null|*[!0-9]*) echo 'Trusted platform smoke run id was not returned.' >&2; exit 1 ;;
+          esac
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status
+
+  container_smoke_gate:
+    name: Container smoke gate
+    needs: classify
+    if: >-
+      ${{
+        always() &&
+        (needs.classify.outputs.ready != 'true' || needs.classify.outputs.container_required == 'true')
+      }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Require trusted smoke classification
+        env:
+          SMOKE_READY: ${{ needs.classify.outputs.ready }}
+        run: test "$SMOKE_READY" = true
+
+      - name: Run trusted container smoke workers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ needs.classify.outputs.base_ref }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+          PR: ${{ needs.classify.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg ref "$BASE_REF" \
+            --arg pr_number "$PR" \
+            --arg head_sha "$HEAD_SHA" \
+            '{ref:$ref, inputs:{pr_number:$pr_number, head_sha:$head_sha}}')
+          response=$(gh api --method POST \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$REPO/actions/workflows/container-smoke.yml/dispatches" \
+            --input - <<<"$payload")
+          RUN_ID=$(printf '%s' "$response" | jq -r '.workflow_run_id')
+          case "$RUN_ID" in
+            ''|null|*[!0-9]*) echo 'Trusted container smoke run id was not returned.' >&2; exit 1 ;;
+          esac
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status

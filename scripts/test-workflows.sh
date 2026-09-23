@@ -10,6 +10,7 @@ container="$workflows/container-smoke.yml"
 release="$workflows/release.yml"
 verification="$workflows/pr-verification.yml"
 metadata="$workflows/pr-metadata.yml"
+smoke_gates="$workflows/pr-smoke-gates.yml"
 clawhub="$workflows/publish-clawhub.yml"
 
 # Optional Quality work uses a job-level condition so GitHub renders the
@@ -29,29 +30,37 @@ for forbidden in 'display:"not required"' 'Mark verification as not required' 'm
 	fi
 done
 
-# Untrusted pull_request code stays read-only. The trusted pull_request_target
-# policy workflow owns worker dispatch, while real Actions jobs are the two
-# stable required smoke gates so GitHub can render native skipped conclusions.
+# Untrusted pull_request code stays read-only. Metadata edits stay isolated
+# from the trusted head-change workflow that owns the two required smoke jobs.
 grep -F '  pull_request:' "$quality" >/dev/null
 grep -F '  pull_request_target:' "$metadata" >/dev/null
-grep -F 'actions: write' "$metadata" >/dev/null
-grep -F 'platform-smoke.yml' "$metadata" >/dev/null
-grep -F 'container-smoke.yml' "$metadata" >/dev/null
-grep -F 'Platform smoke metadata no-op' "$metadata" >/dev/null
-grep -F 'Container smoke metadata no-op' "$metadata" >/dev/null
-grep -F "needs.validate.outputs.platform_required == 'true'" "$metadata" >/dev/null
-grep -F "needs.validate.outputs.container_required == 'true'" "$metadata" >/dev/null
-test "$(grep -Fc 'gh run watch "$RUN_ID" --repo "$REPO" --exit-status' "$metadata")" -eq 2
-if grep -F 'return_run_details' "$metadata" >/dev/null; then
+grep -F 'types: [opened, edited, reopened, ready_for_review, synchronize]' "$metadata" >/dev/null
+if grep -F 'platform-smoke.yml' "$metadata" >/dev/null ||
+	grep -F 'container-smoke.yml' "$metadata" >/dev/null ||
+	grep -F 'actions: write' "$metadata" >/dev/null; then
+	echo 'PR metadata must not own trusted smoke dispatch' >&2
+	exit 1
+fi
+grep -F '  pull_request_target:' "$smoke_gates" >/dev/null
+grep -F 'types: [opened, reopened, ready_for_review, synchronize]' "$smoke_gates" >/dev/null
+grep -F 'name: Platform smoke gate' "$smoke_gates" >/dev/null
+grep -F 'name: Container smoke gate' "$smoke_gates" >/dev/null
+grep -F "needs.classify.outputs.platform_required == 'true'" "$smoke_gates" >/dev/null
+grep -F "needs.classify.outputs.container_required == 'true'" "$smoke_gates" >/dev/null
+test "$(grep -Fc 'gh run watch "$RUN_ID" --repo "$REPO" --exit-status' "$smoke_gates")" -eq 2
+if grep -F 'edited' "$smoke_gates" >/dev/null; then
+	echo 'required smoke workflow must not run for PR metadata edits' >&2
+	exit 1
+fi
+if grep -F 'return_run_details' "$smoke_gates" >/dev/null; then
 	echo '2026-03-10 workflow dispatch must not send removed return_run_details' >&2
 	exit 1
 fi
-grep -F "steps.smoke_head.outcome == 'success'" "$metadata" >/dev/null
-grep -F 'git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"' "$metadata" >/dev/null
-grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$metadata" >/dev/null
+grep -F 'git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"' "$smoke_gates" >/dev/null
+grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$smoke_gates" >/dev/null
 test "$(grep -Fc 'metadata_is_current || exit 0' "$metadata")" -eq 2
 test "$(grep -Fc 'if ! cmp -s "$RUNNER_TEMP/event-pr-body-state.md" "$RUNNER_TEMP/current-pr-body-state.md"; then' "$metadata")" -eq 1
-if grep -F 'check-runs' "$metadata" >/dev/null || grep -F 'checks: write' "$metadata" >/dev/null; then
+if grep -F 'check-runs' "$smoke_gates" >/dev/null || grep -F 'checks: write' "$smoke_gates" >/dev/null; then
 	echo 'required smoke gates must be real Actions jobs, not manually published Check Runs' >&2
 	exit 1
 fi
