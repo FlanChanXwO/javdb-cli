@@ -12,12 +12,29 @@ verification="$workflows/pr-verification.yml"
 metadata="$workflows/pr-metadata.yml"
 clawhub="$workflows/publish-clawhub.yml"
 
+# Optional Quality work uses a job-level condition so GitHub renders the
+# required Quality gate as skipped instead of a successful shell job.
+grep -F 'needs: scope' "$quality" >/dev/null
+grep -F "if: \${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}" "$quality" >/dev/null
+grep -F 'name: Require successful scope classification' "$quality" >/dev/null
+if grep -F 'steps.scope.outputs.docs_only' "$quality" >/dev/null; then
+	echo 'Quality gate must use a real job-level skip' >&2
+	exit 1
+fi
+grep -F "if: \${{ needs.dispatch.result == 'success' && needs.dispatch.outputs.execute == 'true' }}" "$verification" >/dev/null
+for forbidden in 'display:"not required"' 'Mark verification as not required' 'matrix.required'; do
+	if grep -F "$forbidden" "$verification" >/dev/null; then
+		echo "verification workflow retains fake-skip compatibility path: $forbidden" >&2
+		exit 1
+	fi
+done
+
 # Untrusted pull_request code stays read-only. The trusted pull_request_target
 # policy workflow owns worker dispatch and publishes the two stable smoke gates.
 grep -F '  pull_request:' "$quality" >/dev/null
 grep -F '  pull_request_target:' "$metadata" >/dev/null
 grep -F 'actions: write' "$metadata" >/dev/null
-grep -F 'statuses: write' "$metadata" >/dev/null
+grep -F 'checks: write' "$metadata" >/dev/null
 grep -F 'platform-smoke.yml' "$metadata" >/dev/null
 grep -F 'container-smoke.yml' "$metadata" >/dev/null
 if grep -F 'return_run_details' "$metadata" >/dev/null; then
@@ -31,7 +48,7 @@ grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$m
 test "$(grep -Fc 'metadata_is_current || exit 0' "$metadata")" -eq 2
 test "$(grep -Fc 'if ! cmp -s "$RUNNER_TEMP/event-pr-body-state.md" "$RUNNER_TEMP/current-pr-body-state.md"; then' "$metadata")" -eq 1
 
-pending_line=$(grep -nF 'post_status pending "$context"' "$metadata" | head -1 | cut -d: -f1)
+pending_line=$(grep -nF 'create_check "$context" in_progress' "$metadata" | head -1 | cut -d: -f1)
 dispatch_line=$(grep -nF '"repos/$REPO/actions/workflows/$workflow/dispatches"' "$metadata" | head -1 | cut -d: -f1)
 test -n "$pending_line"
 test -n "$dispatch_line"
@@ -47,14 +64,25 @@ fi
 # do not become PR checks and execute untrusted PR code with read-only tokens.
 grep -F '  workflow_dispatch:' "$platform" >/dev/null
 grep -F '  workflow_dispatch:' "$container" >/dev/null
-grep -F 'statuses: write' "$platform" >/dev/null
-grep -F 'statuses: write' "$container" >/dev/null
+grep -F 'checks: write' "$platform" >/dev/null
+grep -F 'checks: write' "$container" >/dev/null
 test "$(grep -Fc 'ref: ${{ inputs.pr_number' "$platform")" -eq 1
 test "$(grep -Fc 'ref: ${{ inputs.pr_number' "$container")" -eq 1
 for worker in "$platform" "$container"; do
 	grep -F 'name: Require the requested source' "$worker" >/dev/null
 	grep -F 'test "$(git rev-parse HEAD)" = "$HEAD_SHA"' "$worker" >/dev/null
+	grep -F '"repos/$REPO/check-runs/$CHECK_RUN_ID"' "$worker" >/dev/null
+	grep -F -- '-f status=completed' "$worker" >/dev/null
+	if grep -F 'statuses: write' "$worker" >/dev/null ||
+		grep -F 'statuses/$HEAD_SHA' "$worker" >/dev/null; then
+		echo "smoke worker must not retain commit-status compatibility publication: $worker" >&2
+		exit 1
+	fi
 done
+grep -F '"repos/$REPO/check-runs"' "$metadata" >/dev/null
+grep -F "create_check 'Platform smoke gate' completed skipped" "$metadata" >/dev/null
+grep -F "create_check 'Container smoke gate' completed skipped" "$metadata" >/dev/null
+grep -F -- '--arg check_run_id "$check_run_id"' "$metadata" >/dev/null
 if grep -F '  pull_request:' "$platform" >/dev/null ||
 	grep -F '  pull_request:' "$container" >/dev/null; then
 	echo 'smoke worker workflows must not emit pull-request checks' >&2

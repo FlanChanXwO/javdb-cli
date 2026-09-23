@@ -42,7 +42,7 @@ Start with `go test ./path/to/owner -run '^TestName$' -count=1`, substituting th
 
 Format affected Go with `gofmt` and inspect its diff. Follow `.pre-commit-config.yaml`; run installed hooks when applicable and report unavailable tooling rather than installing it silently. JavDB is a pure-Go build; no Rust or Pixiv staticlib step belongs here. The local binary is `build/javdb` (`.exe` on Windows).
 
-The workflow's `scripts/changescope` policy owns docs-only classification; root `AGENTS.md` is not automatically exempt. `ci.yml` owns Quality; trusted `pr-metadata.yml` classifies PRs and dispatches base-ref Platform/Container workers, whose final statuses belong to the exact PR head. Ordinary branch/main pushes do not run CI; matching tags retain the current Quality/release path. Run the required checks for the actual classifier result. A fixture for workflow permissions is not proof of GitHub environment/secret settings or native platform execution.
+CI scope is determined by `.github/ci-change-scope.gitignore` through `scripts/classify-change-scope.sh`. `ci.yml` owns Quality; trusted `pr-metadata.yml` classifies PRs and dispatches base-ref Platform/Container workers. Required smoke gates are Check Runs on the exact PR head and use a real skipped conclusion when their scope is not required. Ordinary branch/main pushes do not run CI; matching tags retain the current Quality/release path. Run the required checks for the actual classifier result. A fixture for workflow permissions is not proof of GitHub environment/secret settings or native platform execution.
 
 ## Contracts worth testing when touched
 
