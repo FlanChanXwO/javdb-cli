@@ -4,7 +4,7 @@ The local `~/.javdb-cli/auth.json` contains passwords and JWTs; supported POSIX 
 
 For an explicit login request, let the user run `javdb auth login` in a private interactive terminal. Missing username/password arguments trigger prompts. Start it through an agent only when the user can actually type into that terminal; otherwise report the interaction limitation rather than leaving a waiting process.
 
-Only when the user already supplied credentials in the conversation and explicitly requests their use may the agent run `javdb auth login -u USER -p PASS`. Explain first that the arguments enter the tool/process record; safely quote them and never repeat the password/token in results. Prefer the private terminal for credentials not already disclosed.
+If the username is already known, `javdb auth login -u USER` may be used, but always omit `-p`/`--password` and enter the password through the hidden interactive prompt. Never transmit passwords through command arguments, tool calls, logs, or results.
 
 `javdb auth list` omits tokens and is appropriate only for an account decision or explicit request. `javdb auth check --json` makes a real API request. A failed check does not authorize automatic login or account/host changes.
 
