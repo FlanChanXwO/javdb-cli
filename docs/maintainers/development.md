@@ -236,11 +236,13 @@ v0.6.1 是发布桥：交付签名清单更新器；旧兼容阶段已经结束�
 1. Quality workflow 在 PR 与 stable release tag push 上运行；PR 中仅限 README、贡献指南、changelog、
    docs、skills、repo-local skills 和 Issue/PR template 的改动走文档门禁，其他 PR 与 release tag
    运行格式、测试、vet、构建和静态脚本门禁。
-2. Platform smoke workflow 对代码改动并行派发六个原生 runner，测试、打包、解包并执行
-   `javdb --version`。worker 由 `workflow_dispatch` 承载，不进入 PR Checks；PR 只显示
-   `Platform smoke gate`，失败时在该 gate 中列出失败或不可用的平台。纯文档改动不派发 worker。
-3. Container smoke 采用相同的 gate/worker 模式，只对容器相关改动并行验证
-   `linux/amd64` 与 `linux/arm64`；PR 只显示 `Container smoke gate`。
+2. `pr-metadata.yml` 的 `pull_request_target` 受信流程只从 base branch 读取策略，
+   对 PR diff 做 smoke 范围分类，并发布 `Platform smoke gate` / `Container smoke gate`。
+   需要实际验证时，它只负责 dispatch PR base 分支上的 `workflow_dispatch` worker；不会执行 PR 代码。
+3. Platform worker 使用受信 base matrix 并行覆盖六个原生 runner；只有 matrix worker checkout PR head，
+   且 token 仅 `contents: read`。独立 publish job 不 checkout PR，只根据 worker 结果写最终 status，
+   失败时列出失败平台。Container worker 采用同样的隔离模型，并行验证
+   `linux/amd64` 与 `linux/arm64`。纯文档或无容器影响的改动直接发布成功 skip status。
 4. feature PR 不填写 release-note metadata；`changelog/unreleased/` 仅是可选人工草稿区。release-prep PR
    直接编辑 `changelog/vX.Y.Z/{en.md,zh-CN.md}`，同步两个 changelog 索引，再运行 `validate`。
 5. `vX.Y.Z` tag 必须不可变且可追溯到 `main`。Release workflow 校验版本化双语 notes 与来源，
