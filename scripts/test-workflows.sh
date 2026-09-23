@@ -150,6 +150,12 @@ fi
 
 # ClawHub consumes the common handoff and exposes its token only at publish time.
 grep -F 'verify-handoff-identity' "$clawhub" >/dev/null
+clawhub_checkout_line=$(grep -nF 'uses: actions/checkout@' "$clawhub" | head -1 | cut -d: -f1)
+clawhub_setup_go_line=$(grep -nF 'uses: actions/setup-go@' "$clawhub" | head -1 | cut -d: -f1)
+clawhub_identity_line=$(grep -nF 'go run ./tools/release verify-handoff-identity' "$clawhub" | head -1 | cut -d: -f1)
+test -n "$clawhub_checkout_line" && test -n "$clawhub_setup_go_line" && test -n "$clawhub_identity_line"
+test "$clawhub_checkout_line" -lt "$clawhub_identity_line"
+test "$clawhub_setup_go_line" -lt "$clawhub_identity_line"
 grep -F 'clawhub@0.23.1' "$clawhub" >/dev/null
 grep -F -- '--dry-run' "$clawhub" >/dev/null
 test "$(grep -Fc 'CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}' "$clawhub")" -eq 1
