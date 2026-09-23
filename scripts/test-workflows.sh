@@ -197,6 +197,7 @@ grep -F '<!-- pr-test-result -->' "$verification" >/dev/null
 grep -F -- '--check-trigger --comment-file' "$verification" >/dev/null
 grep -F -- '--resolve' "$verification" >/dev/null
 grep -F 'COMMANDS_JSON:' "$verification" >/dev/null
+grep -F "if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && contains(github.event.comment.body, '/test'))" "$verification" >/dev/null
 if grep -F "jq -r '.base.sha'" "$verification" >/dev/null; then
 	echo 'PR verification must execute trusted code from the current base branch' >&2
 	exit 1
@@ -204,6 +205,13 @@ fi
 grep -F "jq -r '.base.ref'" "$verification" >/dev/null
 
 # GitHub-owned actions remain pinned to immutable SHAs.
+if grep -R -F 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5' "$workflows" >/dev/null ||
+	grep -R -F 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' "$workflows" >/dev/null; then
+	echo 'checkout/setup-go must not retain the Node.js 20 action versions' >&2
+	exit 1
+fi
+grep -R -F 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' "$workflows" >/dev/null
+grep -R -F 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e' "$workflows" >/dev/null
 if grep -RhnE '^[[:space:]]*-[[:space:]]+uses:[[:space:]]+actions/[^@]+@' "$workflows" |
 	grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' >/dev/null; then
 	echo 'GitHub-owned actions must be pinned to full commit SHAs' >&2

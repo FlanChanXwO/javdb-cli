@@ -19,7 +19,7 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch verification
-    if: github.event_name == 'workflow_dispatch' || github.event.issue.pull_request
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request && contains(github.event.comment.body, '/test'))
     concurrency:
       group: pr-test-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
       cancel-in-progress: false
@@ -40,11 +40,11 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       identity: ${{ steps.coordinate.outputs.identity }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
           cache: true
@@ -359,13 +359,13 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: _trusted
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: _trusted/go.mod
           cache: false
@@ -378,14 +378,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/verification-result"
           go run ./tools/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ needs.dispatch.outputs.head_repo }}
           ref: ${{ needs.dispatch.outputs.head_sha }}
           path: pr
           persist-credentials: false
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: pr/go.mod
           cache: true
@@ -438,12 +438,12 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
           cache: true
