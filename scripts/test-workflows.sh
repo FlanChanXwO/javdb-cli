@@ -30,29 +30,31 @@ for forbidden in 'display:"not required"' 'Mark verification as not required' 'm
 done
 
 # Untrusted pull_request code stays read-only. The trusted pull_request_target
-# policy workflow owns worker dispatch and publishes the two stable smoke gates.
+# policy workflow owns worker dispatch, while real Actions jobs are the two
+# stable required smoke gates so GitHub can render native skipped conclusions.
 grep -F '  pull_request:' "$quality" >/dev/null
 grep -F '  pull_request_target:' "$metadata" >/dev/null
 grep -F 'actions: write' "$metadata" >/dev/null
-grep -F 'checks: write' "$metadata" >/dev/null
 grep -F 'platform-smoke.yml' "$metadata" >/dev/null
 grep -F 'container-smoke.yml' "$metadata" >/dev/null
+grep -F 'Platform smoke metadata no-op' "$metadata" >/dev/null
+grep -F 'Container smoke metadata no-op' "$metadata" >/dev/null
+grep -F "needs.validate.outputs.platform_required == 'true'" "$metadata" >/dev/null
+grep -F "needs.validate.outputs.container_required == 'true'" "$metadata" >/dev/null
+test "$(grep -Fc 'gh run watch "$RUN_ID" --repo "$REPO" --exit-status' "$metadata")" -eq 2
 if grep -F 'return_run_details' "$metadata" >/dev/null; then
 	echo '2026-03-10 workflow dispatch must not send removed return_run_details' >&2
 	exit 1
 fi
 grep -F "steps.smoke_head.outcome == 'success'" "$metadata" >/dev/null
-grep -F "steps.smoke_head.outcome == 'failure'" "$metadata" >/dev/null
 grep -F 'git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"' "$metadata" >/dev/null
 grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$metadata" >/dev/null
 test "$(grep -Fc 'metadata_is_current || exit 0' "$metadata")" -eq 2
 test "$(grep -Fc 'if ! cmp -s "$RUNNER_TEMP/event-pr-body-state.md" "$RUNNER_TEMP/current-pr-body-state.md"; then' "$metadata")" -eq 1
-
-pending_line=$(grep -nF 'create_check "$context" in_progress' "$metadata" | head -1 | cut -d: -f1)
-dispatch_line=$(grep -nF '"repos/$REPO/actions/workflows/$workflow/dispatches"' "$metadata" | head -1 | cut -d: -f1)
-test -n "$pending_line"
-test -n "$dispatch_line"
-test "$pending_line" -lt "$dispatch_line"
+if grep -F 'check-runs' "$metadata" >/dev/null || grep -F 'checks: write' "$metadata" >/dev/null; then
+	echo 'required smoke gates must be real Actions jobs, not manually published Check Runs' >&2
+	exit 1
+fi
 
 if grep -F 'actions: write' "$quality" >/dev/null ||
 	grep -F '/dispatches' "$quality" >/dev/null; then
@@ -61,28 +63,24 @@ if grep -F 'actions: write' "$quality" >/dev/null ||
 fi
 
 # Native/container matrices run through workflow_dispatch so their worker jobs
-# do not become PR checks and execute untrusted PR code with read-only tokens.
+# execute untrusted PR code with read-only tokens. Aggregate publication stays
+# in the trusted pull_request_target gate jobs, not in worker compatibility jobs.
 grep -F '  workflow_dispatch:' "$platform" >/dev/null
 grep -F '  workflow_dispatch:' "$container" >/dev/null
-grep -F 'checks: write' "$platform" >/dev/null
-grep -F 'checks: write' "$container" >/dev/null
 test "$(grep -Fc 'ref: ${{ inputs.pr_number' "$platform")" -eq 1
 test "$(grep -Fc 'ref: ${{ inputs.pr_number' "$container")" -eq 1
 for worker in "$platform" "$container"; do
 	grep -F 'name: Require the requested source' "$worker" >/dev/null
 	grep -F 'test "$(git rev-parse HEAD)" = "$HEAD_SHA"' "$worker" >/dev/null
-	grep -F '"repos/$REPO/check-runs/$CHECK_RUN_ID"' "$worker" >/dev/null
-	grep -F -- '-f status=completed' "$worker" >/dev/null
-	if grep -F 'statuses: write' "$worker" >/dev/null ||
+	if grep -F 'check_run_id' "$worker" >/dev/null ||
+		grep -F 'checks: write' "$worker" >/dev/null ||
+		grep -F 'check-runs/' "$worker" >/dev/null ||
+		grep -F 'statuses: write' "$worker" >/dev/null ||
 		grep -F 'statuses/$HEAD_SHA' "$worker" >/dev/null; then
-		echo "smoke worker must not retain commit-status compatibility publication: $worker" >&2
+		echo "smoke worker must not publish PR gate compatibility state: $worker" >&2
 		exit 1
 	fi
 done
-grep -F '"repos/$REPO/check-runs"' "$metadata" >/dev/null
-grep -F "create_check 'Platform smoke gate' completed skipped" "$metadata" >/dev/null
-grep -F "create_check 'Container smoke gate' completed skipped" "$metadata" >/dev/null
-grep -F -- '--arg check_run_id "$check_run_id"' "$metadata" >/dev/null
 if grep -F '  pull_request:' "$platform" >/dev/null ||
 	grep -F '  pull_request:' "$container" >/dev/null; then
 	echo 'smoke worker workflows must not emit pull-request checks' >&2
@@ -143,6 +141,9 @@ fi
 
 # ClawHub consumes the common handoff and exposes its token only at publish time.
 grep -F 'verify-handoff-identity' "$clawhub" >/dev/null
+grep -F 'path: ${{ runner.temp }}/prepared' "$clawhub" >/dev/null
+grep -F "jq -r '.tag' \"\$RUNNER_TEMP/prepared/release/release-handoff.json\"" "$clawhub" >/dev/null
+grep -F -- '--handoff "$RUNNER_TEMP/prepared/release/release-handoff.json"' "$clawhub" >/dev/null
 clawhub_checkout_line=$(grep -nF 'uses: actions/checkout@' "$clawhub" | head -1 | cut -d: -f1)
 clawhub_setup_go_line=$(grep -nF 'uses: actions/setup-go@' "$clawhub" | head -1 | cut -d: -f1)
 clawhub_identity_line=$(grep -nF 'go run ./tools/release verify-handoff-identity' "$clawhub" | head -1 | cut -d: -f1)
