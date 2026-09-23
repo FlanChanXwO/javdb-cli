@@ -34,6 +34,12 @@ jobs:
           base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Check Go formatting
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
