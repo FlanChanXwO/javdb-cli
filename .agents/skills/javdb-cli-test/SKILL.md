@@ -9,9 +9,22 @@ description: Select and run javdb-cli TDD, Go, SDK, CLI, pipeline, media, docume
 
 Inspect the diff, actual owner, and existing tests. Use the Go toolchain declared in `go.mod`; run from the repository root. Missing tools/dependencies are explicit environment blockers, not permission to install or weaken a gate.
 
-For a feature or fix, run a focused behavioral test before implementation and confirm the expected failure. Build/import/fixture setup failures do not count as Red. Make the smallest implementation pass, then refactor with regression checks. Pure restructuring needs passing characterization before and after; any behavior correction needs its own failing test. Obtain an explicit exception when a required Red cannot be defined or run.
+For a feature or fix, select an existing test that exposes the missing behavior, or extend it only where coverage is missing, and confirm the expected failure before implementation. Build/import/fixture setup failures do not count as Red. Make the smallest implementation pass, then refactor with regression checks. Pure restructuring reuses passing characterization before and after; any behavior correction needs failing evidence. Obtain an explicit exception when an applicable Red requirement cannot be met.
 
 Use the existing Go test framework, `httptest`, temporary directories, and synthetic auth/HTTP fixtures. Test real CLI/SDK behavior rather than restating internal logic. Keep tests near their owner, name them by behavior, and table-drive equivalent cases when it improves clarity. Use an external test package where the public surface suffices; use same-package tests for a justified private seam rather than exporting internals solely for tests. Follow established same-stem/platform file conventions; do not create task-numbered regression files.
+
+## Decide whether test code must change
+
+Before adding a test, name the observable contract or credible failure that existing tests do not protect. Inspect their assertions, not just their names or coverage percentage. Prefer running an existing test, then extending a relevant case/table, then adding a new test only for an uncovered scenario. Record the choice briefly in the existing handoff, not a new test-plan file.
+
+- Test behavior, not the existence of each function or file. A getter, forwarding wrapper, simple field projection, or newly extracted helper needs no separate test when its behavior is already protected at the calling boundary. Short security, parsing, or persistence code can still carry independent risk and require coverage.
+- For pure moves, renames, or extraction, run existing characterization before and after. Do not invent a behavior change, alter an assertion to manufacture Red, or duplicate a test solely because a helper appeared.
+- Test at the narrowest stable boundary that catches the defect. Extra CLI/SDK/adapter layers earn tests for distinct serialization, validation, permissions, or failure semantics, not repeated assertions of the same mapping. Mock real external boundaries rather than recreating the implementation in a test.
+- Keep fixtures and assertions direct. Use table-driven cases only when they share setup and semantics; avoid a generic fixture builder, mock hierarchy, assertion DSL, or new framework for a small case. Do not test standard-library behavior instead of the project's own contract.
+- Ordinary prose comments, headings, and internal code layout do not need exact-text or AST/regex tests. Machine-consumed directives, generated contracts, parsers, and security boundaries may need targeted existing checks; distinguish those from style preferences.
+- Remove or consolidate tests only within the authorized scope and after identifying the same contract protected by retained checks. Preserve regression inputs and run the retained checks; fewer lines alone do not justify deleting evidence.
+
+Finish adding tests when changed contracts and credible failure paths are protected. There is no per-function, per-file, test-count, or invented coverage-percentage target. TDD governs the order of evidence, not the quantity of new test code; mandatory repository gates still apply.
 
 ## Choose verification
 
@@ -29,7 +42,7 @@ Start with `go test ./path/to/owner -run '^TestName$' -count=1`, substituting th
 
 Format affected Go with `gofmt` and inspect its diff. Follow `.pre-commit-config.yaml`; run installed hooks when applicable and report unavailable tooling rather than installing it silently. JavDB is a pure-Go build; no Rust or Pixiv staticlib step belongs here. The local binary is `build/javdb` (`.exe` on Windows).
 
-The workflow's `scripts/changescope` policy owns docs-only classification; root `AGENTS.md` is not automatically exempt. Run the required checks for the actual classifier result. A fixture for workflow permissions is not proof of GitHub environment/secret settings or native platform execution.
+The workflow's `scripts/changescope` policy owns docs-only classification; root `AGENTS.md` is not automatically exempt. `ci.yml` owns Quality; trusted `pr-metadata.yml` classifies PRs and dispatches base-ref Platform/Container workers, whose final statuses belong to the exact PR head. Ordinary branch/main pushes do not run CI; matching tags retain the current Quality/release path. Run the required checks for the actual classifier result. A fixture for workflow permissions is not proof of GitHub environment/secret settings or native platform execution.
 
 ## Contracts worth testing when touched
 

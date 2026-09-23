@@ -15,7 +15,7 @@ Use available semantic definitions/references/callers for symbol changes; disclo
 
 ## Go design and language rules
 
-- Use the `go.mod` toolchain and `gofmt`, conventional Go initialisms, consistent receivers, and responsibility-based package names. Write exported API documentation in English and state ownership, errors, cancellation, and side effects. Keep comments about intent and constraints, not restatements of syntax.
+- Use the `go.mod` toolchain and `gofmt`, conventional Go initialisms, consistent receivers, and responsibility-based package names. Document affected exported contracts and state ownership, errors, cancellation, and side effects. Apply [javdb-cli-code-commenting](../javdb-cli-code-commenting/SKILL.md) to comments and numbered stages; English and Chinese prose are both acceptable, with valid Go doc syntax.
 - Prefer concrete types and consumer-owned narrow interfaces at genuine substitution boundaries. Keep constructors and dependencies explicit. Do not add facade/alias/forwarder layers to imitate another repository or expose internals solely to simplify a test.
 - CLI owners parse input and present output; `sdk/` owns the public capability surface; App API owns protocol/decoding. Reuse `cli/client`, `cli/result`, `cli/entity`, and `cli/pipeline` instead of copying lifecycle, projections, or stream parsing into commands.
 - Treat `Client.API()` and taxonomy internal return types as frozen compatibility debt, not a precedent for new public leaks. New capabilities use typed SDK operations; preserve existing scripts' flags, output shapes, and status semantics.
@@ -26,9 +26,17 @@ Use available semantic definitions/references/callers for symbol changes; disclo
 
 Use the official [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) for additional language guidance; apply it within the repository's existing compatibility and ownership boundaries.
 
+## Readability and the smallest design
+
+- Keep a coherent operation understandable in its owner. Extract a helper or package when it names a real responsibility, hides relevant complexity, or removes stable semantic duplication, not merely to shorten a function. Count the reader's cross-file jumps and parameters, not only lines removed.
+- A useful interface makes its consumer simpler while its implementation owns the difficult details. Reject pass-through layers, option bags, and general frameworks whose callers still manage those details. Use SOLID as a diagnostic for actual coupling, not a requirement for one interface per type or an extension point per branch.
+- Prefer explicit data flow, descriptive names, and a visible normal path over compressed expressions or clever reuse. Keep related validation and transformations near their data; remove nesting when it improves clarity without hiding distinct failures.
+- Tolerate small duplication when the cases have different reasons to change. Share code only when their semantics are stable; avoid boolean modes and configuration added merely to combine unrelated cases.
+- Do not build production abstractions to support oversized mocks. Select a real test boundary and the smallest fixture before changing design for test convenience. Preserve existing caller/security contracts while simplifying.
+
 ## Execute with evidence
 
-Use [javdb-cli-test](../javdb-cli-test/SKILL.md). Observe a relevant behavioral Red before implementing a feature or fix, make the smallest change Green, then refactor with regression checks. A missing compiler, fixture, or dependency is a blocker, not a valid Red. For pure restructuring, characterize and verify behavior before and after; any behavioral correction still needs its own failing test. Obtain an explicit exception when the required Red cannot be run.
+Use [javdb-cli-test](../javdb-cli-test/SKILL.md), including its coverage-gap decision before adding tests. Reuse or extend a relevant test and observe behavioral Red before implementing a feature or fix, make the smallest change Green, then refactor with regression checks. A missing compiler, fixture, or dependency is a blocker, not a valid Red. For pure restructuring, reuse characterization before and after; any behavioral correction still needs failing evidence. Obtain an explicit exception when an applicable Red requirement cannot be run.
 
 For image/HLS or no-replace output, also read [javdb-cli-media](../javdb-cli-media/SKILL.md). Keep input acquisition, decryption, validation, remuxing, and publication with their existing owners. Do not introduce Rust, ffmpeg, an MCP service, or a download-service layer for directory symmetry.
 

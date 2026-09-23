@@ -9,8 +9,8 @@ The root [AGENTS.md](../../../AGENTS.md) is the entry point. It contains reposit
 
 ## Loading and ownership
 
-Read only the `.agents/skills/javdb-cli-*/SKILL.md` routes relevant to the task. If the client does not discover that directory, open the files directly. `CLAUDE.md` points to `AGENTS.md`; Copilot instructions are a short bridge, not a competing full contract.
+Read only the `.agents/skills/javdb-cli-*/SKILL.md` routes relevant to the task. If the client does not discover that directory, open the files directly. `CLAUDE.md` points to `AGENTS.md`; keep a single repository contract instead of restoring client-specific copies removed from the project.
 
-Development/test skills own the Go change loop. Media is a specialized boundary; PR and CI handle reviewable delivery and run evidence; release notes handle explicitly authorized versions. Do not require a generic global TDD, review, or planning skill to execute any of them.
+Development/test skills own the Go change loop and the decision to reuse or extend existing coverage. The code-commenting skill owns documentation comments and meaningful numbered stages. Media is a specialized boundary; PR and CI handle reviewable delivery and run evidence; release notes handle explicitly authorized versions. Do not require a generic global TDD, review, commenting, or planning skill to execute any of them.
 
-The product skill under `skills/javdb-cli/` operates an installed binary and is separately published. Keep its essential references inside the bundle and never make end users load repository-maintenance instructions. All agent instructions, skill content, and metadata are English; public translated documentation keeps its existing locale.
+The product skill under `skills/javdb-cli/` operates an installed binary and is separately published. Keep its essential references inside the bundle and never make end users load repository-maintenance instructions. All agent instructions, skill content, and metadata are English; public translated documentation keeps its existing locale. Source comments may be English or Chinese, following the local audience and language-specific documentation syntax.

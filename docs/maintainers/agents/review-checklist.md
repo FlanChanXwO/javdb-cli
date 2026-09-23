@@ -20,6 +20,7 @@ Apply only the sections the diff touches. Every reported finding needs a concret
 ## Tests and delivery
 
 - Check actual pre-implementation Red and relevant Green/regression evidence for behavior changes, or documented exceptions. For document-only changes, validate the documents instead of inventing application tests.
-- Select related tests, race/vet/build and script checks proportionately; honor mandatory CI and distinguish local, native, and live evidence.
+- Apply the [coverage-gap decision](../../../.agents/skills/javdb-cli-test/SKILL.md#decide-whether-test-code-must-change) instead of requiring a test for each function. Select related tests, race/vet/build and script checks proportionately; honor mandatory CI and distinguish local, native, and live evidence.
+- Apply the [commenting rules](../../../.agents/skills/javdb-cli-code-commenting/SKILL.md) and assess total reading effort, not comment density or function length.
 - Synchronize affected public locales and product instructions. Ordinary PRs do not require versioned changelog edits or removed release metadata.
 - Validate new links and task routes. Keep unrun, skipped, failed, and pending results visible; do not equate a local self-review with maintainer approval.

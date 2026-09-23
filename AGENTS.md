@@ -10,6 +10,7 @@ Read the relevant checked-in skill before its task. No personal `AGENTS.md`, CCS
 | --- | --- |
 | Implement, debug, refactor, or design Go changes | [javdb-cli-develop](.agents/skills/javdb-cli-develop/SKILL.md) |
 | Select tests, run Red/Green, or validate changes | [javdb-cli-test](.agents/skills/javdb-cli-test/SKILL.md) |
+| Write or review code comments, API docs, or numbered stages | [javdb-cli-code-commenting](.agents/skills/javdb-cli-code-commenting/SKILL.md) |
 | Change image, HLS, or media publication behavior | [javdb-cli-media](.agents/skills/javdb-cli-media/SKILL.md) |
 | Edit documentation or either kind of skill | [javdb-cli-docs](.agents/skills/javdb-cli-docs/SKILL.md) |
 | Review a diff or assess a PR | [javdb-cli-review](.agents/skills/javdb-cli-review/SKILL.md) |
@@ -36,12 +37,12 @@ Read the relevant checked-in skill before its task. No personal `AGENTS.md`, CCS
 
 - Establish scope and acceptance evidence before editing. Use the smallest existing mechanism that meets the requirement; avoid speculative abstractions, dependencies, or symmetry with another repository. This project has no MCP server or Rust component.
 - Read branch/status and preserve unrelated work. Use an isolated worktree when needed, explicit working directories, and available tools only. Prefer semantic definitions/references for code changes; disclose an unavailable LSP and verify with targeted search, compiler, and tests instead.
-- Source changes require an observed failing test before implementation, followed by Green and relevant regression. Obtain an explicit exception when a meaningful Red is blocked. Documentation-only changes require document/link/metadata checks instead of artificial runtime tests.
+- Features and behavior fixes require observed Red before implementation, followed by Green and regression. Reuse or extend existing coverage before adding tests; a new function or file is not a test quota. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks, not artificial runtime tests; consumed directives or examples may require behavioral checks.
 - Use the Go version in `go.mod`, `gofmt`, and the existing test/vet/hook stack. The develop/test skills define Go design, error, concurrency, and test rules independently of global skills.
 - Obtain approval before installing tools or adding dependencies. Explain necessity, alternatives, and material security, license, build, deployment, and lockfile effects; avoid incidental upgrades.
 - Explain network access and material side effects. Real API tests, credential access, image uploads, persistent configuration, and state mutations need explicit authorization and targets; ordinary regression stays offline.
 - Keep multi-step progress visible using a plan tool when available or a short checklist otherwise. Restore verified state before continuing; record consequential decisions in the existing issue/PR rather than generating process documents by habit.
-- Keep agent instructions, bridges, both kinds of skill, skill references, and UI metadata English. Maintain the existing public English/Simplified Chinese documentation contracts. Reply in the user's requested language, not a repository owner's private default.
+- Keep agent instructions, both kinds of skill, skill references, and UI metadata English. Source comments may be English or Chinese: follow the local audience and [commenting rules](.agents/skills/javdb-cli-code-commenting/SKILL.md), not the language of this file. Maintain the existing public English/Simplified Chinese documentation contracts and reply in the user's requested language.
 - Review meaningful changes and report exact checks, outcomes, blockers, and artifact locations. Do not translate skipped, unavailable, or pending evidence into success. A local review does not satisfy remote approval requirements.
 - A PR request does not authorize a merge, release, tag change, branch-protection change, or production-secret access. Release actions require version-specific approval.
 

@@ -5,8 +5,8 @@ on:
     branches:
       - main
   push:
-    branches:
-      - main
+    tags:
+      - 'v[0-9]*'
   workflow_dispatch: {}
 
 concurrency:
@@ -17,12 +17,9 @@ permissions: {}
 
 jobs:
   # 仅允许严格的文档白名单跳过代码质量门禁；其他任何改动均运行完整质量检查。
-  classify_changes:
-    name: Classify change scope
+  quality_gate:
+    name: Quality gate
     runs-on: ubuntu-24.04
-    outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
-      quality_required: ${{ steps.scope.outputs.quality_required }}
     permissions:
       contents: read
     steps:
@@ -37,50 +34,33 @@ jobs:
           base-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-  quality:
-    name: Quality checks
-    needs: classify_changes
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - name: Check Go formatting
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: test -z "$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
 
       - name: Test
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: go test ./... -count=1
 
       - name: Test with race detector
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: go test -race ./... -count=1
 
       - name: Vet
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: go vet ./...
 
       - name: Build local binary
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: sh scripts/build.sh
 
       - name: Version smoke
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -88,7 +68,7 @@ jobs:
           grep -F 'javdb version' /tmp/javdb-version.txt >/dev/null
 
       - name: Test release packaging and workflow policy
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           sh scripts/test-package-release.sh
@@ -96,28 +76,3 @@ jobs:
           sh scripts/test-homebrew-formula.sh
           sh scripts/test-workflows.sh
           sh scripts/test-releasenotes.sh
-
-  quality_gate:
-    name: Quality gate
-    needs: [classify_changes, quality]
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    permissions: {}
-    steps:
-      - name: Require expected quality outcome
-        shell: bash
-        env:
-          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
-          QUALITY_RESULT: ${{ needs.quality.result }}
-        run: |
-          set -euo pipefail
-          # §12.1：aggregate 失败必须给出可操作原因，而不是只留
-          # `Process completed with exit code 1.`；详细错误仍在 worker 日志。
-          if [ "$CLASSIFY_RESULT" != success ]; then
-            echo '::error::Required quality checks did not complete successfully.'
-            exit 1
-          fi
-          if [ "$QUALITY_RESULT" != success ]; then
-            echo '::error::Required quality checks did not complete successfully.'
-            exit 1
-          fi
