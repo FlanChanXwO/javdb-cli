@@ -64,7 +64,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: prepared-release-metadata
-          path: prepared
+          path: ${{ runner.temp }}/prepared
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ steps.handoff.outputs.run_id }}
@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_tag=$(jq -r '.tag' prepared/release/release-handoff.json)
+          release_tag=$(jq -r '.tag' "$RUNNER_TEMP/prepared/release/release-handoff.json")
           test -n "$release_tag"
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
 
@@ -100,7 +100,7 @@ jobs:
           # §15：ClawHub 只发布 skill，不下载 release 归档或镜像，因此用
           # identity-only 模式证明这份 handoff 确实来自刚解析出的那个 run。
           go run ./tools/release verify-handoff-identity \
-            --handoff prepared/release/release-handoff.json \
+            --handoff "$RUNNER_TEMP/prepared/release/release-handoff.json" \
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
             --run-head-sha "$RUN_HEAD_SHA"
