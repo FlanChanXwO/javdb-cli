@@ -40,5 +40,6 @@
 !/sdk/**
 !/ci/**
 !/tools/platformmatrix/**
+!/.github/workflows/pr-smoke-gates.yml
 !/.github/workflows/container-smoke.yml
 !/scripts/build-release.sh
