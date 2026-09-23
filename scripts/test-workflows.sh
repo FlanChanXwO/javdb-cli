@@ -19,6 +19,13 @@ scope_rules="$repo_root/.github/ci-change-scope.gitignore"
 grep -F 'needs: scope' "$quality" >/dev/null
 grep -F "if: \${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}" "$quality" >/dev/null
 grep -F 'name: Require successful scope classification' "$quality" >/dev/null
+grep -F "ref: \${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}" "$quality" >/dev/null
+grep -F 'git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"' "$quality" >/dev/null
+grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$quality" >/dev/null
+if grep -F '  push:' "$quality" >/dev/null; then
+	echo 'Quality gate must not run again for release tag pushes' >&2
+	exit 1
+fi
 if grep -F 'steps.scope.outputs.docs_only' "$quality" >/dev/null; then
 	echo 'Quality gate must use a real job-level skip' >&2
 	exit 1
@@ -163,11 +170,21 @@ test "$clawhub_checkout_line" -lt "$clawhub_identity_line"
 test "$clawhub_setup_go_line" -lt "$clawhub_identity_line"
 grep -F 'clawhub@0.23.1' "$clawhub" >/dev/null
 grep -F -- '--dry-run' "$clawhub" >/dev/null
+grep -F 'Version not found (reset in ' "$clawhub" >/dev/null
+grep -F 'sleep "$((reset_seconds + 1))"' "$clawhub" >/dev/null
 test "$(grep -Fc 'CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}' "$clawhub")" -eq 1
 if grep -F 'clawhub-release-tag' "$release" >/dev/null; then
 	echo 'release.yml must not stage a ClawHub-specific handoff' >&2
 	exit 1
 fi
+
+# Homebrew recovery is idempotent and cannot roll the tap back to an older tag.
+homebrew="$workflows/publish-homebrew.yml"
+grep -F 'id: formula' "$homebrew" >/dev/null
+grep -F 'git -C "$tap_dir" diff --cached --quiet -- Formula/javdb-cli.rb' "$homebrew" >/dev/null
+grep -F "if: steps.formula.outputs.publish == 'true'" "$homebrew" >/dev/null
+test "$(grep -Fc 'latest_stable_tag=' "$homebrew")" -ge 2
+grep -F 'Skipping Homebrew publication: %s is not the newest stable tag (%s).' "$homebrew" >/dev/null
 
 # Untrusted PR code cannot write reactions/comments; trusted policy owns dispatch.
 verify_job=$(sed -n '/^  verify:$/,/^  aggregate:$/p' "$verification")

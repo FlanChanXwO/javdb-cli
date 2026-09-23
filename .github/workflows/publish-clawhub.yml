@@ -233,11 +233,25 @@ jobs:
             --json > "$RUNNER_TEMP/clawhub-publish.json"
           public_config_path="$RUNNER_TEMP/clawhub-public/config.json"
           mkdir -p "$(dirname "$public_config_path")"
-          verify_exit=0
+          verify_public_skill() {
+            verify_exit=0
+            : > "$RUNNER_TEMP/clawhub-verify.json"
+            : > "$RUNNER_TEMP/clawhub-verify.err"
+            env -u CLAWHUB_TOKEN CLAWHUB_CONFIG_PATH="$public_config_path" \
+              clawhub skill verify javdb-cli --version "$SKILL_VERSION" \
+              > "$RUNNER_TEMP/clawhub-verify.json" 2> "$RUNNER_TEMP/clawhub-verify.err" || verify_exit=$?
+          }
           # 发布后强制从无凭据的公开端点核验；带 publisher token 时，ClawHub
           # 可能在异步 moderation 期间返回非 JSON 的隐藏提示，而不是公开版本证据。
-          env -u CLAWHUB_TOKEN CLAWHUB_CONFIG_PATH="$public_config_path" \
-            clawhub skill verify javdb-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
+          verify_public_skill
+          if [ "$verify_exit" -ne 0 ] && grep -Eq '^Version not found \(reset in [0-9]+s\)$' "$RUNNER_TEMP/clawhub-verify.err"; then
+            reset_seconds=$(sed -n 's/^Version not found (reset in \([0-9][0-9]*\)s)$/\1/p' "$RUNNER_TEMP/clawhub-verify.err" | head -n 1)
+            test -n "$reset_seconds"
+            cat "$RUNNER_TEMP/clawhub-verify.err" >&2
+            sleep "$((reset_seconds + 1))"
+            verify_public_skill
+          fi
+          cat "$RUNNER_TEMP/clawhub-verify.err" >&2
           node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$SKILL_VERSION" "$EXPECTED_FINGERPRINT" "$verify_exit" <<'NODE'
           const fs = require("fs");
           const [publishFile, verifyFile, version, fingerprint, exitCode] = process.argv.slice(2);
