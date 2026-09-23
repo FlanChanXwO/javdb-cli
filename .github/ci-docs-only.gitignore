@@ -1,5 +1,5 @@
-# Git-ignore syntax. A change is documentation-only only when every changed path matches.
-# Keep build, dependency, workflow, toolchain, packaging, and release inputs out of this file.
+# Scoped Git-ignore syntax consumed by scripts/classify-change-scope.sh.
+# Positive patterns are documentation-only. Negated patterns are container-required.
 /README.md
 /README.*.md
 /AGENTS.md
@@ -17,3 +17,15 @@
 /changelog/**
 /skills/**
 /.agents/skills/**
+
+!/Dockerfile
+!/.dockerignore
+!/go.mod
+!/go.sum
+!/LICENSE
+!/cmd/**
+!/internal/**
+!/sdk/**
+!/ci/**
+!/tools/platformmatrix/**
+!/scripts/build-release.sh
