@@ -36,18 +36,26 @@ opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/mai
 
 ## 使用测试驱动开发
 
-代码变更采用 red-green-refactor：
+功能和行为修复采用 red-green-refactor：
 
-1. 添加一个会因目标行为尚未实现而失败的聚焦测试。
+1. 先检查已有断言，复用失败测试或扩充最小相关用例，实际证明目标行为失败；只为覆盖缺口新增测试，不按函数或文件配额添加。
 2. 实现让它通过的最小完整变更。
 3. 在不改变已验证公开行为的前提下重构。
 4. 先运行聚焦测试，再运行相关回归。
+
+纯结构调整复用改动前后的特征测试；普通注释修改执行文档与相关工具检查。覆盖缺口、重复测试与适用的 Red 例外见[测试选择](.agents/skills/javdb-cli-test/SKILL.md#decide-whether-test-code-must-change)。不能因为实现短就省略必要的回归或安全检查。
 
 可行时通过 public boundary 测试公开行为。不得把真实的认证、网络、JavDB API、文件系统或编码失败隐藏为空成功或静默 fallback；不得增加无依据的 timeout、截断、分页上限、重试限制或隐藏降级。
 
 真实 JavDB App API canary 均为 opt-in。未经用户明确授权，不得使用其本地账号运行；也不要把真实 token 放入可能写入 shell history 的命令行。
 
+## Agent 辅助开发
+
+从 [AGENTS.md](AGENTS.md) 开始。仓库内的 `javdb-cli-*` 技能定义 Go 设计、聚焦测试、媒体完整性、审查、PR、CI 与发布流程，不依赖个人全局指令或 CCS。不支持技能发现的客户端可直接读取对应 `SKILL.md`。Agent 指令、维护与产品技能、引用文件及 UI 元数据使用英文；公开文档保留双语。
+
 ## 文档
+
+代码注释可使用中文或英文。按[代码注释规范](.agents/skills/javdb-cli-code-commenting/SKILL.md)维护准确的 API 契约、意图和按需编号的流程阶段；指令文件要求英文，不等于强制英文注释或每个函数都要加注释。
 
 修改命令、flag、SDK API、配置键、环境变量、输出契约、认证流程、代理行为或已知限制时，在同一 pull request 同步文档。
 
@@ -64,12 +72,10 @@ opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/mai
 请求 review 前确认：
 
 - [ ] 改动保持聚焦，并说明了用户可感知行为。
-- [ ] 新增或修改代码有聚焦测试，并且测试曾先证明失败。
-- [ ] `go test ./... -count=1` 通过。
-- [ ] `go vet ./...` 通过。
-- [ ] `sh scripts/build.sh` 通过。
-- [ ] 发布敏感检查通过（`scripts/test-package-release.sh`、`test-homebrew-formula.sh`、`test-workflows.sh`）。
-- [ ] pre-commit 可用时，`python -m pre_commit run --all-files` 通过。
+- [ ] 行为变更有实际 Red/Green 和相关回归证据，或明确接受的阻塞；纯文档变更已检查内容、链接与元数据。
+- [ ] [javdb-cli-test](.agents/skills/javdb-cli-test/SKILL.md) 中适用的检查通过，包括适用范围内的全量、race、媒体和发布检查；未执行项目已注明。
+- [ ] 必需 CI 按当前 head 与实际路径分类器判断，不把文档变更自动视为豁免。
+- [ ] 已安装且适用的既有 pre-commit 检查通过；缺少工具时据实报告，不静默安装。
 - [ ] `git diff --check` 通过。
 - [ ] 需要同步的英文与简体中文文档已对应。
 - [ ] 未包含凭据、本地状态或机器相关产物。

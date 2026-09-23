@@ -1,9 +1,16 @@
-# 错误、网络与代理
+# Errors, Network, and Routing
 
-先报告命令实际 stderr 与退出状态。不要把失败转换为空数组、空文本或“无数据”。
+Inspect exit status and actual stderr before parsing output. An authentication, network, validation, or filesystem failure is not an empty successful result.
 
-- 身份错误：提示用户运行 `javdb auth check --json` 或重新登录；只有用户明确要求时才登录或启用自动续登。
-- 主站/镜像可达性：本次请求可在用户明确要求或已提供代理时加 `--proxy URL`。该参数不持久化；要写入 `https_proxy` 配置必须单独确认。
-- 默认 `host` 为 `mirror`。切换 `main` 或使用自定义 URL 会改变流量目的地，需用户明确指示。
-- 服务端状态码、超时或页面/API 结构变化：保留必要错误信息并停止。不要擅自设置固定重试次数、截断结果或切换到网页抓取。
-- `--json` 解析失败：先确认命令是否成功；失败消息本身未必是 JSON。
+- **Missing binary:** report it; use [install.md](install.md) only for an explicit install/repair request.
+- **Authentication:** diagnose with `auth check --json` when needed. Use [auth.md](auth.md) for requested login; do not read `auth.json` or enable auto-relogin automatically.
+- **Host routing:** CLI `host` defaults to `auto`; it validates/reuses a cached route or explicitly discovers a replacement. Fixed `main`, `mirror`, or a custom URL changes the destination. Do not confuse this with the SDK's mirror default or change it without the requested scope.
+- **Proxy:** use `--proxy URL` only for the supplied/authorized proxy on this invocation. Persisting `https_proxy` is a separate configuration write. Do not assume a developer's loopback proxy exists on the execution host, and do not replace a rejected blank proxy with a silent direct connection.
+- **Optional magnets auth:** magnets and `detail --magnets` can retry anonymously after a rejected optional token. Authenticated lists/marks do not inherit that contract; report their actual failure.
+- **API/status/format failures:** report the redacted cause. Do not invent retry counts, request caps, browser scraping, or a silent source fallback.
+- **Output parsing:** failed commands need not produce JSON. Default piped text and `--ndjson` are different protocols; match the consumer and retain per-item failures and final status.
+- **Image search:** upload requires an authorized source; cache hits do not prove current upstream availability. A partial candidate failure can coexist with valid output and a nonzero exit.
+- **Assets:** see [media.md](media.md) for optional probe metadata versus verified download success. Existing targets and unsupported media must fail visibly, not be overwritten or disguised as empty files.
+- **Updates:** use the read-only check first; a signature/hash/source failure blocks replacement. Do not reroute data-host configuration or manually execute an unverified archive as a workaround.
+
+Keep credentials, source images, signed/private URLs, account files, and raw responses out of diagnostic artifacts. Report what remains unverified rather than claiming a repair after changing unrelated configuration.

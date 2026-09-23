@@ -1,32 +1,25 @@
-# 文档规范
+# Documentation Guidelines
 
-文档按读者、语言和稳定性分层，避免把产品用法、维护者设计和 agent 指令混入同一篇根文档。
+Separate content by audience and authority rather than repeating one contract in several files.
 
-## 目录职责
+| Content | Authoritative location |
+| --- | --- |
+| Installation, quick start, public overview | `README.md`, `README.zh-CN.md` |
+| Public CLI and SDK contracts | `docs/en/`, with matching existing `docs/zh-CN/` pages |
+| Architecture and development details | One canonical page per topic in `docs/maintainers/` |
+| Documentation navigation | `docs/index.md`; old root documentation files remain link stubs |
+| Contribution entry | `CONTRIBUTING.md`, `CONTRIBUTING.zh-CN.md` |
+| Versioned bilingual release notes | `changelog/`; root changelog files are compatibility links |
+| Always-loaded agent rules | `AGENTS.md`; client-specific files are thin pointers |
+| Repository task workflows | `.agents/skills/javdb-cli-*/` |
+| Installed-CLI operation | `skills/javdb-cli/` and its bundled references |
 
-- `README.md`、`README.zh-CN.md`：GitHub 项目入口和安装/快速开始。
-- `docs/en/`：英文公开接口契约。
-- `docs/zh-CN/`：简体中文公开接口文档。
-- `docs/maintainers/`：架构、开发流程和协作规则；每篇只保留一个 canonical 版本。
-- `docs/index.md`：用户 locale 与维护者文档总导航。
-- `docs/*.md`：旧链接兼容 stub，不再承载权威内容。
-- `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`：GitHub 可发现的贡献入口。
-- `changelog/`：权威的双语版本化发布说明和可选人工草稿区；根 `CHANGELOG*.md` 仅保留旧链接兼容入口。
-- `AGENTS.md`：agent 的短主规则和路由。
-- `skills/javdb-cli/`：指导 agent 安全使用已安装 CLI 的产品 skill。
+Use BCP 47 locale directories (`en`, `zh-CN`). Update the English public contract and affected existing translation in the same change. Natural rewording is welcome; different flags, safety rules, output semantics, or supported behavior are not. Route missing translations to English instead of presenting English text as a translation.
 
-## Locale 规则
+Agent contracts, maintenance/product skills, their reference files, and metadata are English. A repository maintenance workflow may link to checked-in documentation; an independently distributed product bundle cannot depend on a local checkout. Avoid personal paths, proxies, account assumptions, or globally installed skill requirements.
 
-- locale 目录使用 BCP 47 tag：`en`、`zh-CN`。
-- 先更新英文 public contract，并在同一变更中更新已有翻译；允许自然改写，不得造成不同命令、flag、安全语义或限制。
-- 某语言没有真实翻译时，在 `docs/index.md` 链接到英文；不要把英文内容伪装成翻译。
-- README 语言切换与文档总导航必须同步。
+Keep README focused; full flags/errors/state behavior belongs in the CLI reference. SDK docs expose `sdk/` (`package javdb`), not internal integration paths. Architecture describes current ownership and flows, not reverse-engineering transcripts or credential details. Put lasting boundaries there and transient implementation reasoning in code/tests.
 
-## 写作规则
+Synchronize documentation for changed command, API, configuration, environment, output, state, build, or test behavior. Ordinary PRs describe changes and verification; only authorized release preparation edits versioned notes and product versions. No removed release-note metadata or mandatory per-PR changelog fragment should return.
 
-- README 保持安装、能力边界、短示例和文档入口；完整 flag/错误/状态变更契约放 CLI reference。
-- SDK 文档只描述公开 `sdk/` 路径（`package javdb`），不把 `internal/` 目录宣称为集成 API。
-- 架构文档描述当前包边界与运行流，不记录上游逆向过程、签名推导或凭据细节。
-- 影响长期包边界的约束写入 `docs/maintainers/architecture.md`；短期实现细节留在代码注释和测试。
-- 命令、配置、环境变量、输出语义、状态变更、构建或测试流程变化时，同步更新相应文档；release-prep PR
-  直接维护版本化双语 changelog，feature PR 不填写 release-note metadata。
+Validate links, names, metadata, and examples against actual code/help. Keep task skills small enough to read as instructions; move a conditional branch into a reference only when that cut improves navigation. Do not create a new skill for a single configuration lookup.

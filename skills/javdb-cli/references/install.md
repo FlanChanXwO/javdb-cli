@@ -1,18 +1,13 @@
-# 安装与版本检查
+# Installation and Updates
 
-只在用户明确要求安装或修复 `javdb` 时使用本页。先确认平台与目标版本，安装会写入
-用户系统路径或包管理器状态，不能由普通查询隐式触发。
+Use only for an explicit installation, repair, or upgrade request. Confirm platform, architecture, target version/channel, and destination; installation changes files or package-manager state and must not be a side effect of a query.
 
-优先级：
+For a published version, use the platform archive from the official `FlanChanXwO/javdb-cli` GitHub Releases and verify the published checksums before placing `javdb` (Windows: `javdb.exe`) in the user's selected PATH directory. A checksum establishes integrity relative to that downloaded checksum file; it is not an independent trust root. Do not substitute an unreviewed mirror or unsigned custom build.
 
-1. 已发布版本：下载与平台匹配的 GitHub Release 归档，校验 `checksums.txt` 后将 `javdb`
-   （Windows 为 `javdb.exe`）放到用户指定的 PATH 目录。
-2. macOS/Linux：用户明确选用 Homebrew 时，执行 `brew install FlanChanXwO/tap/javdb-cli`。
-3. 源码构建：在仓库根目录执行 `sh scripts/build.sh`，产物为 `build/javdb`。
+When the user chooses Homebrew on macOS/Linux, use `brew install FlanChanXwO/tap/javdb-cli`. For an explicit source build in an existing checkout, use `sh scripts/build.sh` from its root and the Go version in `go.mod`. Missing prerequisites require approval before installation.
 
-安装后运行 `javdb --version`，只报告版本和构建信息，不读取账号文件。
+After success, run `javdb --version` and report the binary path/version and any PATH change. Do not inspect accounts as part of installation.
 
-已安装的发布版本可先运行 `javdb update --check --json` 查看来源和最新版本。只有用户明确要求
-升级时才执行 `javdb update`；该命令会依据安装来源调用 Homebrew、`go install`，或下载并校验当前
-平台的 Release archive 后替换二进制。`--prerelease` 只在用户明确指定预发布版本时使用；Homebrew
-安装不支持预发布更新。
+For an existing installation, `javdb update --check --json` is the read-only inspection route. Actual `javdb update` uses detected Homebrew, `go install`, or the Release archive. Release replacement validates the signed manifest, source/version/platform, archive checksum, and extracted binary hash; do not bypass those checks or execute a downloaded candidate manually to replace verification.
+
+Use `--prerelease` only for an explicit prerelease request; Homebrew updates do not support it. Development builds refuse self-update. Report failures without switching installation channel or replacing an existing executable by hand.

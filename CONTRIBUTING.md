@@ -36,18 +36,26 @@ Read [the architecture guide (Simplified Chinese)](docs/maintainers/architecture
 
 ## Develop with tests
 
-Use a red-green-refactor loop for code changes:
+Use a red-green-refactor loop for features and behavior fixes:
 
-1. Add a focused test that fails for the intended behavioral reason.
+1. Inspect existing assertions; reuse a failing test or extend the smallest relevant case to expose the intended behavioral failure. Add a new test only for a coverage gap, not for each function or file.
 2. Implement the smallest coherent change that makes it pass.
 3. Refactor without changing the verified public behavior.
 4. Run the focused tests, then the relevant regression suite.
+
+Pure restructuring reuses characterization before and after; ordinary comment-only edits use document/tool checks. See [test selection](.agents/skills/javdb-cli-test/SKILL.md#decide-whether-test-code-must-change) for coverage gaps, duplication, and applicable Red exceptions. A required regression or security check is not optional merely because its implementation is short.
 
 Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, JavDB API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
 
 Real JavDB App API canaries are opt-in. Never run them with a user's local account unless that user has explicitly authorized it; never put a real token on a command line that may be stored in shell history.
 
+## Agent-assisted development
+
+Start with [AGENTS.md](AGENTS.md). The checked-in `javdb-cli-*` skills define Go design, focused testing, media integrity, review, PR, CI, and release workflows without personal global instructions or CCS. Clients without skill discovery can open their `SKILL.md` files directly. Agent contracts, maintenance/product skills, references, and UI metadata are English; public locale documentation remains bilingual.
+
 ## Documentation
+
+Source comments may be English or Chinese. Follow [code commenting](.agents/skills/javdb-cli-code-commenting/SKILL.md) for accurate API contracts, intent, and optional numbered phases; the English instruction-file requirement does not impose English comments or per-function comment quotas.
 
 Update documentation in the same pull request when changing a command, flag, SDK API, configuration key, environment variable, output contract, authentication flow, proxy behavior, or known limitation.
 
@@ -64,12 +72,10 @@ Keep stable rules in one authoritative document and link to them elsewhere inste
 Before requesting review:
 
 - [ ] The change is focused and its user-visible behavior is explained.
-- [ ] New or changed code has focused tests that first demonstrated the failure.
-- [ ] `go test ./... -count=1` passes.
-- [ ] `go vet ./...` passes.
-- [ ] `sh scripts/build.sh` passes.
-- [ ] The release-sensitive checks pass (`scripts/test-package-release.sh`, `test-homebrew-formula.sh`, `test-workflows.sh`).
-- [ ] `python -m pre_commit run --all-files` passes when pre-commit is available.
+- [ ] Behavior changes have observed Red/Green and relevant regression evidence, or an explicitly accepted blocker; document-only work has document/link/metadata validation.
+- [ ] Applicable checks from [javdb-cli-test](.agents/skills/javdb-cli-test/SKILL.md) passed, including full/race/media/release checks when their scope applies; unrun checks are identified.
+- [ ] Required CI is evaluated on the current head and actual path classifier, not a presumed documentation exemption.
+- [ ] Existing pre-commit checks pass when installed and applicable; missing tooling is reported rather than installed silently.
 - [ ] `git diff --check` passes.
 - [ ] English and Simplified Chinese documentation are synchronized where required.
 - [ ] No credential, local state, or machine-specific artifact is included.

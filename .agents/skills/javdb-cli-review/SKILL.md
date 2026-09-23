@@ -1,30 +1,20 @@
 ---
 name: javdb-cli-review
-description: Review javdb-cli changes with finding-first output; review criteria live in docs/maintainers/agents/review-checklist.md.
+description: Review javdb-cli diffs or PRs for behavior, Go design, public SDK compatibility, pipeline/media correctness, credential safety, and verification gaps. Use for independent or pre-delivery review; changes and external actions need separate authorization.
 ---
 
-# javdb-cli Review
+# Review javdb-cli
 
-审查本仓库改动。审查标准以 `docs/maintainers/agents/review-checklist.md` 为准；本文件只定义流程和输出格式。
+Inspect status, diff statistics, and the full relevant diff before broader navigation. Resolve the exact base/head for PRs and committed work; distinguish it from the working-tree diff. Read the requirement, `AGENTS.md`, and [the review checklist](../../../docs/maintainers/agents/review-checklist.md).
 
-## 流程
+Trace the real flow and confirm the requested behavior. Check the Go design rules in [javdb-cli-develop](../javdb-cli-develop/SKILL.md), SDK boundaries, context/error propagation, stream identity/cardinality, auth modes, persistence, and no-overwrite behavior. Review media changes with [javdb-cli-media](../javdb-cli-media/SKILL.md).
 
-1. 收集范围：若目标是 PR，先用 `gh pr view NUMBER --json baseRefName,headRefName,baseRefOid,headRefOid,state,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,body,url` 和 `gh pr diff NUMBER` 固定远端 base/head SHA；不要让脏工作区的 `git diff` 替代 PR diff。只有用户明确要审查本地改动时才使用 `git status --short`/`git diff`。
-2. 读取 review checklist，按架构边界、行为风险、CLI/SDK 契约、凭据与发布、测试的顺序核对。
-3. PR 范围还要检查模板中的 release-note 四字段、required CI、mergeability、review/approval 状态、目标分支保护和是否存在 bypass 依赖；这些属于发布前置条件，不是代码 finding。
-4. 每个代码 finding 落到具体文件和行号；CI、PR 状态或策略问题用对应的 URL、job/check 名称和 SHA 定位；无法确认的事项列为 Open Questions，不猜测。
+Pay particular attention to default piped text versus explicit NDJSON, legacy JSON projections, exact movie resolution before writes, optional-auth anonymous retry, auto-route caching, redacted credentials, and update trust before replacing a binary. Existing compatibility exceptions are neither permission to widen them nor permission to remove them silently.
 
-## 输出
+Check test evidence and documentation against the actual change. Do not demand release metadata removed from the PR template or a new changelog entry for every feature PR. Review workflow security and artifact trust when affected; avoid assertions tied only to YAML wording, step counts, or a preference for more layers.
 
-```text
-Findings
-- [P1] path:line 问题。影响。建议修复。
+Apply the [coverage-gap decision](../javdb-cli-test/SKILL.md#decide-whether-test-code-must-change) before requesting another test: identify the missing scenario and why existing checks would miss it, not a newly introduced function or a desired test count. Apply [the commenting rules](../javdb-cli-code-commenting/SKILL.md) to API contracts and workflow stages. Judge readability by total mental effort, including cross-file jumps; neither shorter functions nor more comments prove improvement. Either source-comment language is acceptable, while directives and factual guarantees remain exact.
 
-Open Questions
-- ...
+Verify each material finding at an exact location or with a focused safe reproduction. Report severity, `file:line`, trigger, impact, evidence, and the smallest correct fix. Distinguish proven defects from uncertainty. If clear, state the reviewed scope and unverified behavior rather than an unconditional guarantee.
 
-Summary
-审查范围、已运行/未运行的测试和剩余风险。
-```
-
-无 finding 时明确写“未发现阻塞问题”，并在 Summary 说明已检查范围和剩余测试风险。
+Remain review-only unless editing is authorized. Self-review does not satisfy remote reviewer approval, and a green subset of checks does not authorize merging or publishing.

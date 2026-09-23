@@ -1,16 +1,16 @@
-# AI 协作文档
+# Agent Collaboration
 
-本目录承接 `AGENTS.md` 不适合长期展开的协作细则。根指令保持短且可执行；
-按任务需要再读取这里的专项规则。
+The root [AGENTS.md](../../../AGENTS.md) is the entry point. It contains repository-wide boundaries and a task-to-skill table; its checked-in workflows work without a personal global contract or CCS skill collection.
 
-## 文档地图
+## References
 
-- [Review checklist](review-checklist.md)：代码、接口、文档和发布变更的审查清单。
-- [Documentation guidelines](documentation-guidelines.md)：README、locale、维护者文档、skills 与 changelog 的边界。
+- [Documentation guidelines](documentation-guidelines.md): audience, locale, skill, and release-note ownership.
+- [Review checklist](review-checklist.md): project-specific correctness and safety checks, used by the review skill.
 
-## 使用原则
+## Loading and ownership
 
-- `AGENTS.md` 是仓库内 agent 的主规则与目录路由。
-- `CLAUDE.md` 只引用 `AGENTS.md`，不维护第二份规则。
-- `skills/javdb-cli/` 是面向产品使用者的 skill；它不是仓库重构、审查或发布规则的替代品。
-- `.agents/skills/` 提供本仓库的 review、docs、commit-message 与 release-notes 流程；只在对应任务中读取。
+Read only the `.agents/skills/javdb-cli-*/SKILL.md` routes relevant to the task. If the client does not discover that directory, open the files directly. `CLAUDE.md` points to `AGENTS.md`; keep a single repository contract instead of restoring client-specific copies removed from the project.
+
+Development/test skills own the Go change loop and the decision to reuse or extend existing coverage. The code-commenting skill owns documentation comments and meaningful numbered stages. Media is a specialized boundary; PR and CI handle reviewable delivery and run evidence; release notes handle explicitly authorized versions. Do not require a generic global TDD, review, commenting, or planning skill to execute any of them.
+
+The product skill under `skills/javdb-cli/` operates an installed binary and is separately published. Keep its essential references inside the bundle and never make end users load repository-maintenance instructions. All agent instructions, skill content, and metadata are English; public translated documentation keeps its existing locale. Source comments may be English or Chinese, following the local audience and language-specific documentation syntax.

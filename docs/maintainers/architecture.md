@@ -190,7 +190,7 @@ sync-history）；核心实现位于
 `scripts/internal/releasenotes/{model,github,audit,document,history}`：model
 保存跨包数据模型，github 封装 REST 边界，audit 生成审计报告，document 负责 changelog
 解析/渲染，history 负责显式历史 Release 同步。版本化 changelog 是唯一发布说明来源，根 command 不再
-有 compat wrapper。`scripts/changescope` 保持单一职责，不为目录对称强行拆分。
+有 compat wrapper。CI 变更范围由 `scripts/classify-change-scope.sh` 读取 `.github/ci-docs-only.gitignore` 判定；路径策略保持为数据文件，不建立 Go package。
 
 ## 目录约定
 

@@ -1,13 +1,13 @@
-# 认证与账号
+# Authentication and Accounts
 
-本 CLI 的账号数据在 `~/.javdb-cli/auth.json`，支持 POSIX 权限的平台使用 `0600`。它含密码和
-JWT；不要读取、打印、上传或将其加入诊断文件。
+The local `~/.javdb-cli/auth.json` contains passwords and JWTs; supported POSIX systems use `0600`. Never read, display, upload, or include it in diagnostics.
 
-- 用户需要登录时，可让其在私人终端执行 `javdb auth login`；缺少 `-u/-p` 时会交互提示。
-- 仅在用户已明确在会话中给出凭据并要求这样做时，才运行 `javdb auth login -u USER -p PASS`。执行前说明参数会进入本次命令记录；完成后只报告结果，绝不复述密码或 token。
-- `javdb auth list` 不会显示 token；只在默认账号选择或用户请求列表时执行。
-- `javdb auth check --json` 是网络验证。失败时先说明错误；不要自动重新登录。
-- `javdb auth use USER_ID` 与 `javdb auth remove USER_ID` 改变本地账号状态，逐次取得明确授权。
+For an explicit login request, let the user run `javdb auth login` in a private interactive terminal. Missing username/password arguments trigger prompts. Start it through an agent only when the user can actually type into that terminal; otherwise report the interaction limitation rather than leaving a waiting process.
 
-若用户要求自动续登，说明它保存并使用账户密码：只有在明确同意后才设置
-`javdb config set auto_relogin true`。
+If the username is already known, `javdb auth login -u USER` may be used, but always omit `-p`/`--password` and enter the password through the hidden interactive prompt. Never transmit passwords through command arguments, tool calls, logs, or results.
+
+`javdb auth list` omits tokens and is appropriate only for an account decision or explicit request. `javdb auth check --json` makes a real API request. A failed check does not authorize automatic login or account/host changes.
+
+`auth use USER_ID` and `auth remove USER_ID` change local account state; require the current explicit target/action. `auto_relogin=true` uses the saved password to relogin once when the selected account JWT expires. Enable it through `javdb config set auto_relogin true` only after explaining that stored-password use and receiving authorization.
+
+Inspect command status before parsing successful JSON. Report redacted causes, not credential values or raw account-store contents.

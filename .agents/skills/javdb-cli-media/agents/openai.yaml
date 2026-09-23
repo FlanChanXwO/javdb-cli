@@ -1,0 +1,4 @@
+interface:
+  display_name: "JavDB CLI Media"
+  short_description: "Preserve media integrity and no-replace publication."
+  default_prompt: "Use $javdb-cli-media to investigate or change the requested media behavior."
