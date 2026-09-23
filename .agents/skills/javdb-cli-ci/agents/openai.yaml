@@ -1,4 +1,0 @@
-interface:
-  display_name: "JavDB CLI CI"
-  short_description: "Diagnose workflows and verify exact run identities."
-  default_prompt: "Use $javdb-cli-ci to diagnose this workflow without unauthorized writes."

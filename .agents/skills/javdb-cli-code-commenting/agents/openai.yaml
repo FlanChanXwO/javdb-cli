@@ -1,4 +1,0 @@
-interface:
-  display_name: "javdb-cli Code Commenting"
-  short_description: "Clarify code intent and contracts in javdb-cli."
-  default_prompt: "Use $javdb-cli-code-commenting for concise, accurate comments without a language quota."

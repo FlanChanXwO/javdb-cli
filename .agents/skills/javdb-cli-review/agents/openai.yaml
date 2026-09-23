@@ -1,4 +1,0 @@
-interface:
-  display_name: "JavDB CLI Review"
-  short_description: "Review SDK, pipeline, media, security, and evidence."
-  default_prompt: "Use $javdb-cli-review to review the requested diff without changing it."

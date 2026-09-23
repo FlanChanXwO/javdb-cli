@@ -1,8 +1,0 @@
-.DS_Store
-*.exe
-*.out
-*.test
-/build/
-/dist/
-/tmp/
-/goal-*/

@@ -1,4 +1,0 @@
-interface:
-  display_name: "JavDB CLI Testing"
-  short_description: "Select offline regression and contract verification."
-  default_prompt: "Use $javdb-cli-test to verify the change and report observed outcomes."

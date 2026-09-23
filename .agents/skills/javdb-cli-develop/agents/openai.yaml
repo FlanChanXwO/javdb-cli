@@ -1,4 +1,0 @@
-interface:
-  display_name: "JavDB CLI Development"
-  short_description: "Make scoped Go changes through the public SDK boundary."
-  default_prompt: "Use $javdb-cli-develop to implement the requested repository change."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "JavDB CLI Pull Requests"
-  short_description: "Prepare honest PR metadata and current-head evidence."
-  default_prompt: "Use $javdb-cli-pr to prepare the requested pull request for review."
