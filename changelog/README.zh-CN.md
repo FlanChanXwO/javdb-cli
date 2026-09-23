@@ -5,6 +5,7 @@
 | 版本 | 日期 | 发布说明 |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.8.2](https://github.com/FlanChanXwO/javdb-cli/compare/v0.8.1...v0.8.2) | 2026-09-23 | [English](v0.8.2/en.md) · [简体中文](v0.8.2/zh-CN.md) |
 | [v0.8.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.8.0...v0.8.1) | 2026-09-20 | [English](v0.8.1/en.md) · [简体中文](v0.8.1/zh-CN.md) |
 | [v0.8.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.7.3...v0.8.0) | 2026-09-20 | [English](v0.8.0/en.md) · [简体中文](v0.8.0/zh-CN.md) |
 | [v0.7.3](https://github.com/FlanChanXwO/javdb-cli/compare/v0.7.2...v0.7.3) | 2026-09-08 | [English](v0.7.3/en.md) · [简体中文](v0.7.3/zh-CN.md) |
