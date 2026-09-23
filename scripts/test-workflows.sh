@@ -26,6 +26,16 @@ if grep -F 'return_run_details' "$metadata" >/dev/null; then
 fi
 grep -F "steps.smoke_head.outcome == 'success'" "$metadata" >/dev/null
 grep -F "steps.smoke_head.outcome == 'failure'" "$metadata" >/dev/null
+grep -F 'git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"' "$metadata" >/dev/null
+grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$metadata" >/dev/null
+test "$(grep -Fc 'metadata_is_current || exit 0' "$metadata")" -eq 2
+test "$(grep -Fc 'if ! cmp -s "$RUNNER_TEMP/event-pr-body-state.md" "$RUNNER_TEMP/current-pr-body-state.md"; then' "$metadata")" -eq 1
+
+pending_line=$(grep -nF 'post_status pending "$context"' "$metadata" | head -1 | cut -d: -f1)
+dispatch_line=$(grep -nF '"repos/$REPO/actions/workflows/$workflow/dispatches"' "$metadata" | head -1 | cut -d: -f1)
+test -n "$pending_line"
+test -n "$dispatch_line"
+test "$pending_line" -lt "$dispatch_line"
 
 if grep -F 'actions: write' "$quality" >/dev/null ||
 	grep -F '/dispatches' "$quality" >/dev/null; then
