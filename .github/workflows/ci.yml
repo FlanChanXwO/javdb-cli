@@ -2,6 +2,8 @@ name: Quality gate
 
 on:
   pull_request:
+    # Base retargets use edited; title/body edits also revalidate their scope.
+    types: [opened, synchronize, reopened, edited]
     branches:
       - main
   workflow_dispatch: {}
@@ -21,17 +23,36 @@ jobs:
     outputs:
       quality_required: ${{ steps.scope.outputs.quality_required }}
     steps:
+      - name: Resolve the protected base branch tip
+        id: base
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
+          test -n "$base_ref"
+          test "$base_ref" != null
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
+          test -n "$sha"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && steps.base.outputs.sha || github.sha }}
       - name: Classify change scope
         id: scope
         shell: bash
         env:
           PR: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
