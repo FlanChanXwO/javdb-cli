@@ -18,7 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      issues: write
+      # PR policy-state comments need PR write permission, not issue write.
+      pull-requests: write
       statuses: write
     steps:
       - name: Resolve the protected base branch tip
