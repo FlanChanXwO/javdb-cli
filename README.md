@@ -330,3 +330,5 @@ large or compatibility-sensitive changes first.
 - **App Download:** [GitHub Releases](https://github.com/bdvajstudio/javdb/releases)
 
 <!-- Temporary docs-owner CI probe; do not merge. -->
+
+<!-- CI probe: verify a second source update after permission recovery. -->
