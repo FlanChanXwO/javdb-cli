@@ -19,7 +19,21 @@ scope_rules="$repo_root/.github/ci-change-scope.gitignore"
 grep -F 'needs: scope' "$quality" >/dev/null
 grep -F "if: \${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}" "$quality" >/dev/null
 grep -F 'name: Require successful scope classification' "$quality" >/dev/null
-grep -F "ref: \${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}" "$quality" >/dev/null
+# Retargeting to main is edited; literal names keep docs-only skips required.
+if ! grep -F 'types: [opened, synchronize, reopened, edited]' "$quality" >/dev/null; then
+	echo 'Quality must handle pull request base edits' >&2
+	exit 1
+fi
+grep -F '    name: Quality gate' "$quality" >/dev/null
+# Classify with current protected-base policy, never the captured PR base SHA.
+if grep -F 'github.event.pull_request.base.sha' "$quality" >/dev/null; then
+	echo 'Quality classification must resolve the current protected base tip' >&2
+	exit 1
+fi
+grep -F 'name: Resolve the protected base branch tip' "$quality" >/dev/null
+grep -F 'repos/$REPO/branches/$base_ref_encoded' "$quality" >/dev/null
+grep -F "ref: \${{ github.event_name == 'pull_request' && steps.base.outputs.sha || github.sha }}" "$quality" >/dev/null
+grep -F 'BASE_SHA: ${{ steps.base.outputs.sha }}' "$quality" >/dev/null
 grep -F 'git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"' "$quality" >/dev/null
 grep -F 'test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"' "$quality" >/dev/null
 if grep -F '  push:' "$quality" >/dev/null; then
@@ -38,6 +52,17 @@ for forbidden in 'display:"not required"' 'Mark verification as not required' 'm
 	fi
 done
 
+# PR comments require pull-requests write even though the REST path uses issues.
+metadata_permissions=$(sed -n '/^  validate:/,/^    steps:/p' "$metadata")
+if ! printf '%s\n' "$metadata_permissions" | grep -F '      pull-requests: write' >/dev/null; then
+	echo 'PR metadata must have pull-requests write permission for policy-state comments' >&2
+	exit 1
+fi
+if printf '%s\n' "$metadata_permissions" | grep -F '      issues: write' >/dev/null; then
+	echo 'PR metadata must not request unrelated issue write permission' >&2
+	exit 1
+fi
+
 # Untrusted pull_request code stays read-only. Metadata edits stay isolated
 # from the trusted head-change workflow that owns the two required smoke jobs.
 grep -F '  pull_request:' "$quality" >/dev/null
@@ -50,17 +75,18 @@ if grep -F 'platform-smoke.yml' "$metadata" >/dev/null ||
 	exit 1
 fi
 grep -F '  pull_request_target:' "$smoke_gates" >/dev/null
-grep -F 'types: [opened, reopened, ready_for_review, synchronize]' "$smoke_gates" >/dev/null
+if ! grep -F 'types: [opened, edited, reopened, ready_for_review, synchronize]' "$smoke_gates" >/dev/null; then
+	echo 'Smoke gates must handle pull request base edits' >&2
+	exit 1
+fi
 grep -F '!/.github/workflows/pr-smoke-gates.yml' "$scope_rules" >/dev/null
-grep -F 'name: Platform smoke gate' "$smoke_gates" >/dev/null
-grep -F 'name: Container smoke gate' "$smoke_gates" >/dev/null
+grep -F '    name: Platform smoke gate' "$smoke_gates" >/dev/null
+grep -F '    name: Container smoke gate' "$smoke_gates" >/dev/null
 grep -F "needs.classify.outputs.platform_required == 'true'" "$smoke_gates" >/dev/null
 grep -F "needs.classify.outputs.container_required == 'true'" "$smoke_gates" >/dev/null
 test "$(grep -Fc 'gh run watch "$RUN_ID" --repo "$REPO" --exit-status' "$smoke_gates")" -eq 2
-if grep -F 'edited' "$smoke_gates" >/dev/null; then
-	echo 'required smoke workflow must not run for PR metadata edits' >&2
-	exit 1
-fi
+# Edited events reclassify and run the required scope, including body/title edits.
+# A skipped job must have a literal name so GitHub retains the required context.
 if grep -F 'return_run_details' "$smoke_gates" >/dev/null; then
 	echo '2026-03-10 workflow dispatch must not send removed return_run_details' >&2
 	exit 1
