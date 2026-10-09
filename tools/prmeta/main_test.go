@@ -30,7 +30,7 @@ func loadWhitelist(t *testing.T, content string) *verificationpolicy.Whitelist {
 }
 
 func TestValidateAcceptsCommandsFence(t *testing.T) {
-	t.Error("Intentional CI probe failure: metadata edits must not hide Quality failure")
+	// CI probe recovery keeps the test meaningful after proving a required failure.
 	w := loadWhitelist(t, "javdb *\njavdb !auth\necho *\n")
 	body := changes + verifySec + fence + "commands\necho ABC-123 | javdb detail\n" + fence + checklist
 	got := validate(body, w, "javdb", t.TempDir())
