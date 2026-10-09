@@ -233,18 +233,25 @@ v0.6.1 是发布桥：交付签名清单更新器；旧兼容阶段已经结束�
 
 ## CI 与发布
 
-1. Quality workflow 在 PR 与 stable release tag push 上运行；`.github/ci-change-scope.gitignore`
-   是唯一的路径策略源：普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，`!pattern`
-   表示需要 Quality + Platform + Container。PR template 属于机器契约，因此是 Quality-only，
-   不是纯文档。无需 Quality 时该 job 以真实 `Skipped` 呈现。
-2. `pr-metadata.yml` 的 `pull_request_target` 受信流程只从 base branch 读取策略，
-   对 PR diff 做 smoke 范围分类，并创建 `Platform smoke gate` / `Container smoke gate` Check Run。
-   需要实际验证时，它只负责 dispatch PR base 分支上的 `workflow_dispatch` worker；不会执行 PR 代码。
-3. Platform worker 使用受信 base matrix 并行覆盖六个原生 runner；只有 matrix worker checkout PR head，
-   且 token 仅 `contents: read`。独立 publish job 不 checkout PR，只用最小 `checks: write`
-   完成已有 PR-head Check Run，失败时列出失败平台。Container worker 采用同样的隔离模型，并行验证
-   `linux/amd64` 与 `linux/arm64`。不需要的 smoke gate 直接以 `Skipped` conclusion 完成，
-   不再用 success 表示“未运行”。
+1. Quality workflow 在 PR 与手动 dispatch 上运行；stable tag push 只运行 Release，
+   避免重复门禁。PR 分类先解析受保护 base 分支的当前 tip，从该提交读取分类器与
+   `.github/ci-change-scope.gitignore`，再 fetch 并校验 exact PR head；不使用事件捕获的
+   旧 base SHA 执行策略。Quality 与 smoke 同时处理 base 切换的 `edited` 事件；标题和描述编辑
+   也会按实际范围重新验证。必需 job 名称保持固定，包括纯文档 skip；GitHub 不会
+   求值 skipped job 的动态名称。普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，
+   `!pattern` 表示需要 Quality + Platform + Container。PR template 是 Quality-only；
+   无需 Quality 时该 job 以真实 `Skipped` 呈现，分类失败则阻断。
+2. `pr-metadata.yml` 的 `pull_request_target` 受信流程从当前 base tip 校验模板与命令声明，
+   发布 `PR template gate` / `PR commands gate`。无效状态评论虽然使用 `/issues/.../comments`
+   REST 路径，写入、更新和删除仍需要 `pull-requests: write`，不授予普通 issue 写权限。
+   描述编辑也会触发独立的 Quality 和 smoke 流程，按分类结果重新验证。
+3. `pr-smoke-gates.yml` 从当前 base tip 分类 exact PR head，持有真实 Actions job
+   `Platform smoke gate` / `Container smoke gate`，并 dispatch base 分支上的受信 worker。
+   门禁使用返回的 worker run ID 等待运行结果，不通过手动 Check Run 查询桥接。
+   Platform worker 使用受信 matrix 并行覆盖六个原生 runner；Container worker 并行验证
+   `linux/amd64` 与 `linux/arm64`。只有 matrix worker checkout 并校验 PR head，
+   token 仅 `contents: read`，不执行带写凭据的 PR 代码。无需 smoke 时门禁以真实
+   `Skipped` 呈现，不用 success 表示“未运行”。
 4. feature PR 不填写 release-note metadata；`changelog/unreleased/` 仅是可选人工草稿区。release-prep PR
    直接编辑 `changelog/vX.Y.Z/{en.md,zh-CN.md}`，同步两个 changelog 索引，再运行 `validate`。
 5. `vX.Y.Z` tag 必须不可变且可追溯到 `main`。Release workflow 校验版本化双语 notes 与来源，
