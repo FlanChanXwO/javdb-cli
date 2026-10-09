@@ -181,3 +181,5 @@ jobs:
             ''|null|*[!0-9]*) echo 'Trusted container smoke run id was not returned.' >&2; exit 1 ;;
           esac
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status
+
+# Temporary smoke-fork CI probe; do not merge.
