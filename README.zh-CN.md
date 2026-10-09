@@ -284,3 +284,5 @@ probe 默认启用，可用 `javdb config get/set assets.probe.enabled` 与
 
 - **官方网站：** [javdb.com](https://javdb.com)
 - **App 下载：** [GitHub Releases](https://github.com/bdvajstudio/javdb/releases)
+
+<!-- Temporary docs-fork CI probe; do not merge. -->
