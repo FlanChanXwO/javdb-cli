@@ -320,6 +320,14 @@ Bug reports, documentation fixes, tests, and focused features are welcome.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request; discuss
 large or compatibility-sensitive changes first.
 
+Thank you to everyone who helps improve javdb-cli.
+
+<a href="https://github.com/FlanChanXwO/javdb-cli/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FlanChanXwO/javdb-cli" alt="Contributors to javdb-cli">
+</a>
+
+[View all contributors](https://github.com/FlanChanXwO/javdb-cli/graphs/contributors)
+
 ## License
 
 [MIT](LICENSE) © FlanChanXwO
