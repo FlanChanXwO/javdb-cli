@@ -75,7 +75,7 @@ The Formula is updated after a verified release when tap deployment is enabled.
 
 ### Go
 
-Go `1.27.1` is the supported toolchain version for source builds and `go install`.
+Go `1.27.3` is the supported toolchain version for source builds and `go install`.
 
 Use an exact published tag:
 
@@ -90,7 +90,7 @@ Download the archive for your platform from
 against the accompanying `checksums.txt`, and place `javdb` (`javdb.exe` on
 Windows) in a directory on your `PATH`.
 
-To build the checkout, install Go `1.27.1` as declared in `go.mod` and run:
+To build the checkout, install Go `1.27.3` as declared in `go.mod` and run:
 
 ```bash
 sh scripts/build.sh

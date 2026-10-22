@@ -64,7 +64,7 @@ brew upgrade javdb-cli
 
 ### Go
 
-源码构建与 `go install` 支持的工具链版本为 Go `1.27.1`。
+源码构建与 `go install` 支持的工具链版本为 Go `1.27.3`。
 
 请使用精确的已发布 tag：
 
@@ -78,7 +78,7 @@ go install github.com/FlanChanXwO/javdb-cli/cmd/javdb@v0.2.0
 压缩包，先用同附的 `checksums.txt` 校验；再将 `javdb`（Windows 为 `javdb.exe`）放入 PATH 中的
 目录。
 
-构建当前 checkout 时，先安装 `go.mod` 声明的 Go `1.27.1`，再运行：
+构建当前 checkout 时，先安装 `go.mod` 声明的 Go `1.27.3`，再运行：
 
 ```bash
 sh scripts/build.sh
