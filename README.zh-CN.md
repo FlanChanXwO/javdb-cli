@@ -276,6 +276,14 @@ probe 默认启用，可用 `javdb config get/set assets.probe.enabled` 与
 欢迎提交 bug、文档修复、测试和聚焦功能。发起 pull request 前请阅读
 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)；较大或影响兼容性的变更请先讨论。
 
+感谢每一位帮助 javdb-cli 变得更好的贡献者。
+
+<a href="https://github.com/FlanChanXwO/javdb-cli/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FlanChanXwO/javdb-cli" alt="javdb-cli 贡献者">
+</a>
+
+[查看全部贡献者](https://github.com/FlanChanXwO/javdb-cli/graphs/contributors)
+
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO
