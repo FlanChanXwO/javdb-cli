@@ -29,7 +29,7 @@ func NewActors(options *invocation.RootOptions, streams *invocation.Streams) *co
 	producer := &pipeline.ListProducer{
 		Name: "rankings actors",
 		ClientFactory: func() (*javdb.Client, error) {
-			return client.New(options, "")
+			return client.NewWithDefaultToken(options)
 		},
 		Fetch: fetch,
 		JSON: func(actors []map[string]any) (map[string]any, error) {

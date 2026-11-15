@@ -79,6 +79,13 @@ Do not put a password or JWT in a command transcript, issue, chat, or source
 file. Magnet commands work anonymously (using the saved token when available);
 TOP250 and personal-list commands require the default account.
 
+Search (including `--magnets`) and `rankings movies|actors|playback` send the
+saved default account token when available and otherwise make anonymous requests.
+For image search, the token is used only for JavDB lookups (movie resolution,
+details, and magnets), never for image downloads or the reverse-search provider.
+If an anonymous request is rejected, run `javdb auth login` and retry. These
+commands do not automatically re-login or retry a rejected token anonymously.
+
 ## Read-only discovery
 
 ```bash

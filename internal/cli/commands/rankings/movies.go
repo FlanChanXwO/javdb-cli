@@ -21,7 +21,7 @@ func NewMovies(options *invocation.RootOptions, streams *invocation.Streams) *co
 	producer := &pipeline.MovieListProducer{
 		Name: "rankings movies",
 		ClientFactory: func() (*javdb.Client, error) {
-			return client.New(options, "")
+			return client.NewWithDefaultToken(options)
 		},
 		Fetch: func(ctx context.Context, c *javdb.Client) ([]map[string]any, error) {
 			res, err := c.RankingsMovies(ctx, type_, period)

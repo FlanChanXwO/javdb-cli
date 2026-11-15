@@ -22,7 +22,7 @@ func NewPlayback(options *invocation.RootOptions, streams *invocation.Streams) *
 	producer := &pipeline.ListProducer{
 		Name: "rankings playback",
 		ClientFactory: func() (*javdb.Client, error) {
-			return client.New(options, "")
+			return client.NewWithDefaultToken(options)
 		},
 		Fetch: func(ctx context.Context, c *javdb.Client) ([]map[string]any, error) {
 			res, err := c.RankingsPlayback(ctx, filterBy, period)

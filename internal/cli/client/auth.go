@@ -147,15 +147,20 @@ func NewWithDefaultToken(options *invocation.RootOptions) (*javdb.Client, error)
 	if err != nil {
 		return nil, err
 	}
+	token := defaultAccountToken()
+	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
+	if err != nil {
+		return nil, err
+	}
+	return buildClient(rt, baseURL, token)
+}
+
+func defaultAccountToken() string {
 	token := ""
 	if _, store, err := authstore.Open(); err == nil {
 		if acc, aerr := store.Default(); aerr == nil {
 			token = acc.Token
 		}
 	}
-	baseURL, err := ensureConfigAndBaseURL(rt, productionAutoHost)
-	if err != nil {
-		return nil, err
-	}
-	return buildClient(rt, baseURL, token)
+	return token
 }
