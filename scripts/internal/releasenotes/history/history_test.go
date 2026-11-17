@@ -69,8 +69,8 @@ func TestSyncHistoryCreatesMissingHistoricalReleaseWithoutAssets(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
-	writeReleaseNote(t, directory, "en.md", "# v0.4.0 — 2026-07-18\n\n## Maintenance\n\n- Historical maintenance. ([`abcdef0`](https://github.com/FlanChanXwO/javdb-cli/commit/abcdef0123456789))\n\n**Full Changelog**: [v0.3.0...v0.4.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.3.0...v0.4.0)\n")
-	writeReleaseNote(t, directory, "zh-CN.md", "# v0.4.0 — 2026-07-18\n\n## 维护\n\n- 历史维护。([`abcdef0`](https://github.com/FlanChanXwO/javdb-cli/commit/abcdef0123456789))\n\n**完整变更**：[v0.3.0...v0.4.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.3.0...v0.4.0)\n")
+	writeReleaseNote(t, directory, "en.md", "# v0.4.0 — 2026-07-18\n\n**Full Changelog**: [v0.3.0...v0.4.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.3.0...v0.4.0)\n\n<!-- internal:\n  [`abcdef0`](https://github.com/FlanChanXwO/javdb-cli/commit/abcdef0123456789)\n-->\n")
+	writeReleaseNote(t, directory, "zh-CN.md", "# v0.4.0 — 2026-07-18\n\n**完整变更**：[v0.3.0...v0.4.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.3.0...v0.4.0)\n\n<!-- internal:\n  [`abcdef0`](https://github.com/FlanChanXwO/javdb-cli/commit/abcdef0123456789)\n-->\n")
 	var created model.GitHubReleaseWrite
 	var createdRelease model.GitHubRelease
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -100,7 +100,7 @@ func TestSyncHistoryCreatesMissingHistoricalReleaseWithoutAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create historical release: %v", err)
 	}
-	if created.TagName != "v0.4.0" || created.Name != "v0.4.0" || created.Draft || strings.Contains(created.Body, "assets") {
+	if created.TagName != "v0.4.0" || created.Name != "v0.4.0" || created.Draft || strings.Contains(created.Body, "assets") || strings.Contains(created.Body, "internal:") || strings.Contains(created.Body, "commit/abcdef") {
 		t.Fatalf("created release payload = %#v", created)
 	}
 }

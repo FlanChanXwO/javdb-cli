@@ -21,6 +21,7 @@ var (
 	sourcePattern          = regexp.MustCompile(`https://github\.com/FlanChanXwO/javdb-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
 	linkPattern            = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/javdb-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
 	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
+	internalNotesPattern   = regexp.MustCompile(`(?s)<!-- internal:.*?-->`)
 )
 
 var (
@@ -30,8 +31,6 @@ var (
 		"Changed",
 		"Fixed",
 		"Security",
-		"Documentation",
-		"Maintenance",
 		"New Contributors",
 	}
 	chineseSectionOrder = []string{
@@ -40,8 +39,6 @@ var (
 		"变更",
 		"修复",
 		"安全",
-		"文档",
-		"维护",
 		"新贡献者",
 	}
 )
@@ -175,15 +172,19 @@ func readReleaseDocument(path, version string, sectionOrder []string) (releaseDo
 		return releaseDocument{}, fmt.Errorf("must start with heading for v%s", version)
 	}
 
+	document := releaseDocument{}
+	for _, internal := range internalNotesPattern.FindAllString(content, -1) {
+		document.sources = append(document.sources, sourcePattern.FindAllString(internal, -1)...)
+	}
+	content = internalNotesPattern.ReplaceAllString(content, "")
 	matches := sectionPattern.FindAllStringSubmatchIndex(content, -1)
-	if len(matches) == 0 {
+	if len(matches) == 0 && len(document.sources) == 0 {
 		return releaseDocument{}, errors.New("has no release-note sections")
 	}
 	allowed := make(map[string]int, len(sectionOrder))
 	for index, name := range sectionOrder {
 		allowed[name] = index
 	}
-	document := releaseDocument{}
 	previousIndex := -1
 	for index, match := range matches {
 		name := strings.TrimSpace(content[match[2]:match[3]])

@@ -2,8 +2,22 @@
 
 This directory contains the versioned release notes. Each release has matching English and Simplified Chinese files.
 GitHub Release bodies present the two versions together, with English first and Simplified Chinese second. Entries are
-grouped by user outcome and carry inline PR or historical direct-commit sources; empty standard sections are omitted.
-`unreleased/` is an optional manual drafting area. It is not read by the release workflow; published releases use only the matching version directory.
+grouped by user outcome and carry inline PR or historical direct-commit sources. Use only Breaking changes,
+Added, Changed, Fixed, Security, and New Contributors, in that order; omit empty sections.
+
+Describe the command, SDK capability, installation, compatibility, or security outcome a user notices, and any action
+needed to upgrade. Keep CI, tests, internal refactors, templates, and maintainer-only documentation out of the body.
+Preserve their source links in a trailing `<!-- internal: ... -->` comment, which stays in bilingual source validation
+and audit but is removed from rendered GitHub Release bodies. An internal-only release needs only its heading,
+Full Changelog link, and internal sources. Preserve historical dates, version assignments, and migration instructions.
+
+Thank first-time external PR authors in New Contributors with their GitHub profile and first merged PR. Check merged
+history before the previous tag so returning contributors are not announced again; omit bots and the maintainer.
+Update the named contributor avatars in both READMEs against GitHub's contributors list during release preparation.
+The explicit avatar links avoid relying on the refresh timing of a third-party composite image.
+
+`unreleased/` is an optional manual drafting area, not a workflow input. Remove drafts once their changes ship.
+Only authorized release preparation or historical cleanup edits versioned notes.
 
 | Version | Date | Release notes |
 | --- | --- | --- |

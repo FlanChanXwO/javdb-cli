@@ -1,21 +1,31 @@
 # v0.8.0 — 2026-09-20
 
+## Breaking changes
+
+- Replace `javdb download NUMBER --thumbnail/--preview-image/--preview-video` with `javdb assets list ... | javdb assets download ...`. SDK callers move from `DownloadMovieMedia` and its option/result types to `MovieAssets` and `DownloadMovieAsset`. ([#45](https://github.com/FlanChanXwO/javdb-cli/pull/45), [#47](https://github.com/FlanChanXwO/javdb-cli/pull/47))
+
+- Lists/collections NDJSON now emits individual `data.list` / `data.entity` envelopes with required stable IDs instead of aggregate `data.lists` / `data.items`. Human-readable output and aggregate `--json` retain their shapes. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
+
 ## Added
 
-- Add a two-stage movie asset workflow: `javdb assets list NUMBER` discovers and filters thumbnails, preview images, and preview videos, while `javdb assets download` consumes the selected records and safely writes them locally. The downloader handles JavDB media request headers, XOR-wrapped images, ended single-media MPEG-TS HLS with AES-128, and can remux supported H.264/AAC previews to Fast Start MP4 without ffmpeg; the public SDK now exposes `MovieAsset`, `MovieAssets`, `DownloadMovieAsset`, and related helpers. ([#47](https://github.com/FlanChanXwO/javdb-cli/pull/47))
-- Add bounded, best-effort streaming media metadata probing for `assets list`: TTY output can show image size and preview duration, JSON/NDJSON may include `width`, `height`, and `duration`, `assets.probe.enabled` / `assets.probe.concurrency` control the behavior, and the SDK exposes `ProbeMovieAssets`. Human-readable `search` and `detail` output also restores feature-film duration. ([#48](https://github.com/FlanChanXwO/javdb-cli/pull/48))
-- Add client-side collection selector fan-out and machine-readable `config get` JSON/NDJSON output while retaining the documented legacy aggregate JSON and human-readable forms. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
+- Discover and filter thumbnails, preview images, and preview videos with `assets list`, then save selected records with `assets download`. The CLI handles JavDB media headers, wrapped images, and supported HLS decryption, and creates Fast Start MP4 previews without ffmpeg; the SDK exposes `MovieAsset`, `MovieAssets`, and `DownloadMovieAsset`. ([#47](https://github.com/FlanChanXwO/javdb-cli/pull/47))
+
+- `assets list` shows available image dimensions and preview duration in text and JSON/NDJSON (`width`, `height`, `duration`). Configure probing with `assets.probe.enabled` and `assets.probe.concurrency`, or use SDK `ProbeMovieAssets`. Search and detail text output also restores movie duration. ([#48](https://github.com/FlanChanXwO/javdb-cli/pull/48))
+
+- Collection selectors support fan-out, and `config get` supports JSON/NDJSON output. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
 
 ## Changed
 
-- Raise the supported Go toolchain for source builds, `go install`, CI, and release builds from Go 1.26.3 to Go 1.27.1; workflows continue to source the version from `go.mod`, and the READMEs/CONTRIBUTING guides now state Go 1.27.1 explicitly. ([#49](https://github.com/FlanChanXwO/javdb-cli/pull/49))
-- **Breaking:** v0.7.3 users must migrate from `javdb download NUMBER --thumbnail/--preview-image/--preview-video` to the composable `javdb assets list ... | javdb assets download ...` flow. The public SDK likewise moves from `DownloadMovieMedia` with `MovieMediaDownloadOptions` / `MovieMediaDownloadResult` to `MovieAssets` plus `DownloadMovieAsset`. ([#45](https://github.com/FlanChanXwO/javdb-cli/pull/45), [#47](https://github.com/FlanChanXwO/javdb-cli/pull/47))
-- **Breaking:** lists/collections NDJSON moves from aggregate `data.lists` / `data.items` payloads to per-record `data.list` / `data.entity` envelopes with required stable IDs. Legacy human-readable output and explicit aggregate `--json` keep their existing shapes. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
-- Document the official JavDB website and the official app GitHub Releases page in both READMEs. ([#43](https://github.com/FlanChanXwO/javdb-cli/pull/43))
+- Source builds and `go install` now require Go 1.27.1, up from 1.26.3. ([#49](https://github.com/FlanChanXwO/javdb-cli/pull/49))
 
 ## Fixed
 
-- Prevent fuzzy or ambiguous movie-number resolution from silently selecting the first search result: surrounding whitespace is ignored, case-insensitive exact matches are accepted first, and only a unique formatting-equivalent number may fall back. Also fix `mark` / `unmark` pipeline movie-ID precedence and avoid consuming stdin during `mark` status validation. ([#44](https://github.com/FlanChanXwO/javdb-cli/pull/44))
-- Validate collection selectors and `magnets --min-size` before client setup or network requests, reject non-finite, negative, and overflowing sizes, preserve authoritative movie/list IDs, and fail machine envelopes that lack a stable ID. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
+- Movie-number lookup rejects ambiguous or fuzzy-only results, prefers case-insensitive exact matches, and accepts only a unique formatting-equivalent fallback. `mark`/`unmark` honor piped movie IDs, and `mark` validates status before reading stdin. ([#44](https://github.com/FlanChanXwO/javdb-cli/pull/44))
+
+- Invalid collection selectors and non-finite, negative, or overflowing `--min-size` values fail before network requests. Movie/list IDs remain authoritative, and machine envelopes missing stable IDs fail explicitly. ([#46](https://github.com/FlanChanXwO/javdb-cli/pull/46))
 
 **Full Changelog**: [v0.7.3...v0.8.0](https://github.com/FlanChanXwO/javdb-cli/compare/v0.7.3...v0.8.0)
+
+<!-- internal:
+  [#43](https://github.com/FlanChanXwO/javdb-cli/pull/43)
+-->
