@@ -1,6 +1,6 @@
 ---
 slug: javdb-cli
-version: 0.8.2
+version: 0.8.4
 displayName: JavDB CLI
 summary: Safely operate JavDB through the javdb-cli binary for discovery, authenticated lists, and explicit state changes.
 license: MIT
@@ -41,6 +41,8 @@ Drive the installed `javdb` binary, not a guessed API or a source checkout. Read
 | Manage caches | `tags --refresh` rebuilds tags; `cache reverse-search --clear` clears only reverse-search cache; use only for the requested cache task |
 
 `magnets` and `detail --magnets` can run anonymously; a configured account is used when present, and a rejected optional token falls back to anonymous inside the CLI. Do not apply that behavior to authenticated list or write commands.
+
+`search` (including image search and `--magnets`) and all `rankings` commands use the saved default account token when available, otherwise anonymous requests. Image downloads and reverse-search providers receive no JavDB token. These commands return authentication errors without automatic re-login or anonymous retry; report the error and obtain authorization before logging in. See [auth.md](references/auth.md) for account operations.
 
 ## Output and input contracts
 

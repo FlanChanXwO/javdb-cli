@@ -257,7 +257,7 @@ flags with `javdb <command> --help`.
 
 Agents using ClawHub can install the published [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)
 with `clawhub install javdb-cli`; pin the installed skill to the matching
-published release version, currently `0.8.2`, rather than following an
+published release version, currently `0.8.4`, rather than following an
 unversioned `latest` tag.
 
 ## Authentication and credential safety
@@ -281,7 +281,12 @@ password for one re-login attempt; enable it only when you accept that behavior:
 javdb config set auto_relogin true
 ```
 
-Magnet commands work anonymously and use the saved token when available.
+`search` (including image search and `--magnets`) and all `rankings` commands
+use the saved default account token when available, otherwise anonymous requests.
+See the [authentication contract](docs/en/cli-reference.md#authentication-and-local-state) for
+token handling and errors.
+`magnets` and `detail --magnets` also support anonymous requests and retry
+anonymously when the saved token is rejected.
 TOP250 and user-list commands need the default authenticated account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
 local state and should be used deliberately. `javdb assets download` writes

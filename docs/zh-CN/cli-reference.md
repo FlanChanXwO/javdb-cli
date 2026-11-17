@@ -60,8 +60,8 @@ javdb auth check [--json]
   不以相同方式公开 POSIX mode bits。
 - `auth use` 会修改默认账号，`auth remove` 会删除账号；两者都是明确状态变更。
 
-不要把密码或 JWT 写入命令记录、issue、聊天或源码。磁力命令无需登录即可使用（有默认账号
-token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令需要默认账号。
+不要把密码或 JWT 写入命令记录、issue、聊天或源码。`magnets` 与 `detail --magnets`
+无需登录即可使用（有默认账号 token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令需要默认账号。
 
 搜索（包括 `--magnets`）和 `rankings movies|actors|playback` 在有默认账号 token 时
 自动携带，否则匿名请求。图片搜索仅在 JavDB 查询阶段（影片匹配、详情和磁力）使用该令牌，
