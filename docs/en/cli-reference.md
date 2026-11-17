@@ -76,7 +76,8 @@ javdb auth check [--json]
   Treat both as deliberate state changes.
 
 Do not put a password or JWT in a command transcript, issue, chat, or source
-file. Magnet commands work anonymously (using the saved token when available);
+file. `magnets` and `detail --magnets` work anonymously, use the saved token when
+available, and retry anonymously if that token is rejected;
 TOP250 and personal-list commands require the default account.
 
 Search (including `--magnets`) and `rankings movies|actors|playback` send the

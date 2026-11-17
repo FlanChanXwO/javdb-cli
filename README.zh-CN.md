@@ -226,7 +226,7 @@ func main() {
 
 使用 ClawHub 的 Agent 可以通过 `clawhub install javdb-cli` 安装已发布的
 [`javdb-cli` Skill](https://clawhub.ai/flanchanxwo/skills/javdb-cli)；请将已安装的 skill 固定到对应的
-published release 版本（当前为 `0.8.2`），不要跟随无版本的 `latest` tag。
+published release 版本（当前为 `0.8.4`），不要跟随无版本的 `latest` tag。
 
 ## 认证与凭据安全
 
@@ -247,7 +247,9 @@ javdb auth check --json
 javdb config set auto_relogin true
 ```
 
-磁力命令无需登录即可使用，有默认账号 token 时自动携带（失效则回退匿名）。TOP250 和用户列表
+`search`（包括图片搜索与 `--magnets`）和所有 `rankings` 命令有默认账号 token 时自动携带，
+否则匿名请求。令牌使用与错误处理详见 [认证契约](docs/zh-CN/cli-reference.md#登录与本机状态)。
+`magnets` 与 `detail --magnets` 同样支持匿名请求，有默认账号 token 时自动携带，失效则回退匿名。TOP250 和用户列表
 需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
 `javdb assets download` 会将选定的媒体资源写入明确指定的新本地路径，stdout 每行只输出最终路径。MP4 支持单 H.264 视频轨和至多一条 mono/stereo AAC-LC 音轨；校验边界见[媒体契约](docs/zh-CN/cli-reference.md#本地影片资源)。
 `javdb assets list` 会在过滤与 selector 后执行有界并发的流式元数据 probe。JSON/NDJSON 始终输出
