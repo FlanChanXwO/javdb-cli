@@ -2,10 +2,10 @@
 
 ## Added
 
-- Add the JavDB operator skill and native packaged-binary smoke coverage for macOS, Linux, and Windows on amd64 and arm64. ([`2c1ca70`](https://github.com/FlanChanXwO/javdb-cli/commit/2c1ca70))
+- An operator skill helps agents use the installed JavDB CLI. ([`2c1ca70`](https://github.com/FlanChanXwO/javdb-cli/commit/2c1ca70))
 
 ## Fixed
 
-- Handle Windows credential-store permission semantics while retaining POSIX permission checks where supported. ([`2e0a28c`](https://github.com/FlanChanXwO/javdb-cli/commit/2e0a28c))
+- Local account storage works on Windows while retaining private file permissions on POSIX systems. ([`2e0a28c`](https://github.com/FlanChanXwO/javdb-cli/commit/2e0a28c))
 
 **Full Changelog**: [v0.1.0...v0.1.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.1.0...v0.1.1)

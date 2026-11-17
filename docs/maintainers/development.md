@@ -109,6 +109,10 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 
 ## Release-note 工具
 
+发布说明的章节、用户可感知内容筛选、内部来源注释与首次贡献者致谢规则见
+[changelog 格式规范](../../changelog/README.md)。`validate` 校验正文与内部注释中的来源，
+`render` 和历史同步会移除内部注释；发布准备同时核对两个 README 的贡献者名单。
+
 `scripts/releasenotes` 的入口保留 `validate`、`audit`、`render` 和 `sync-history` 四个子命令；
 业务实现按 `scripts/internal/releasenotes/` 下的 `model`、`github`、`audit`、`document`、`history`
 分域。脚本的专门行为门禁为：

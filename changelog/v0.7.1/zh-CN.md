@@ -2,10 +2,10 @@
 
 ## 破坏性变更
 
-- 管道命令默认输出人类可读文本，移除冗余的 `--text` 与原 `--jsonl` 参数，并提供显式的 `--json` 和 `--ndjson` 输出模式。 ([#26](https://github.com/FlanChanXwO/javdb-cli/pull/26))
+- 管道命令默认输出人类可读文本。需要管道信封时，请将 `--jsonl` 改为 `--ndjson`；`--json` 保留聚合输出，冗余的 `--text` 参数已移除。 ([#26](https://github.com/FlanChanXwO/javdb-cli/pull/26))
 
 ## 修复
 
-- 将 operator skill 元数据同步到 v0.7.1，使不可变 tag 对应的 Release 通过正常交接链路向 ClawHub 发布精确版本。 ([#27](https://github.com/FlanChanXwO/javdb-cli/pull/27))
+- 修复 operator skill 的版本元数据，使 ClawHub 可分发对应的 v0.7.1 skill。 ([#27](https://github.com/FlanChanXwO/javdb-cli/pull/27))
 
 **完整变更**：[v0.7.0...v0.7.1](https://github.com/FlanChanXwO/javdb-cli/compare/v0.7.0...v0.7.1)

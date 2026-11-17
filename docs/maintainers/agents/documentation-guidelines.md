@@ -20,6 +20,6 @@ Agent contracts, maintenance/product skills, their reference files, and metadata
 
 Keep README focused; full flags/errors/state behavior belongs in the CLI reference. SDK docs expose `sdk/` (`package javdb`), not internal integration paths. Architecture describes current ownership and flows, not reverse-engineering transcripts or credential details. Put lasting boundaries there and transient implementation reasoning in code/tests.
 
-Synchronize documentation for changed command, API, configuration, environment, output, state, build, or test behavior. Ordinary PRs describe changes and verification; only authorized release preparation edits versioned notes and product versions. No removed release-note metadata or mandatory per-PR changelog fragment should return.
+Synchronize documentation for changed command, API, configuration, environment, output, state, build, or test behavior. Ordinary PRs describe changes and verification; authorized release preparation or historical cleanup edits versioned notes; product versions change during release preparation. No removed release-note metadata or mandatory per-PR changelog fragment should return.
 
 Validate links, names, metadata, and examples against actual code/help. Keep task skills small enough to read as instructions; move a conditional branch into a reference only when that cut improves navigation. Do not create a new skill for a single configuration lookup.

@@ -280,9 +280,9 @@ probe 默认启用，可用 `javdb config get/set assets.probe.enabled` 与
 
 感谢每一位帮助 javdb-cli 变得更好的贡献者。
 
-<a href="https://github.com/FlanChanXwO/javdb-cli/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=FlanChanXwO/javdb-cli" alt="javdb-cli 贡献者">
-</a>
+<a href="https://github.com/FlanChanXwO"><img src="https://avatars.githubusercontent.com/u/104259619?s=96" width="48" height="48" alt="@FlanChanXwO"></a>
+<a href="https://github.com/kanoshiou"><img src="https://avatars.githubusercontent.com/u/73424326?s=96" width="48" height="48" alt="@kanoshiou"></a>
+<a href="https://github.com/LightYear512"><img src="https://avatars.githubusercontent.com/u/24778221?s=96" width="48" height="48" alt="@LightYear512"></a>
 
 [查看全部贡献者](https://github.com/FlanChanXwO/javdb-cli/graphs/contributors)
 

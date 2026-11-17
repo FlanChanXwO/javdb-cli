@@ -327,9 +327,9 @@ large or compatibility-sensitive changes first.
 
 Thank you to everyone who helps improve javdb-cli.
 
-<a href="https://github.com/FlanChanXwO/javdb-cli/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=FlanChanXwO/javdb-cli" alt="Contributors to javdb-cli">
-</a>
+<a href="https://github.com/FlanChanXwO"><img src="https://avatars.githubusercontent.com/u/104259619?s=96" width="48" height="48" alt="@FlanChanXwO"></a>
+<a href="https://github.com/kanoshiou"><img src="https://avatars.githubusercontent.com/u/73424326?s=96" width="48" height="48" alt="@kanoshiou"></a>
+<a href="https://github.com/LightYear512"><img src="https://avatars.githubusercontent.com/u/24778221?s=96" width="48" height="48" alt="@LightYear512"></a>
 
 [View all contributors](https://github.com/FlanChanXwO/javdb-cli/graphs/contributors)
 

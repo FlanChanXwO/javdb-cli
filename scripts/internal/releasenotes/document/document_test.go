@@ -1,6 +1,7 @@
 package document
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,5 +184,54 @@ func TestValidateCoverageRejectsUnlistedChangelogSource(t *testing.T) {
 	}}
 	if err := ValidateSourceCoverage(root, "1.2.0", "v1.1.0", report); err == nil || !strings.Contains(err.Error(), "not present") {
 		t.Fatalf("source coverage error = %v, want missing audit source error", err)
+	}
+}
+
+func TestInternalSourcesStayAuditableButOutOfReleaseBody(t *testing.T) {
+	t.Parallel()
+	for _, visible := range []bool{false, true} {
+		t.Run(fmt.Sprint(visible), func(t *testing.T) {
+			root := t.TempDir()
+			for _, locale := range []string{"en", "zh-CN"} {
+				section := ""
+				if visible {
+					heading := "Fixed"
+					if locale == "zh-CN" {
+						heading = "修复"
+					}
+					section = "## " + heading + "\n\n- Fix output. ([#42](https://github.com/FlanChanXwO/javdb-cli/pull/42))\n\n"
+				}
+				writeReleaseNote(t, root, locale+".md", "# v1.2.0 — 2026-07-30\n\n"+section+"**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/javdb-cli/compare/v1.1.0...v1.2.0)\n\n<!-- internal:\n  [#43](https://github.com/FlanChanXwO/javdb-cli/pull/43)\n-->\n")
+			}
+			if err := ValidateReleaseDirectory(root, "1.2.0", "v1.1.0"); err != nil {
+				t.Fatal(err)
+			}
+			report := model.AuditReport{Sources: []model.AuditSource{{URL: "https://github.com/FlanChanXwO/javdb-cli/pull/42"}}}
+			if err := ValidateSourceCoverage(root, "1.2.0", "v1.1.0", report); err == nil {
+				t.Fatal("internal source outside audit was accepted")
+			}
+			body, err := RenderGitHubReleaseBody(root, "1.2.0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(body, "internal:") || strings.Contains(body, "pull/43") || !strings.Contains(body, "Full Changelog") {
+				t.Fatalf("internal source leaked or compare link missing: %s", body)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsMaintainerOnlySections(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, locale := range []string{"en", "zh-CN"} {
+		heading := "Maintenance"
+		if locale == "zh-CN" {
+			heading = "维护"
+		}
+		writeReleaseNote(t, root, locale+".md", "# v1.2.0 — 2026-07-30\n\n## "+heading+"\n\n- Refactor CI. ([#43](https://github.com/FlanChanXwO/javdb-cli/pull/43))\n\n**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/javdb-cli/compare/v1.1.0...v1.2.0)\n")
+	}
+	if err := ValidateReleaseDirectory(root, "1.2.0", "v1.1.0"); err == nil {
+		t.Fatal("maintainer-only section accepted in public notes")
 	}
 }

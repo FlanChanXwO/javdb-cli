@@ -13,6 +13,6 @@ For CLI changes, verify arguments, number versus internal-ID semantics, output m
 
 Maintenance skill names start with `javdb-cli-`; the distributed product skill remains `javdb-cli`. Keep descriptions task-specific and workflows usable through direct file reading without global skills. Product bundles must work outside a checkout: include required references and use official public URLs rather than broken repository-relative links.
 
-Do not invent mandatory PR release-note fields or changelog fragments. Ordinary PRs state changes, verification and the current checklist; only authorized release preparation changes versioned bilingual notes and skill versions. Do not publish a skill merely because its instructions changed.
+Do not invent mandatory PR release-note fields or changelog fragments. Ordinary PRs state changes, verification and the current checklist; authorized release preparation or historical cleanup changes versioned bilingual notes; product skill version bumps belong to release preparation. Do not publish a skill merely because its instructions changed.
 
 Validate metadata, local links, referenced files and commands, and English skill text. Read the result as a fresh contributor with no CCS setup. Run `git diff --check` and relevant existing script/tool checks; no separate documentation test framework is required. Root instructions are not automatically docs-only according to CI's path policy. Report the checks actually performed, not a claimed application regression run.

@@ -2,6 +2,6 @@
 
 ## 新增
 
-- 新增按版本发布 `javdb-cli` Agent skill 到 SkillHub 与 ClawHub，并在发布前校验不可变 tag、使用无凭据 dry-run。 ([#17](https://github.com/FlanChanXwO/javdb-cli/pull/17))
+- 支持从 SkillHub 或 ClawHub 安装指定版本的 `javdb-cli` Agent skill。 ([#17](https://github.com/FlanChanXwO/javdb-cli/pull/17))
 
 **完整变更**：[v0.5.1...v0.5.2](https://github.com/FlanChanXwO/javdb-cli/compare/v0.5.1...v0.5.2)
