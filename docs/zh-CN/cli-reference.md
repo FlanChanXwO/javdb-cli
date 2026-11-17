@@ -63,6 +63,11 @@ javdb auth check [--json]
 不要把密码或 JWT 写入命令记录、issue、聊天或源码。磁力命令无需登录即可使用（有默认账号
 token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令需要默认账号。
 
+搜索（包括 `--magnets`）和 `rankings movies|actors|playback` 在有默认账号 token 时
+自动携带，否则匿名请求。图片搜索仅在 JavDB 查询阶段（影片匹配、详情和磁力）使用该令牌，
+不会将其发送给图片下载地址或反搜服务。如果匿名请求被拒绝，请运行 `javdb auth login` 后
+重试。这些命令不会自动重新登录，也不会在 token 被拒绝后自动改用匿名请求。
+
 ## 只读发现
 
 ```bash

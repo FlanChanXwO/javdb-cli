@@ -106,7 +106,7 @@ func New(options *invocation.RootOptions, streams *invocation.Streams) *cobra.Co
 				RouteTextThroughPipeline: true,
 				Kinds:                    []pipeline.Kind{pipeline.KindMovie},
 				ClientFactory: func() (*javdb.Client, error) {
-					return client.New(options, "")
+					return client.NewWithDefaultToken(options)
 				},
 				RunOne: func(c *javdb.Client, ctx context.Context, input pipeline.Envelope) (pipeline.Envelope, error) {
 					return runSearchOne(c, ctx, input, page, limit, zone, sort, filterBy, typ, hasMagnets)
@@ -302,7 +302,7 @@ func namedEntityRef(item map[string]any) (string, string) {
 	return id, id
 }
 func runTextSearch(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, keyword string, page, limit int, zone, sort, filterBy, typ string, hasMagnets, asJSON bool) error {
-	c, err := client.New(options, "")
+	c, err := client.NewWithDefaultToken(options)
 	if err != nil {
 		return err
 	}
@@ -340,7 +340,7 @@ func runTextSearch(ctx context.Context, options *invocation.RootOptions, streams
 // 公开 SDK 反搜+严格联动，输出候选、相似度、帧、匹配详情与逐项错误。
 // provider 顶层失败直接报错；候选部分失败在完成输出后返回非零。
 func runImageSearch(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode) error {
-	setup, err := client.NewReverseSearchClient(options, "", source)
+	setup, err := client.NewReverseSearchClient(options, source)
 	if err != nil {
 		return err
 	}
@@ -566,7 +566,7 @@ func movieFromEnvelope(input pipeline.Envelope) map[string]any {
 // runSearchMagnets 执行关键词搜索并对每部影片获取磁力：筛选 → 排序 → 截取 N。
 // 结果按搜索结果顺序（影片）和磁力排序顺序输出。
 func runSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, inputs []pipeline.Envelope, mode pipeline.OutputMode, page, limit int, zone, sort, filterBy string, hasMagnets bool, magnetsCount int, cnsub, hd bool, minMiB int) error {
-	c, err := client.New(options, "")
+	c, err := client.NewWithDefaultToken(options)
 	if err != nil {
 		return err
 	}
@@ -796,7 +796,7 @@ func withInputMeta(envelope, input pipeline.Envelope) pipeline.Envelope {
 // runImageSearchMagnets 执行以图搜番并直接获取磁力：使用 SkipMovieDetail 跳过
 // 完整详情，仅做番号→ID→磁力。结果按 provider 候选顺序输出。
 func runImageSearchMagnets(ctx context.Context, options *invocation.RootOptions, streams *invocation.Streams, arg string, reader *bufio.Reader, source string, noCache bool, mode pipeline.OutputMode, magnetsCount int, cnsub, hd bool, minMiB int) error {
-	setup, err := client.NewReverseSearchClient(options, "", source)
+	setup, err := client.NewReverseSearchClient(options, source)
 	if err != nil {
 		return err
 	}

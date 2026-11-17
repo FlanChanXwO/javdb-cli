@@ -28,9 +28,9 @@ type ReverseSearchSetup struct {
 }
 
 // NewReverseSearchClient 解析反搜配置（含环境 header 展开）、装配本机文件
-// 缓存并构造携带反搜选项的公开 SDK client。explicitSource 非空时覆盖
+// 缓存并构造携带反搜选项与默认账号 token 的公开 SDK client。explicitSource 非空时覆盖
 // default_source。配置损坏显式失败，绝不偷回 builtin。
-func NewReverseSearchClient(options *invocation.RootOptions, token, explicitSource string) (*ReverseSearchSetup, error) {
+func NewReverseSearchClient(options *invocation.RootOptions, explicitSource string) (*ReverseSearchSetup, error) {
 	rt, baseURL, err := resolveClient(options)
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func NewReverseSearchClient(options *invocation.RootOptions, token, explicitSour
 	sdkClient, err := javdb.New(
 		javdb.WithHost(baseURL),
 		javdb.WithProxy(rt.Proxy),
-		javdb.WithToken(token),
+		javdb.WithToken(defaultAccountToken()),
 		javdb.WithDeviceUUID(rt.DeviceUUID),
 		javdb.WithLang(rt.Lang),
 		javdb.WithReverseSearch(javdb.ReverseSearchOptions{
