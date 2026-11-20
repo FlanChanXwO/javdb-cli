@@ -1,6 +1,6 @@
 ---
 slug: javdb-cli
-version: 0.8.4
+version: 0.8.5
 displayName: JavDB CLI
 summary: Safely operate JavDB through the javdb-cli binary for discovery, authenticated lists, and explicit state changes.
 license: MIT
