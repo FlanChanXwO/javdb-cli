@@ -18,6 +18,7 @@ CI、测试、内部重构、模板及维护者文档的来源放在尾部 `<!--
 | 版本 | 日期 | 发布说明 |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v0.8.5](https://github.com/FlanChanXwO/javdb-cli/compare/v0.8.4...v0.8.5) | 2026-11-20 | [English](v0.8.5/en.md) · [简体中文](v0.8.5/zh-CN.md) |
 | [v0.8.4](https://github.com/FlanChanXwO/javdb-cli/compare/v0.8.3...v0.8.4) | 2026-11-17 | [English](v0.8.4/en.md) · [简体中文](v0.8.4/zh-CN.md) |
 | [v0.8.3](https://github.com/FlanChanXwO/javdb-cli/compare/v0.8.2...v0.8.3) | 2026-10-22 | [English](v0.8.3/en.md) · [简体中文](v0.8.3/zh-CN.md) |
 | [v0.8.2](https://github.com/FlanChanXwO/javdb-cli/compare/v0.8.1...v0.8.2) | 2026-09-23 | [English](v0.8.2/en.md) · [简体中文](v0.8.2/zh-CN.md) |
