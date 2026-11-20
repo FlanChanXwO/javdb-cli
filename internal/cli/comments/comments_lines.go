@@ -12,7 +12,7 @@ import (
 // writeComments 以可读的逐条形式输出评论；保留完整内容与字段降级，不新增截断。
 func writeComments(w, errW io.Writer, reviews []map[string]any) error {
 	if len(reviews) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.no_comments_line")))
+		_, err := errW.Write([]byte(i18n.T("result.no_reviews")))
 		return err
 	}
 	for _, review := range reviews {

@@ -114,7 +114,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 						})
 					}
 					if b == nil {
-						fmt.Fprintln(streams.Diagnostics(slog.LevelInfo), i18n.T("cli.message"))
+						fmt.Fprintln(streams.Diagnostics(slog.LevelInfo), i18n.T("result.no_magnets"))
 						return nil
 					}
 					writeMagnets(streams.Out, streams.Diagnostics(slog.LevelInfo), []map[string]any{b})
@@ -130,7 +130,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "magnets NUMBER",
-		Short: i18n.T("cli.list_magnet_links_for_a_movie"),
+		Short: i18n.T("command.magnets"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var err error
@@ -142,13 +142,13 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&cnsub, "cnsub", false, i18n.T("cli.only_magnets_with_chinese_subtitles"))
-	cmd.Flags().BoolVar(&hd, "hd", false, i18n.T("cli.only_hd_magnets"))
-	cmd.Flags().StringVar(&minSize, "min-size", "", i18n.T("cli.min_size_e_g_gb_mb"))
-	cmd.Flags().BoolVar(&best, "best", false, i18n.T("cli.pick_single_best_magnet_cnsub_hd_size"))
-	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("cli.treat_number_as_internal_movie_id"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&cnsub, "cnsub", false, i18n.T("flag.cnsub"))
+	cmd.Flags().BoolVar(&hd, "hd", false, i18n.T("flag.hd"))
+	cmd.Flags().StringVar(&minSize, "min-size", "", i18n.T("flag.min_size"))
+	cmd.Flags().BoolVar(&best, "best", false, i18n.T("flag.best_magnet"))
+	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("flag.movie_id"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
@@ -197,11 +197,11 @@ func ParseSizeMiB(text string) (int, error) {
 	}
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
-		return 0, fmt.Errorf(i18n.T("cli.invalid_min_size_s"), text)
+		return 0, fmt.Errorf(i18n.T("magnets.invalid_min_size"), text)
 	}
 	value := f * mult
 	if math.IsInf(value, 0) {
-		return 0, fmt.Errorf(i18n.T("cli.invalid_min_size_s"), text)
+		return 0, fmt.Errorf(i18n.T("magnets.invalid_min_size"), text)
 	}
 	// 先检查浮点值，再转换为 int，避免负小数截断成合法的 0，或溢出后得到错误整数。
 	maxInt := int(^uint(0) >> 1)
@@ -211,7 +211,7 @@ func ParseSizeMiB(text string) (int, error) {
 		maxValue = math.Nextafter(maxValue, 0)
 	}
 	if value > maxValue {
-		return 0, fmt.Errorf(i18n.T("cli.invalid_min_size_s"), text)
+		return 0, fmt.Errorf(i18n.T("magnets.invalid_min_size"), text)
 	}
 	return int(value), nil
 }

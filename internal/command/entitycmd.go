@@ -76,17 +76,17 @@ func New(kind, use, short string, options *session.Options, streams *environment
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&zone, "zone", "censored", i18n.T("cli.censored_uncensored_western_fc"))
-	cmd.Flags().StringArrayVar(&tagRefs, "tag", nil, i18n.T("cli.content_tag_id_en_repeatable"))
-	cmd.Flags().StringArrayVar(&main, "main", nil, i18n.T("cli.main_flag_p_m_c_s_i_v_repeatable"))
-	cmd.Flags().StringVar(&sort, "sort", "release", i18n.T("cli.hit_release_score_update_want_watch_count_watched_count"))
-	cmd.Flags().StringVar(&order, "order", "desc", i18n.T("cli.asc_desc"))
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page"))
-	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("cli.page_size"))
-	cmd.Flags().BoolVar(&allPages, "all", false, i18n.T("cli.fetch_all_pages_capped"))
-	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("cli.drop_magnets_count"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.json_with_entity_meta_movies"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
+	cmd.Flags().StringArrayVar(&tagRefs, "tag", nil, i18n.T("flag.tag"))
+	cmd.Flags().StringArrayVar(&main, "main", nil, i18n.T("flag.main"))
+	cmd.Flags().StringVar(&sort, "sort", "release", "hit|release|score|update|want_watch_count|watched_count")
+	cmd.Flags().StringVar(&order, "order", "desc", "asc|desc")
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("flag.limit"))
+	cmd.Flags().BoolVar(&allPages, "all", false, i18n.T("flag.all_pages"))
+	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("flag.has_magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 

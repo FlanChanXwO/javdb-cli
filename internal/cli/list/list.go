@@ -12,5 +12,5 @@ import (
 
 // New builds the list filmography command.
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
-	return command.New("list", "list REF", i18n.T("cli.list_movies_inside_a_user_playlist"), options, streams)
+	return command.New("list", "list REF", i18n.T("command.list"), options, streams)
 }

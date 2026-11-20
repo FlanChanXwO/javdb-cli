@@ -58,7 +58,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 			for _, envelope := range envelopes {
 				list, ok := envelope.Data["list"].(map[string]any)
 				if !ok {
-					return i18n.Errorf("cli.lists_json_renderer_envelope_missing_data_list")
+					return i18n.Errorf("lists.missing_data")
 				}
 				items = append(items, list)
 			}
@@ -71,16 +71,16 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	var asNDJSON bool
 	cmd := &cobra.Command{
 		Use:   "lists",
-		Short: i18n.T("cli.my_subcommands_show_search_related"),
+		Short: i18n.T("command.lists"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page"))
-	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("cli.page_size"))
-	cmd.Flags().StringVar(&sortBy, "sort-by", "created", i18n.T("cli.created_name_movies_count_views_count_updated_default"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.json_output"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("flag.limit"))
+	cmd.Flags().StringVar(&sortBy, "sort-by", "created", "created|name|movies_count|views_count|updated|default")
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 
 	cmd.AddCommand(NewShow(options, streams))
 	cmd.AddCommand(NewSearch(options, streams))
@@ -91,7 +91,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 // writeListRows 写出 id\tname\tmovies\tprivacy\tviews 行；空列表输出 (空列表)。
 func writeListRows(w, errW io.Writer, items []map[string]any) error {
 	if len(items) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for _, item := range items {

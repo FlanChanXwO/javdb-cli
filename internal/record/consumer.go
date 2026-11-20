@@ -59,7 +59,7 @@ func (c *Consumer) Execute(streams *environment.Streams, args []string, ndjson, 
 		return err
 	}
 	if len(inputs) == 0 {
-		return i18n.Errorf("cli.keyword_or_an_image")
+		return i18n.Errorf("input.search_required")
 	}
 	return c.RunInputs(streams, inputs, mode)
 }
@@ -213,7 +213,7 @@ func (c *Consumer) processOne(input Envelope) itemResult {
 		}
 	}
 	if !c.accepts(input) {
-		err := fmt.Errorf(i18n.T("cli.unsupported_kind_q"), input.Kind)
+		err := fmt.Errorf(i18n.T("record.unsupported_kind"), input.Kind)
 		return itemResult{
 			envelopes: []Envelope{ErrorEnvelope(input, c.Name, "input", "kind", err.Error())},
 			err:       err,
@@ -236,7 +236,7 @@ func writeRef(w io.Writer, envelope Envelope) error {
 		ref = envelope.ID
 	}
 	if ref == "" {
-		return i18n.Errorf("cli.envelope_has_no_printable_ref_or_id")
+		return i18n.Errorf("record.missing_ref")
 	}
 	_, err := fmt.Fprintln(w, ref)
 	return err
@@ -267,11 +267,11 @@ func CollectInputs(reader *bufio.Reader, streams *environment.Streams, arg strin
 		if _, err := reader.Peek(1); err == nil {
 			stdinHasContent = true
 		} else if !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf(i18n.T("cli.read_stdin_w"), err)
+			return nil, fmt.Errorf(i18n.T("input.read_failed"), err)
 		}
 	}
 	if arg != "" && stdinHasContent {
-		return nil, i18n.Errorf("cli.ambiguous_input_provide_either_a_positional_argument_or_stdin_not_both")
+		return nil, i18n.Errorf("input.ambiguous")
 	}
 	if arg != "" {
 		return []Envelope{New("", arg, "")}, nil
@@ -285,7 +285,7 @@ func CollectInputs(reader *bufio.Reader, streams *environment.Streams, arg strin
 	}
 	switch classification {
 	case ClassificationImage:
-		return nil, i18n.Errorf("cli.stdin_is_an_image_this_command_does_not_accept_image_input")
+		return nil, i18n.Errorf("input.image_unsupported")
 	case ClassificationNDJSON:
 		return ParseBatch(content, KindNDJSONInput)
 	default:

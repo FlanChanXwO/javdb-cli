@@ -12,5 +12,5 @@ import (
 
 // New builds the series filmography command.
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
-	return command.New("series", "series REF", i18n.T("cli.list_movies_for_a_series_id_or_name"), options, streams)
+	return command.New("series", "series REF", i18n.T("command.series"), options, streams)
 }

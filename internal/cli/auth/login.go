@@ -19,7 +19,7 @@ func NewLogin(options *session.Options, streams *environment.Streams) *cobra.Com
 	use := true
 	command := &cobra.Command{
 		Use:   "login",
-		Short: i18n.T("cli.log_in_with_username_password_interactive_if_flags_omitted"),
+		Short: i18n.T("command.auth_login"),
 		RunE: func(command *cobra.Command, args []string) error {
 			c, err := session.New(options, "")
 			if err != nil {
@@ -44,7 +44,7 @@ func NewLogin(options *session.Options, streams *environment.Streams) *cobra.Com
 			}
 			userID, resolvedName, err := c.ResolveUserID(ctx)
 			if err != nil {
-				return fmt.Errorf(i18n.T("cli.login_ok_but_user_id_required_w"), err)
+				return fmt.Errorf(i18n.T("auth.missing_user_id"), err)
 			}
 			if resolvedName == "" {
 				resolvedName = username
@@ -62,12 +62,12 @@ func NewLogin(options *session.Options, streams *environment.Streams) *cobra.Com
 			if err := fileStore.Commit(store); err != nil {
 				return err
 			}
-			fmt.Fprintf(streams.Out, i18n.T("cli.logged_in_as_s_id_d"), resolvedName, userID)
+			fmt.Fprintf(streams.Out, i18n.T("auth.signed_in"), resolvedName, userID)
 			return nil
 		},
 	}
-	command.Flags().StringVarP(&username, "username", "u", "", i18n.T("cli.username_email"))
-	command.Flags().StringVarP(&password, "password", "p", "", i18n.T("cli.password"))
-	command.Flags().BoolVar(&use, "use", true, i18n.T("cli.set_as_default_account_after_login"))
+	command.Flags().StringVarP(&username, "username", "u", "", i18n.T("flag.username"))
+	command.Flags().StringVarP(&password, "password", "p", "", i18n.T("flag.password"))
+	command.Flags().BoolVar(&use, "use", true, i18n.T("flag.default_account"))
 	return command
 }

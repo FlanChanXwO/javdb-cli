@@ -12,36 +12,36 @@ import (
 
 // renderDetail 写出 graph-oriented 详情行（保持 Python parity 的既有文本）。
 func renderDetail(w io.Writer, movie map[string]any) {
-	fmt.Fprintf(w, i18n.T("cli.s"), displayValue(movie["number"]))
-	fmt.Fprintf(w, i18n.T("cli.id_s"), displayValue(movie["id"]))
-	fmt.Fprintf(w, i18n.T("cli.s_2"), displayValue(movie["title"]))
-	fmt.Fprintf(w, i18n.T("cli.s_3"), displayValue(movie["score"]))
-	fmt.Fprintf(w, i18n.T("cli.s_4"), displayValue(movie["release_date"]))
+	fmt.Fprintf(w, i18n.T("detail.number"), displayValue(movie["number"]))
+	fmt.Fprintf(w, "id\t%s\n", displayValue(movie["id"]))
+	fmt.Fprintf(w, i18n.T("detail.title"), displayValue(movie["title"]))
+	fmt.Fprintf(w, i18n.T("detail.score"), displayValue(movie["score"]))
+	fmt.Fprintf(w, i18n.T("detail.release_date"), displayValue(movie["release_date"]))
 	if minutes, ok := display.MovieDurationMinutes(movie); ok {
-		fmt.Fprintf(w, i18n.T("cli.d"), minutes)
+		fmt.Fprintf(w, i18n.T("detail.duration"), minutes)
 	}
-	fmt.Fprintf(w, i18n.T("cli.s_5"), displayValue(movie["magnets_count"]))
+	fmt.Fprintf(w, i18n.T("detail.magnets"), displayValue(movie["magnets_count"]))
 	if displayValue(movie["series_id"]) != "" || displayValue(movie["series_name"]) != "" {
-		fmt.Fprintf(w, i18n.T("cli.s_s_3"), displayValue(movie["series_id"]), displayValue(movie["series_name"]))
+		fmt.Fprintf(w, i18n.T("detail.series"), displayValue(movie["series_id"]), displayValue(movie["series_name"]))
 	}
 	if displayValue(movie["maker_id"]) != "" || displayValue(movie["maker_name"]) != "" {
-		fmt.Fprintf(w, i18n.T("cli.s_s_4"), displayValue(movie["maker_id"]), displayValue(movie["maker_name"]))
+		fmt.Fprintf(w, i18n.T("detail.maker"), displayValue(movie["maker_id"]), displayValue(movie["maker_name"]))
 	}
 	if displayValue(movie["director_id"]) != "" || displayValue(movie["director_name"]) != "" {
-		fmt.Fprintf(w, i18n.T("cli.s_s_5"), displayValue(movie["director_id"]), displayValue(movie["director_name"]))
+		fmt.Fprintf(w, i18n.T("detail.director"), displayValue(movie["director_id"]), displayValue(movie["director_name"]))
 	}
 	for _, a := range asSlice(movie["actors"]) {
 		if m, ok := a.(map[string]any); ok {
-			fmt.Fprintf(w, i18n.T("cli.s_s_6"), displayValue(m["id"]), displayValue(m["name"]))
+			fmt.Fprintf(w, i18n.T("detail.actor"), displayValue(m["id"]), displayValue(m["name"]))
 		} else {
-			fmt.Fprintf(w, i18n.T("cli.v"), a)
+			fmt.Fprintf(w, i18n.T("detail.actor_value"), a)
 		}
 	}
 	for _, t := range asSlice(movie["tags"]) {
 		if m, ok := t.(map[string]any); ok {
-			fmt.Fprintf(w, i18n.T("cli.s_s_7"), displayValue(m["id"]), displayValue(m["name"]))
+			fmt.Fprintf(w, i18n.T("detail.tag"), displayValue(m["id"]), displayValue(m["name"]))
 		} else {
-			fmt.Fprintf(w, i18n.T("cli.v_2"), t)
+			fmt.Fprintf(w, i18n.T("detail.tag_value"), t)
 		}
 	}
 }
@@ -49,7 +49,7 @@ func renderDetail(w io.Writer, movie map[string]any) {
 // renderMagnets 用 magnet 投影写出磁力行文本；空列表输出 (无磁力链)。
 func renderMagnets(w, errW io.Writer, items []map[string]any) {
 	if len(items) == 0 {
-		fmt.Fprintln(errW, i18n.T("cli.message"))
+		fmt.Fprintln(errW, i18n.T("result.no_magnets"))
 		return
 	}
 	for _, row := range display.ProjectMagnets(items) {

@@ -48,21 +48,21 @@ func NewActors(options *session.Options, streams *environment.Streams) *cobra.Co
 	}
 	cmd := &cobra.Command{
 		Use:   "actors",
-		Short: i18n.T("cli.actor_rankings"),
+		Short: i18n.T("command.rankings_actors"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&period, "period", "day", i18n.T("cli.day_week_month"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
 // writeNamedNoCount 写出 id\tname 行（忽略 count）；空列表输出 (空列表)。
 func writeNamedNoCount(w, errW io.Writer, items []map[string]any) error {
 	if len(items) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for _, row := range display.ProjectNamedAll(items) {

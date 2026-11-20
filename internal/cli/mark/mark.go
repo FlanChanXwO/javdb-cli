@@ -59,38 +59,38 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 		Legacy: func(args []string) error {
 			return session.WithRequiredAuth(options, streams.Err, func(c *session.Client) error {
 				status := "want_watch"
-				label := i18n.T("cli.want_label")
+				message := "mark.want"
 				if watched {
 					status = "watched"
-					label = i18n.T("cli.watched_label")
+					message = "mark.watched"
 				}
 				mid, rev, err := fetch(c, context.Background(), args[0], isID, status)
 				if err != nil {
 					return err
 				}
-				_, err = fmt.Fprintf(streams.Out, i18n.T("cli.s_s_s_review_id_s"), args[0], mid, label, display(rev["id"]))
+				_, err = fmt.Fprintf(streams.Out, i18n.T(message), args[0], mid, display(rev["id"]))
 				return err
 			})
 		},
 	}
 	cmd := &cobra.Command{
 		Use:   "mark NUMBER",
-		Short: i18n.T("cli.mark_a_movie_as_watched_or_want"),
+		Short: i18n.T("command.mark"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if watched == want {
-				return i18n.Errorf("cli.specify_exactly_one_of_watched_or_want")
+				return i18n.Errorf("mark.status_required")
 			}
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&watched, "watched", false, i18n.T("cli.mark_as"))
-	cmd.Flags().BoolVar(&want, "want", false, i18n.T("cli.mark_as_2"))
-	cmd.Flags().IntVar(&score, "score", 0, i18n.T("cli.optional_score"))
-	cmd.Flags().StringVar(&content, "content", "", i18n.T("cli.optional_review_text"))
-	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("cli.treat_number_as_internal_movie_id"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&watched, "watched", false, i18n.T("flag.watched"))
+	cmd.Flags().BoolVar(&want, "want", false, i18n.T("flag.want"))
+	cmd.Flags().IntVar(&score, "score", 0, i18n.T("flag.score"))
+	cmd.Flags().StringVar(&content, "content", "", i18n.T("flag.review"))
+	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("flag.movie_id"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 

@@ -16,13 +16,13 @@ import (
 func New(streams *environment.Streams) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "cache",
-		Short: i18n.T("cli.inspect_or_clear_the_local_reverse_search_cache"),
+		Short: i18n.T("command.cache"),
 	}
 	var source string
 	var clear bool
 	reverseSearchCommand := &cobra.Command{
 		Use:   "reverse-search",
-		Short: i18n.T("cli.show_or_clear_the_reverse_search_response_cache"),
+		Short: i18n.T("command.cache_reverse_search"),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := paths.ReverseSearchCacheDir()
@@ -35,13 +35,13 @@ func New(streams *environment.Streams) *cobra.Command {
 					if err := store.Clear(""); err != nil {
 						return err
 					}
-					fmt.Fprintln(streams.Out, i18n.T("cli.cleared_all_reverse_search_cache_entries"))
+					fmt.Fprintln(streams.Out, i18n.T("cache.cleared"))
 					return nil
 				}
 				if err := store.Clear(source); err != nil {
 					return err
 				}
-				fmt.Fprintf(streams.Out, i18n.T("cli.cleared_reverse_search_cache_for_source_q"), source)
+				fmt.Fprintf(streams.Out, i18n.T("cache.source_cleared"), source)
 				return nil
 			}
 			stats, err := store.Stats()
@@ -54,7 +54,7 @@ func New(streams *environment.Streams) *cobra.Command {
 			}
 			names := cache.SortedSources(stats)
 			if len(names) == 0 {
-				fmt.Fprintln(streams.Out, i18n.T("cli.reverse_search_cache_is_empty"))
+				fmt.Fprintln(streams.Out, i18n.T("cache.empty"))
 				return nil
 			}
 			for _, name := range names {
@@ -63,8 +63,8 @@ func New(streams *environment.Streams) *cobra.Command {
 			return nil
 		},
 	}
-	reverseSearchCommand.Flags().StringVar(&source, "source", "", i18n.T("cli.limit_to_one_reverse_search_source"))
-	reverseSearchCommand.Flags().BoolVar(&clear, "clear", false, i18n.T("cli.clear_cached_entries_instead_of_showing_stats"))
+	reverseSearchCommand.Flags().StringVar(&source, "source", "", i18n.T("flag.cache_source"))
+	reverseSearchCommand.Flags().BoolVar(&clear, "clear", false, i18n.T("flag.cache_clear"))
 	command.AddCommand(reverseSearchCommand)
 	return command
 }

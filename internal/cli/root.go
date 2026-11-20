@@ -39,7 +39,7 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, *enviro
 	}
 	command := &cobra.Command{
 		Use:           "javdb",
-		Short:         i18n.T("cli.javdb_app_api_command_line_client"),
+		Short:         i18n.T("command.root"),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Version:       rootVersionLine(),
@@ -51,11 +51,11 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, *enviro
 		options.Logger = streams.Logger
 		return err
 	}
-	command.SetHelpTemplate(i18n.T("help.template"))
+	command.SetHelpTemplate("{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}\n\n{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}")
 	command.SetUsageTemplate(i18n.T("usage.template"))
 	command.SetVersionTemplate("{{.Version}}\n")
-	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", i18n.T("cli.proxy_url_else_https_proxy_all_proxy_config"))
-	command.PersistentFlags().StringVar(&options.Host, "host", "", i18n.T("cli.auto_mirror_main_url_default_config_or_auto"))
+	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", i18n.T("flag.proxy"))
+	command.PersistentFlags().StringVar(&options.Host, "host", "", i18n.T("flag.host"))
 
 	addCommands(command, options, streams)
 	command.InitDefaultHelpFlag()

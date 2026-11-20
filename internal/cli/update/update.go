@@ -24,13 +24,13 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	var opts updateOptions
 	command := &cobra.Command{
 		Use:     "update",
-		Short:   i18n.T("cli.check_for_or_install_updates"),
-		Example: i18n.T("cli.javdb_update_check"),
+		Short:   i18n.T("command.update"),
+		Example: "javdb update --check",
 		Args:    cobra.NoArgs,
 		RunE: func(command *cobra.Command, args []string) error {
 			// 安装过程可输出 Homebrew/Go 的原始进度，故 JSON 只承诺只读检查的单一对象。
 			if opts.jsonOut && !opts.check {
-				return i18n.Errorf("cli.json_is_only_supported_with_check")
+				return i18n.Errorf("update.json_requires_check")
 			}
 			proxy, err := resolveProxy(options)
 			if err != nil {
@@ -60,9 +60,9 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 		},
 	}
 	commandFlags := command.Flags()
-	commandFlags.BoolVar(&opts.check, "check", false, i18n.T("cli.check_for_an_update_without_installing_it"))
-	commandFlags.BoolVar(&opts.includePrerelease, "prerelease", false, i18n.T("cli.include_prerelease_updates"))
-	commandFlags.BoolVar(&opts.jsonOut, "json", false, i18n.T("cli.print_update_check_status_as_json_requires_check"))
+	commandFlags.BoolVar(&opts.check, "check", false, i18n.T("flag.update_check"))
+	commandFlags.BoolVar(&opts.includePrerelease, "prerelease", false, i18n.T("flag.prerelease"))
+	commandFlags.BoolVar(&opts.jsonOut, "json", false, i18n.T("flag.update_json"))
 	return command
 }
 
@@ -72,6 +72,6 @@ func printUpdateResult(out io.Writer, result model.Result) error {
 	if result.LatestVersion != nil {
 		latestVersion = *result.LatestVersion
 	}
-	_, err := fmt.Fprintf(out, i18n.T("cli.source_s_current_version_s_latest_version_s_update_available_t"), result.Source, result.CurrentVersion, latestVersion, result.UpdateAvailable)
+	_, err := fmt.Fprintf(out, i18n.T("update.status"), result.Source, result.CurrentVersion, latestVersion, result.UpdateAvailable)
 	return err
 }

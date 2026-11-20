@@ -51,7 +51,7 @@ func knownConfigKey(key string) bool {
 
 func configKeyEnvelope(cfg settings.Settings, key string) (record.Envelope, error) {
 	if !knownConfigKey(key) {
-		return record.Envelope{}, fmt.Errorf(i18n.T("cli.unknown_key_q"), key)
+		return record.Envelope{}, fmt.Errorf(i18n.T("config.unknown_key"), key)
 	}
 
 	value, err := lookupKey(cfg, key)
@@ -80,13 +80,13 @@ func parseKeyValue(key, value string) (any, error) {
 	case "bool":
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("cli.key_q_requires_a_boolean_value_got_q"), key, value)
+			return nil, fmt.Errorf(i18n.T("config.boolean_required"), key, value)
 		}
 		return parsed, nil
 	case "int":
 		parsed, err := strconv.Atoi(value)
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("cli.key_q_requires_an_integer_value_got_q"), key, value)
+			return nil, fmt.Errorf(i18n.T("config.integer_required"), key, value)
 		}
 		return parsed, nil
 	default:
@@ -115,11 +115,11 @@ var displayConfigKeys = []string{
 func New(streams *environment.Streams) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
-		Short: i18n.T("cli.show_or_edit_config_toml"),
+		Short: i18n.T("command.config"),
 	}
 	command.AddCommand(&cobra.Command{
 		Use:   "path",
-		Short: i18n.T("cli.print_config_file_path"),
+		Short: i18n.T("flag.config_path"),
 		RunE: func(command *cobra.Command, args []string) error {
 			if err := paths.EnsureDefaultConfigFile(); err != nil {
 				return err
@@ -135,11 +135,11 @@ func New(streams *environment.Streams) *cobra.Command {
 	command.AddCommand(newGet(streams))
 	command.AddCommand(&cobra.Command{
 		Use:   "set <key> <value>",
-		Short: i18n.T("cli.set_a_config_key"),
+		Short: i18n.T("command.config_set"),
 		Args:  cobra.ExactArgs(2),
 		RunE: func(command *cobra.Command, args []string) error {
 			if !knownConfigKey(args[0]) {
-				return fmt.Errorf(i18n.T("cli.unknown_key_q"), args[0])
+				return fmt.Errorf(i18n.T("config.unknown_key"), args[0])
 			}
 			// host 值语义校验必须先于创建，避免无效命令落盘基线配置。
 			if args[0] == "host" {
@@ -152,7 +152,7 @@ func New(streams *environment.Streams) *cobra.Command {
 				return err
 			}
 			if args[0] == "assets.probe.concurrency" && value.(int) <= 0 {
-				return fmt.Errorf(i18n.T("cli.assets_probe_concurrency_must_be_positive_got_d"), value)
+				return fmt.Errorf(i18n.T("assets.invalid_probe_concurrency"), value)
 			}
 			if err := paths.EnsureDefaultConfigFile(); err != nil {
 				return err
@@ -206,7 +206,7 @@ func newGet(streams *environment.Streams) *cobra.Command {
 		},
 		Legacy: func(args []string) error {
 			if !knownConfigKey(args[0]) {
-				return fmt.Errorf(i18n.T("cli.unknown_key_q"), args[0])
+				return fmt.Errorf(i18n.T("config.unknown_key"), args[0])
 			}
 			cfg, _, err := load()
 			if err != nil {
@@ -222,11 +222,11 @@ func newGet(streams *environment.Streams) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "get [key]",
-		Short: i18n.T("cli.print_config_or_one_key"),
+		Short: i18n.T("command.config_get"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			if len(args) == 1 && !knownConfigKey(args[0]) {
-				return fmt.Errorf(i18n.T("cli.unknown_key_q"), args[0])
+				return fmt.Errorf(i18n.T("config.unknown_key"), args[0])
 			}
 			if len(args) == 0 {
 				if streams.InIsTerminal && (asJSON || asNDJSON) {
@@ -262,8 +262,8 @@ func newGet(streams *environment.Streams) *cobra.Command {
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
@@ -272,7 +272,7 @@ func newUnset(streams *environment.Streams) *cobra.Command {
 	var asJSON, asNDJSON bool
 	runOne := func(key string) error {
 		if !knownConfigKey(key) {
-			return fmt.Errorf(i18n.T("cli.unknown_key_q"), key)
+			return fmt.Errorf(i18n.T("config.unknown_key"), key)
 		}
 		path, err := paths.ConfigPath()
 		if err != nil {
@@ -311,14 +311,14 @@ func newUnset(streams *environment.Streams) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "unset <key>",
-		Short: i18n.T("cli.clear_a_config_key_to_default"),
+		Short: i18n.T("command.config_unset"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
@@ -386,6 +386,6 @@ func lookupKey(cfg settings.Settings, key string) (string, error) {
 	case "reverse_search.request_timeout":
 		return cfg.ReverseSearch.RequestTimeout, nil
 	default:
-		return "", fmt.Errorf(i18n.T("cli.unknown_key_q"), key)
+		return "", fmt.Errorf(i18n.T("config.unknown_key"), key)
 	}
 }

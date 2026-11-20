@@ -9,7 +9,7 @@ import (
 func listEnvelope(item map[string]any) (record.Envelope, error) {
 	id := display(item["id"])
 	if id == "" {
-		return record.Envelope{}, i18n.Errorf("cli.list_has_no_id")
+		return record.Envelope{}, i18n.Errorf("lists.missing_id")
 	}
 	ref := display(item["name"])
 	if ref == "" {

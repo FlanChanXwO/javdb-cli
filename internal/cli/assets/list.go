@@ -35,10 +35,10 @@ func NewList(options *session.Options, streams *environment.Streams) *cobra.Comm
 
 	cmd := &cobra.Command{
 		Use:   "list NUMBER [SELECTOR...]",
-		Short: i18n.T("cli.list_media_assets_attached_to_a_movie"),
-		Long:  i18n.T("cli.list_the_media_assets_of_a_movie_thumbnail_cover_preview_images_and_pr"),
+		Short: i18n.T("command.assets_list"),
+		Long:  i18n.T("assets.list_description"),
 
-		Example: i18n.T("cli.javdb_assets_list_abc_javdb_assets_list_abc_type_image_javdb_assets_do"),
+		Example: "  javdb assets list ABC-123\n  javdb assets list ABC-123 --type image 1-4 | javdb assets download -d ./images\n  javdb assets list ABC-123 --type video | javdb assets download -o preview.mp4",
 
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,9 +83,9 @@ func NewList(options *session.Options, streams *environment.Streams) *cobra.Comm
 			})
 		},
 	}
-	cmd.Flags().StringVar(&typeFilter, "type", "", i18n.T("cli.filter_by_asset_type_image_or_video"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json_array"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.one_json_object_per_line"))
+	cmd.Flags().StringVar(&typeFilter, "type", "", i18n.T("flag.asset_type"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json_array"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson_objects"))
 	return cmd
 }
 
@@ -125,7 +125,7 @@ func filterAssets(assets []javdb.MovieAsset, descs []string, typeFilter string) 
 		}
 		return filtered, filteredDescs, nil
 	default:
-		return nil, nil, fmt.Errorf(i18n.T("cli.invalid_type_q_image_or_video"), typeFilter)
+		return nil, nil, fmt.Errorf(i18n.T("assets.invalid_type"), typeFilter)
 	}
 }
 
@@ -141,7 +141,7 @@ func selectAssets(assets []javdb.MovieAsset, descs []string, selector string) ([
 	}
 	for _, n := range selected {
 		if n > len(assets) {
-			return nil, nil, fmt.Errorf(i18n.T("cli.asset_number_d_out_of_range_d"), n, len(assets))
+			return nil, nil, fmt.Errorf(i18n.T("assets.selector_out_of_range"), n, len(assets))
 		}
 	}
 	picked := make([]javdb.MovieAsset, 0, len(selected))
@@ -216,7 +216,7 @@ func renderAssetTable(out io.Writer, infos []javdb.MovieAssetInfo, descs []strin
 	if width < 1 {
 		width = 1
 	}
-	if _, err := fmt.Fprintf(out, i18n.T("cli.s_s_s_s_description"), width, "#", i18n.T("asset.type"), i18n.T("asset.size"), i18n.T("asset.duration")); err != nil {
+	if _, err := fmt.Fprintf(out, i18n.T("assets.table_header"), width, "#"); err != nil {
 		return err
 	}
 	for i, info := range infos {

@@ -35,10 +35,10 @@ func NewDownload(options *session.Options, streams *environment.Streams) *cobra.
 
 	cmd := &cobra.Command{
 		Use:   "download",
-		Short: i18n.T("cli.download_assets_from_assets_list_pipe_input"),
-		Long:  i18n.T("cli.download_movie_assets_from_type_tab_url_records_piped_by_javdb_assets"),
+		Short: i18n.T("command.assets_download"),
+		Long:  i18n.T("assets.download_description"),
 
-		Example: i18n.T("cli.javdb_assets_list_abc_type_image_javdb_assets_download_d_media_javdb_a"),
+		Example: "  javdb assets list ABC-123 --type image 1-4 | javdb assets download -d ./media\n  javdb assets list ABC-123 --type video | javdb assets download -o preview.mp4",
 
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -47,8 +47,8 @@ func NewDownload(options *session.Options, streams *environment.Streams) *cobra.
 			})
 		},
 	}
-	cmd.Flags().StringVarP(&dir, "dir", "d", ".", i18n.T("cli.directory_for_auto_named_output_files"))
-	cmd.Flags().StringVarP(&out, "out", "o", "", i18n.T("cli.exact_output_path_for_exactly_one_asset"))
+	cmd.Flags().StringVarP(&dir, "dir", "d", ".", i18n.T("flag.output_directory"))
+	cmd.Flags().StringVarP(&out, "out", "o", "", i18n.T("flag.output_file"))
 	return cmd
 }
 
@@ -58,7 +58,7 @@ func NewDownload(options *session.Options, streams *environment.Streams) *cobra.
 func downloadAssetsStream(ctx context.Context, c assetDownloader, streams *environment.Streams, dir, out string) error {
 	dir = filepath.Clean(dir)
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return fmt.Errorf(i18n.T("cli.assets_download_d_q_is_not_a_directory"), dir)
+		return fmt.Errorf(i18n.T("assets.output_not_directory"), dir)
 	}
 	scanner := bufio.NewScanner(streams.In)
 	scanner.Buffer(make([]byte, 0, stdinLineLimit), stdinLineLimit)
@@ -81,7 +81,7 @@ func downloadAssetsStream(ctx context.Context, c assetDownloader, streams *envir
 			// -o 模式只需要读取第一条，再尝试读取第二条：
 			// 存在第二条则报错,无需把整个 stdin 读完。
 			if firstRecord != nil {
-				return i18n.Errorf("cli.assets_download_o_requires_exactly_one_asset_got_more")
+				return i18n.Errorf("assets.single_output_required")
 			}
 			firstRecord = &record
 			continue
@@ -95,11 +95,11 @@ func downloadAssetsStream(ctx context.Context, c assetDownloader, streams *envir
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf(i18n.T("cli.read_stdin_w"), err)
+		return fmt.Errorf(i18n.T("input.read_failed"), err)
 	}
 	if out != "" {
 		if firstRecord == nil {
-			return i18n.Errorf("cli.assets_download_no_assets_on_stdin")
+			return i18n.Errorf("assets.input_required")
 		}
 		written, err := c.DownloadMovieAsset(ctx, javdb.MovieAsset{Type: firstRecord.Type, URL: firstRecord.URL}, out)
 		if err != nil {
@@ -112,7 +112,7 @@ func downloadAssetsStream(ctx context.Context, c assetDownloader, streams *envir
 		return nil
 	}
 	if pos == 0 {
-		return i18n.Errorf("cli.assets_download_no_assets_on_stdin")
+		return i18n.Errorf("assets.input_required")
 	}
 	return nil
 }
@@ -127,13 +127,13 @@ type assetRecord struct {
 func parseAssetRecord(line string, lineNo int) (assetRecord, error) {
 	parts := strings.Split(line, "\t")
 	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
-		return assetRecord{}, fmt.Errorf(i18n.T("cli.invalid_input_at_line_d_q_want_type_tab_url"), lineNo, line)
+		return assetRecord{}, fmt.Errorf(i18n.T("assets.invalid_input"), lineNo, line)
 	}
 	assetType := strings.TrimSpace(parts[0])
 	switch assetType {
 	case "image", "video":
 	default:
-		return assetRecord{}, fmt.Errorf(i18n.T("cli.invalid_input_at_line_d_unsupported_asset_type_q"), lineNo, assetType)
+		return assetRecord{}, fmt.Errorf(i18n.T("assets.invalid_input_type"), lineNo, assetType)
 	}
 	return assetRecord{Type: assetType, URL: strings.TrimSpace(parts[1])}, nil
 }
@@ -167,20 +167,20 @@ func downloadAutoNamed(ctx context.Context, c assetDownloader, record assetRecor
 		}
 		format, ok := javdb.ImageAssetFormat(tmp)
 		if !ok {
-			return "", cleanupDir(i18n.Errorf("cli.assets_download_downloaded_image_is_not_a_recognized_format"))
+			return "", cleanupDir(i18n.Errorf("assets.unrecognized_image"))
 		}
 		target := filepath.Join(dir, fmt.Sprintf("image-%03d.%s", pos, format))
 		if err := atomicfile.LinkNoReplace(tmp, target); err != nil {
-			return "", cleanupDir(fmt.Errorf(i18n.T("cli.assets_download_publish_q_w"), target, err))
+			return "", cleanupDir(fmt.Errorf(i18n.T("assets.publish_failed"), target, err))
 		}
 		if err := os.Remove(tmp); err != nil {
-			return "", cleanupDir(fmt.Errorf(i18n.T("cli.assets_download_remove_image_temp_file_after_publish_w"), err))
+			return "", cleanupDir(fmt.Errorf(i18n.T("assets.remove_temp_file"), err))
 		}
 		if err := os.Remove(tmpDir); err != nil {
-			return "", fmt.Errorf(i18n.T("cli.assets_download_remove_image_temp_directory_w"), err)
+			return "", fmt.Errorf(i18n.T("assets.remove_temp_directory"), err)
 		}
 		return target, nil
 	default:
-		return "", fmt.Errorf(i18n.T("cli.assets_download_unsupported_asset_type_q"), record.Type)
+		return "", fmt.Errorf(i18n.T("assets.unsupported_type"), record.Type)
 	}
 }

@@ -60,22 +60,22 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "browse",
-		Short: i18n.T("cli.browse_movies_by_content_tags_year_month"),
+		Short: i18n.T("command.browse"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&zone, "zone", "censored", i18n.T("cli.censored_uncensored_western_fc"))
-	cmd.Flags().StringArrayVar(&tagRefs, "tag", nil, i18n.T("cli.tag_id_en_repeatable"))
-	cmd.Flags().StringArrayVar(&mainFlags, "main", nil, i18n.T("cli.main_flag_p_m_c_s_i_v_repeatable"))
-	cmd.Flags().StringVar(&year, "year", "", i18n.T("cli.four_digit_year"))
-	cmd.Flags().StringVar(&month, "month", "", i18n.T("cli.month"))
-	cmd.Flags().StringVar(&sort, "sort", "hit", i18n.T("cli.hit_release_score_update_want_watch_count_watched_count"))
-	cmd.Flags().StringVar(&order, "order", "desc", i18n.T("cli.asc_desc"))
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page"))
-	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("cli.page_size"))
-	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("cli.drop_magnets_count"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.json_output"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
+	cmd.Flags().StringArrayVar(&tagRefs, "tag", nil, i18n.T("flag.tag"))
+	cmd.Flags().StringArrayVar(&mainFlags, "main", nil, i18n.T("flag.main"))
+	cmd.Flags().StringVar(&year, "year", "", i18n.T("flag.year"))
+	cmd.Flags().StringVar(&month, "month", "", i18n.T("flag.month"))
+	cmd.Flags().StringVar(&sort, "sort", "hit", "hit|release|score|update|want_watch_count|watched_count")
+	cmd.Flags().StringVar(&order, "order", "desc", "asc|desc")
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("flag.limit"))
+	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("flag.has_magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

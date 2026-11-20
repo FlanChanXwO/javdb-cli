@@ -67,32 +67,32 @@ func NewShow(options *session.Options, streams *environment.Streams) *cobra.Comm
 			if meta == nil {
 				meta = data
 			}
-			fmt.Fprintf(streams.Out, i18n.T("cli.id_s"), coalesce(display(meta["id"]), eid))
-			fmt.Fprintf(streams.Out, i18n.T("cli.name_s"), display(meta["name"]))
+			fmt.Fprintf(streams.Out, "id\t%s\n", coalesce(display(meta["id"]), eid))
+			fmt.Fprintf(streams.Out, "name\t%s\n", display(meta["name"]))
 			if d := display(meta["description"]); d != "" {
-				fmt.Fprintf(streams.Out, i18n.T("cli.desc_s"), d)
+				fmt.Fprintf(streams.Out, "desc\t%s\n", d)
 			}
-			fmt.Fprintf(streams.Out, i18n.T("cli.movies_s"), display(meta["movies_count"]))
-			fmt.Fprintf(streams.Out, i18n.T("cli.views_s"), display(meta["views_count"]))
-			fmt.Fprintf(streams.Out, i18n.T("cli.collects_s"), display(meta["collections_count"]))
+			fmt.Fprintf(streams.Out, "movies\t%s\n", display(meta["movies_count"]))
+			fmt.Fprintf(streams.Out, "views\t%s\n", display(meta["views_count"]))
+			fmt.Fprintf(streams.Out, "collects\t%s\n", display(meta["collections_count"]))
 			if s := display(meta["share_info"]); s != "" {
-				fmt.Fprintf(streams.Out, i18n.T("cli.share_s"), s)
+				fmt.Fprintf(streams.Out, "share\t%s\n", s)
 			}
-			fmt.Fprintf(streams.Out, i18n.T("cli.is_creator_v"), data["is_creator"])
-			fmt.Fprintf(streams.Out, i18n.T("cli.has_collected_v"), data["has_collected"])
+			fmt.Fprintf(streams.Out, "is_creator\t%v\n", data["is_creator"])
+			fmt.Fprintf(streams.Out, "has_collected\t%v\n", data["has_collected"])
 			return nil
 		},
 	}
 	cmd := &cobra.Command{
 		Use:   "show REF",
-		Short: i18n.T("cli.show_meta_movies_use_list_id"),
+		Short: i18n.T("command.lists_show"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.json_output"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 

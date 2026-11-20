@@ -49,33 +49,33 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 		RowText: writeRanked,
 		ErrNote: func(w io.Writer, movies []map[string]any) {
 			if generatedAt != "" {
-				fmt.Fprintf(w, i18n.T("cli.generated_at_s"), generatedAt)
+				fmt.Fprintf(w, "# generated_at=%s\n", generatedAt)
 			}
 		},
 	}
 	cmd := &cobra.Command{
 		Use:   "top250",
-		Short: i18n.T("cli.top_list_needs_login"),
+		Short: i18n.T("command.top250"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&zone, "zone", "", i18n.T("cli.censored_uncensored_western_fc_omit_for_all_site"))
-	cmd.Flags().StringVar(&year, "year", "", i18n.T("cli.filter_by_year_e_g"))
-	cmd.Flags().IntVar(&startRank, "from", 1, i18n.T("cli.start_from_this_rank"))
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page"))
-	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("cli.page_size"))
-	cmd.Flags().BoolVar(&ignoreWatched, "ignore-watched", false, i18n.T("cli.skip_already_watched_titles"))
-	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("cli.drop_magnets_count"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().StringVar(&zone, "zone", "", i18n.T("flag.ranking_zone"))
+	cmd.Flags().StringVar(&year, "year", "", i18n.T("flag.ranking_year"))
+	cmd.Flags().IntVar(&startRank, "from", 1, i18n.T("flag.start_rank"))
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("flag.limit"))
+	cmd.Flags().BoolVar(&ignoreWatched, "ignore-watched", false, i18n.T("flag.ignore_watched"))
+	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("flag.has_magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
 // writeRanked 写出带 #ranking 前缀的排行行；空列表输出 (空列表)。
 func writeRanked(w, errW io.Writer, movies []map[string]any) error {
 	if len(movies) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for _, m := range movies {

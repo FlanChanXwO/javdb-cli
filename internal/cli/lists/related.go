@@ -73,16 +73,16 @@ func NewRelated(options *session.Options, streams *environment.Streams) *cobra.C
 	}
 	cmd := &cobra.Command{
 		Use:   "related NUMBER",
-		Short: i18n.T("cli.public_related_to_a_movie"),
+		Short: i18n.T("command.lists_related"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("cli.treat_number_as_internal_movie_id"))
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page"))
-	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("cli.page_size"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.json_output"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("flag.movie_id"))
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("flag.limit"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

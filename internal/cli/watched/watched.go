@@ -40,20 +40,20 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "watched",
-		Short: i18n.T("cli.list_watched_movies"),
+		Short: i18n.T("command.watched"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("cli.drop_magnets_count"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("flag.has_magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
 func writeMovies(w, errW io.Writer, movies []map[string]any) error {
 	if len(movies) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for _, row := range display.ProjectMovies(movies) {

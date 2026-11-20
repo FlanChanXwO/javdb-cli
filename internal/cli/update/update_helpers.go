@@ -20,16 +20,16 @@ import (
 func resolveProxy(options *session.Options) (string, error) {
 	path, err := paths.ConfigPath()
 	if err != nil {
-		return "", fmt.Errorf(i18n.T("cli.resolve_update_configuration_path_w"), err)
+		return "", fmt.Errorf(i18n.T("update.config_path"), err)
 	}
 	cfg, err := settings.LoadFile(path)
 	if err != nil {
-		return "", fmt.Errorf(i18n.T("cli.load_update_configuration_w"), err)
+		return "", fmt.Errorf(i18n.T("update.load_config"), err)
 	}
 	// update 访问 GitHub Releases，与 JavDB host 无关；只沿用同一 proxy 优先级。
 	proxy, err := settings.ResolveProxy(cfg, options.Proxy)
 	if err != nil {
-		return "", fmt.Errorf(i18n.T("cli.resolve_update_configuration_w"), err)
+		return "", fmt.Errorf(i18n.T("update.resolve_config"), err)
 	}
 	return proxy, nil
 }
@@ -38,11 +38,11 @@ func resolveProxy(options *session.Options) (string, error) {
 func newProductionCoordinator(proxy string, stdout, stderr io.Writer) (*update.Coordinator, error) {
 	httpClient, err := release.NewReleaseHTTPClient(proxy)
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("cli.create_update_http_client_w"), err)
+		return nil, fmt.Errorf(i18n.T("update.create_http_client"), err)
 	}
 	releaseClient, err := release.NewGitHubReleaseClient(release.ReleaseClientOptions{HTTPClient: httpClient})
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("cli.create_github_release_client_w"), err)
+		return nil, fmt.Errorf(i18n.T("update.create_release_client"), err)
 	}
 	return update.NewCoordinator(update.CoordinatorOptions{
 		SourceDetector:   update.SourceDetectorFunc(source.DetectInstallSource),

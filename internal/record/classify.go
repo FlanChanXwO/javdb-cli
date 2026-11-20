@@ -33,14 +33,14 @@ func Classify(reader *bufio.Reader) (Classification, []byte, error) {
 	}
 	header, err := reader.Peek(image.DetectHeaderSize())
 	if err != nil && !errors.Is(err, io.EOF) {
-		return ClassificationText, nil, fmt.Errorf(i18n.T("cli.read_stdin_w"), err)
+		return ClassificationText, nil, fmt.Errorf(i18n.T("input.read_failed"), err)
 	}
 	if len(header) > 0 && image.DetectFormat(header) != image.Unknown {
 		return ClassificationImage, nil, nil
 	}
 	content, err := io.ReadAll(reader)
 	if err != nil {
-		return ClassificationText, nil, fmt.Errorf(i18n.T("cli.read_stdin_w"), err)
+		return ClassificationText, nil, fmt.Errorf(i18n.T("input.read_failed"), err)
 	}
 	if looksLikeNDJSON(content) {
 		return ClassificationNDJSON, content, nil

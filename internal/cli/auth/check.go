@@ -17,7 +17,7 @@ import (
 // NewCheck verifies the saved token with the server without changing account state.
 func NewCheck(options *session.Options, streams *environment.Streams) *cobra.Command {
 	var asJSON bool
-	command := &cobra.Command{Use: "check", Short: i18n.T("cli.check_default_account_token_does_not_print_token"), RunE: func(command *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "check", Short: i18n.T("command.auth_check"), RunE: func(command *cobra.Command, _ []string) error {
 		_, store, err := authstore.Open()
 		if err != nil {
 			return err
@@ -60,14 +60,14 @@ func NewCheck(options *session.Options, streams *environment.Streams) *cobra.Com
 				return err
 			}
 		} else if status.OK {
-			if _, err := fmt.Fprintf(streams.Out, i18n.T("cli.ok_d_s"), status.UserID, status.Username); err != nil {
+			if _, err := fmt.Fprintf(streams.Out, "ok\t%d\t%s\n", status.UserID, status.Username); err != nil {
 				return err
 			}
-		} else if _, err := fmt.Fprintf(streams.Out, i18n.T("cli.fail_d_s_s"), status.UserID, status.Username, status.Error); err != nil {
+		} else if _, err := fmt.Fprintf(streams.Out, "fail\t%d\t%s\t%s\n", status.UserID, status.Username, status.Error); err != nil {
 			return err
 		}
 		return failure
 	}}
-	command.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
+	command.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
 	return command
 }

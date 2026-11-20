@@ -67,7 +67,7 @@ func NewSearch(options *session.Options, streams *environment.Streams) *cobra.Co
 	}
 	cmd := &cobra.Command{
 		Use:   "search KEYWORD",
-		Short: i18n.T("cli.search_public"),
+		Short: i18n.T("command.lists_search"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateZone(zone); err != nil {
@@ -76,11 +76,11 @@ func NewSearch(options *session.Options, streams *environment.Streams) *cobra.Co
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page"))
-	cmd.Flags().IntVar(&limit, "limit", 0, i18n.T("cli.page_size"))
-	cmd.Flags().StringVar(&zone, "zone", "all", i18n.T("cli.censored_uncensored_western_fc_all"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.json_output"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 0, i18n.T("flag.limit"))
+	cmd.Flags().StringVar(&zone, "zone", "all", "censored|uncensored|western|fc2|all")
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
@@ -89,6 +89,6 @@ func validateZone(zone string) error {
 	case "censored", "uncensored", "western", "fc2", "all":
 		return nil
 	default:
-		return fmt.Errorf(i18n.T("cli.zone_must_be_one_of_censored_uncensored_western_fc_all_got_q"), zone)
+		return fmt.Errorf(i18n.T("search.invalid_zone"), zone)
 	}
 }

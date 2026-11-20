@@ -71,9 +71,9 @@ func (b *BatchRunner) Execute(streams *environment.Streams, args []string, ndjso
 	}
 	if len(inputs) == 0 {
 		if b.Name == "" {
-			return errors.New(i18n.T("cli.input_required"))
+			return errors.New(i18n.T("input.required"))
 		}
-		return fmt.Errorf(i18n.T("cli.s_input_required"), b.Name)
+		return fmt.Errorf(i18n.T("input.command_required"), b.Name)
 	}
 	return b.ExecuteWithInputs(streams, inputs, mode)
 }

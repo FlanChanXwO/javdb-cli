@@ -68,7 +68,7 @@ func (p *ListProducer) Execute(streams *environment.Streams, ndjson, json bool) 
 				ref = id
 			}
 			if ref == "" {
-				return fmt.Errorf(i18n.T("cli.s_item_has_no_printable_ref_or_id"), p.Name)
+				return fmt.Errorf(i18n.T("record.item_missing_ref"), p.Name)
 			}
 			if _, err := fmt.Fprintln(streams.Out, ref); err != nil {
 				return err

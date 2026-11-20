@@ -29,21 +29,6 @@ var catalogs = sync.OnceValues(func() (map[string]map[string]string, error) {
 	return out, nil
 })
 
-// Catalog is immutable and may be shared by concurrent renderers.
-type Catalog struct {
-	messages map[string]string
-}
-
-// Open selects an embedded catalog. Unsupported locales use English.
-func Open(locale string) (*Catalog, error) {
-	all, err := catalogs()
-	if err != nil {
-		return nil, err
-	}
-	locale = Normalize(locale)
-	return &Catalog{messages: all[locale]}, nil
-}
-
 // Normalize maps system locale names to the supported catalogs.
 func Normalize(locale string) string {
 	locale = strings.ToLower(strings.ReplaceAll(locale, "_", "-"))
@@ -63,22 +48,17 @@ func System() string {
 	return Normalize(nativeLanguage())
 }
 
-// Text reads a message from this catalog. Missing keys are programming errors.
-func (c *Catalog) Text(key string) string {
-	value, ok := c.messages[key]
+// T reads a message using the current system language without changing global state.
+func T(key string) string {
+	all, err := catalogs()
+	if err != nil {
+		panic(err)
+	}
+	value, ok := all[System()][key]
 	if !ok {
 		panic("missing CLI message: " + key)
 	}
 	return value
-}
-
-// T reads a message using the current system language without changing global state.
-func T(key string) string {
-	c, err := Open(System())
-	if err != nil {
-		panic(err)
-	}
-	return c.Text(key)
 }
 
 // Errorf keeps Go's formatting and wrapped-error semantics for translated diagnostics.

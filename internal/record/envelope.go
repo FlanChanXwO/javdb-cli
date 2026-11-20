@@ -93,13 +93,13 @@ func ErrorMessage(envelope Envelope) string {
 // Validate 校验信封 schema 与 kind；ref/id 至少一个存在。
 func (e Envelope) Validate() error {
 	if e.Schema != Schema {
-		return fmt.Errorf(i18n.T("cli.envelope_schema_q_is_not_q"), e.Schema, Schema)
+		return fmt.Errorf(i18n.T("record.invalid_schema"), e.Schema, Schema)
 	}
 	if !IsKind(e.Kind) {
-		return fmt.Errorf(i18n.T("cli.envelope_has_unsupported_kind_q"), e.Kind)
+		return fmt.Errorf(i18n.T("record.unsupported_kind"), e.Kind)
 	}
 	if e.Ref == "" && e.ID == "" {
-		return i18n.Errorf("cli.envelope_must_carry_a_ref_or_an_id")
+		return i18n.Errorf("record.ref_required")
 	}
 	return nil
 }
@@ -125,10 +125,10 @@ func DecodeNDJSON(line string) (Envelope, error) {
 	decoder := json.NewDecoder(strings.NewReader(trimmed))
 	var envelope Envelope
 	if err := decoder.Decode(&envelope); err != nil {
-		return Envelope{}, fmt.Errorf(i18n.T("cli.decode_envelope_w"), err)
+		return Envelope{}, fmt.Errorf(i18n.T("record.decode_failed"), err)
 	}
 	if decoder.More() {
-		return Envelope{}, i18n.Errorf("cli.envelope_line_contains_trailing_data")
+		return Envelope{}, i18n.Errorf("record.trailing_data")
 	}
 	if err := envelope.Validate(); err != nil {
 		return Envelope{}, err
@@ -168,7 +168,7 @@ func ParseBatch(content []byte, kind Kind) ([]Envelope, error) {
 			}
 		}
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("cli.line_d_w"), index+1, err)
+			return nil, fmt.Errorf(i18n.T("input.line_error"), index+1, err)
 		}
 		envelopes = append(envelopes, envelope)
 	}
@@ -179,5 +179,5 @@ func ParseBatch(content []byte, kind Kind) ([]Envelope, error) {
 const KindNDJSONInput Kind = "ndjson"
 
 func errEmptyLine() error {
-	return errors.New(i18n.T("cli.empty_line"))
+	return errors.New(i18n.T("input.empty_line"))
 }

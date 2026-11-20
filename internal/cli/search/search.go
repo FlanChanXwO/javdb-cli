@@ -46,7 +46,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	)
 	cmd := &cobra.Command{
 		Use:   "search KEYWORD|IMAGE",
-		Short: i18n.T("cli.search_movies_or_other_dimensions_with_type"),
+		Short: i18n.T("command.search"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := record.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
@@ -60,16 +60,16 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 				return err
 			}
 			if magnets < 0 {
-				return i18n.Errorf("cli.magnets_must_be")
+				return i18n.Errorf("search.invalid_magnet_count")
 			}
 			filtersChanged := cmd.Flags().Changed("cnsub") || cmd.Flags().Changed("hd") || cmd.Flags().Changed("min-size")
 			if filtersChanged && !cmd.Flags().Changed("magnets") {
-				return i18n.Errorf("cli.cnsub_hd_and_min_size_require_magnets")
+				return i18n.Errorf("search.magnet_filters_require_magnets")
 			}
 			// --magnets 仅支持 movie 搜索。
 			if magnets > 0 || cmd.Flags().Changed("magnets") {
 				if typ != "" && typ != "movie" {
-					return fmt.Errorf(i18n.T("cli.magnets_is_only_supported_for_movie_search_got_type_q"), typ)
+					return fmt.Errorf(i18n.T("search.magnets_require_movie"), typ)
 				}
 			}
 			minMiB := 0
@@ -96,7 +96,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 				return runImageSearch(cmd.Context(), options, streams, arg, reader, source, noCache, mode)
 			}
 			if len(inputs) == 0 {
-				return i18n.Errorf("cli.keyword_or_an_image")
+				return i18n.Errorf("input.search_required")
 			}
 			if cmd.Flags().Changed("magnets") {
 				return runSearchMagnets(cmd.Context(), options, streams, inputs, mode, page, limit, zone, sort, filterBy, hasMagnets, magnets, cnsub, hd, minMiB)
@@ -124,22 +124,22 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 			return runner.ExecuteWithInputs(streams, inputs, mode)
 		},
 	}
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page_number"))
-	cmd.Flags().IntVar(&limit, "limit", 0, i18n.T("cli.page_size_server_default"))
-	cmd.Flags().StringVar(&zone, "zone", "censored", i18n.T("cli.censored_uncensored_western_fc_all"))
-	cmd.Flags().StringVar(&sort, "sort", "", i18n.T("cli.relevance_release_score_update_hit"))
-	cmd.Flags().StringVar(&filterBy, "filter-by", "", i18n.T("cli.can_play_magnets_subtitle_single"))
-	cmd.Flags().StringVar(&typ, "type", "", i18n.T("cli.movie_code_series_actor_maker_director_list"))
-	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("cli.drop_movie_rows_with_magnets_count"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
-	cmd.Flags().BoolVar(&asImage, "image", false, i18n.T("cli.treat_the_argument_as_an_image_path_or_http_s_url"))
-	cmd.Flags().StringVar(&source, "source", "", i18n.T("cli.reverse_search_source_default_reverse_search_default_source"))
-	cmd.Flags().BoolVar(&noCache, "no-cache", false, i18n.T("cli.bypass_the_reverse_search_response_cache"))
-	cmd.Flags().IntVar(&magnets, "magnets", 0, i18n.T("cli.fetch_magnets_for_each_result_all_n_top_n_by_best_rule"))
-	cmd.Flags().BoolVar(&cnsub, "cnsub", false, i18n.T("cli.only_magnets_with_chinese_subtitles_requires_magnets"))
-	cmd.Flags().BoolVar(&hd, "hd", false, i18n.T("cli.only_hd_magnets_requires_magnets"))
-	cmd.Flags().StringVar(&minSize, "min-size", "", i18n.T("cli.min_magnet_size_e_g_gb_mb_requires_magnets"))
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 0, i18n.T("flag.search_limit"))
+	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2|all")
+	cmd.Flags().StringVar(&sort, "sort", "", "relevance|release|score|update|hit")
+	cmd.Flags().StringVar(&filterBy, "filter-by", "", "can_play|magnets|subtitle|single")
+	cmd.Flags().StringVar(&typ, "type", "", "movie|code|series|actor|maker|director|list")
+	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("flag.has_magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
+	cmd.Flags().BoolVar(&asImage, "image", false, i18n.T("flag.image"))
+	cmd.Flags().StringVar(&source, "source", "", i18n.T("flag.image_source"))
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, i18n.T("flag.no_cache"))
+	cmd.Flags().IntVar(&magnets, "magnets", 0, i18n.T("flag.search_magnets"))
+	cmd.Flags().BoolVar(&cnsub, "cnsub", false, i18n.T("flag.search_cnsub"))
+	cmd.Flags().BoolVar(&hd, "hd", false, i18n.T("flag.search_hd"))
+	cmd.Flags().StringVar(&minSize, "min-size", "", i18n.T("flag.search_min_size"))
 	return cmd
 }
 
@@ -148,7 +148,7 @@ func validateZone(zone string) error {
 	case "censored", "uncensored", "western", "fc2", "all":
 		return nil
 	default:
-		return fmt.Errorf(i18n.T("cli.zone_must_be_one_of_censored_uncensored_western_fc_all_got_q"), zone)
+		return fmt.Errorf(i18n.T("search.invalid_zone"), zone)
 	}
 }
 
@@ -157,7 +157,7 @@ func validateSearchType(value string) error {
 	case "", "movie", "code", "series", "actor", "maker", "director", "list":
 		return nil
 	default:
-		return fmt.Errorf(i18n.T("cli.type_must_be_one_of_movie_code_series_actor_maker_director_list_got_q"), value)
+		return fmt.Errorf(i18n.T("search.invalid_type"), value)
 	}
 }
 
@@ -171,11 +171,11 @@ func classifySearchInput(arg string, forced bool, reader *bufio.Reader, streams 
 		if _, err := reader.Peek(1); err == nil {
 			stdinHasContent = true
 		} else if !errors.Is(err, io.EOF) {
-			return false, nil, fmt.Errorf(i18n.T("cli.read_stdin_w"), err)
+			return false, nil, fmt.Errorf(i18n.T("input.read_failed"), err)
 		}
 	}
 	if arg != "" && stdinHasContent {
-		return false, nil, i18n.Errorf("cli.ambiguous_input_provide_either_a_positional_keyword_image_or_stdin_not")
+		return false, nil, i18n.Errorf("input.ambiguous")
 	}
 	if arg != "" {
 		if forced || isHTTPURL(arg) || isRegularFile(arg) {
@@ -359,7 +359,7 @@ func runImageSearch(ctx context.Context, options *session.Options, streams *envi
 	}, javdb.ImageSearchOptions{SkipMovieDetail: mode == record.OutputText})
 	if err != nil {
 		// provider 顶层失败：不伪造空结果。
-		return fmt.Errorf(i18n.T("cli.reverse_search_failed_w"), err)
+		return fmt.Errorf(i18n.T("image.search_failed"), err)
 	}
 	switch mode {
 	case record.OutputJSON:
@@ -400,7 +400,7 @@ func runImageSearch(ctx context.Context, options *session.Options, streams *envi
 		}
 	}
 	if failures := countImageFailures(result); failures > 0 {
-		return fmt.Errorf(i18n.T("cli.reverse_search_completed_with_d_of_d_candidates_failed"), failures, len(result.Matches))
+		return fmt.Errorf(i18n.T("image.partial_failure"), failures, len(result.Matches))
 	}
 	return nil
 }
@@ -435,7 +435,7 @@ func writeImageSearchRecords(w io.Writer, searchResult javdb.ImageSearchResult) 
 		}
 		ref := match.Candidate.VideoCode
 		if ref == "" {
-			return fmt.Errorf(i18n.T("cli.reverse_search_match_d_has_no_video_code"), index+1)
+			return fmt.Errorf(i18n.T("image.missing_video_code"), index+1)
 		}
 		if _, err := fmt.Fprintln(w, ref); err != nil {
 			return err
@@ -451,7 +451,7 @@ func writeImageSearchText(infoW, errW io.Writer, searchResult javdb.ImageSearchR
 	for index, match := range searchResult.Matches {
 		candidate := match.Candidate
 		if match.Error != nil {
-			if _, err := fmt.Fprintf(errW, i18n.T("cli.d_s_f_s"), index+1, candidate.VideoCode, candidate.Similarity, match.Error.Message); err != nil {
+			if _, err := fmt.Fprintf(errW, i18n.T("image.candidate_failed"), index+1, candidate.VideoCode, candidate.Similarity, match.Error.Message); err != nil {
 				return err
 			}
 			continue
@@ -460,7 +460,7 @@ func writeImageSearchText(infoW, errW io.Writer, searchResult javdb.ImageSearchR
 			return err
 		}
 		for _, frame := range candidate.Frames {
-			line := fmt.Sprintf(i18n.T("cli.image_frame"), frame.Timestamp, frame.Similarity)
+			line := fmt.Sprintf(i18n.T("image.frame"), frame.Timestamp, frame.Similarity)
 			if frame.ThumbnailURL != "" {
 				line += "  " + frame.ThumbnailURL
 			}
@@ -478,7 +478,7 @@ func writeImageSearchText(infoW, errW io.Writer, searchResult javdb.ImageSearchR
 		}
 	}
 	if len(searchResult.Matches) == 0 {
-		_, err := fmt.Fprintln(infoW, i18n.T("cli.message_2"))
+		_, err := fmt.Fprintln(infoW, i18n.T("image.no_candidates"))
 		return err
 	}
 	return nil
@@ -509,7 +509,7 @@ func searchTypeKey(type_ string) string {
 // writeMovieRows 用 movie 投影写出影片列表文本；空列表输出 (空列表)。
 func writeMovieRows(w, errW io.Writer, movies []map[string]any) error {
 	if len(movies) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for index, row := range display.ProjectMovies(movies) {
@@ -527,7 +527,7 @@ func writeMovieRows(w, errW io.Writer, movies []map[string]any) error {
 // writeNamedRows 用 entity 投影写出命名实体列表文本；空列表输出 (空列表)。
 func writeNamedRows(w, errW io.Writer, items []map[string]any) error {
 	if len(items) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for _, row := range display.ProjectNamedAll(items) {
@@ -595,7 +595,7 @@ func runSearchMagnets(ctx context.Context, options *session.Options, streams *en
 			continue
 		}
 		if input.Kind != "" && input.Kind != record.KindMovie {
-			itemErr := fmt.Errorf(i18n.T("cli.unsupported_kind_q"), input.Kind)
+			itemErr := fmt.Errorf(i18n.T("record.unsupported_kind"), input.Kind)
 			results = append(results, magnetResult{
 				input:         input,
 				err:           itemErr,
@@ -820,7 +820,7 @@ func runImageSearchMagnets(ctx context.Context, options *session.Options, stream
 		BypassCache: noCache,
 	}, javdb.ImageSearchOptions{SkipMovieDetail: true})
 	if err != nil {
-		return fmt.Errorf(i18n.T("cli.reverse_search_failed_w"), err)
+		return fmt.Errorf(i18n.T("image.search_failed"), err)
 	}
 
 	// 使用有界 worker 池获取每个候选的磁力，并按候选索引保序。
@@ -851,7 +851,7 @@ func runImageSearchMagnets(ctx context.Context, options *session.Options, stream
 					continue
 				}
 				if match.MovieID == "" {
-					results[i] = magnetResult{match: match, err: errors.New(i18n.T("cli.no_movie_id")), errorStage: "link", errorCode: "resolve"}
+					results[i] = magnetResult{match: match, err: errors.New(i18n.T("image.missing_movie_id")), errorStage: "link", errorCode: "resolve"}
 					continue
 				}
 				mags, err := setup.Client.MovieMagnets(ctx, match.MovieID)

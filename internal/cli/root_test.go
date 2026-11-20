@@ -180,7 +180,7 @@ Flags:
       --cnsub             Only magnets with Chinese subtitles
       --hd                Only HD magnets
   -h, --help              help for magnets
-  -i, --id                Treat NUMBER as internal movie id
+  -i, --id                Treat argument as internal movie id
       --json              Machine-readable JSON
       --min-size string   Min size e.g. 2000, 4GB, 500MB
       --ndjson            Pipeline NDJSON envelopes
@@ -199,7 +199,7 @@ Usage:
 Flags:
       --content string   Optional review text
   -h, --help             help for mark
-  -i, --id               Treat NUMBER as internal movie id
+  -i, --id               Treat argument as internal movie id
       --json             Machine-readable JSON
       --ndjson           Pipeline NDJSON envelopes
       --score int        Optional score
@@ -225,10 +225,10 @@ Available Commands:
 
 Flags:
   -h, --help             help for lists
-      --json             JSON output
+      --json             Machine-readable JSON
       --limit int        Page size (default 20)
       --ndjson           Pipeline NDJSON envelopes
-      --page int         Page (default 1)
+      --page int         Page number (default 1)
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
 
 Global Flags:

@@ -31,7 +31,7 @@ const (
 // 稳定记录流（OutputText）。测试可显式设置 OutIsTerminal 来模拟两种场景。
 func ResolveOutputMode(flagNDJSON, flagJSON bool, outIsTerminal bool) (OutputMode, error) {
 	if flagNDJSON && flagJSON {
-		return OutputAuto, errors.New(i18n.T("cli.ndjson_and_json_are_mutually_exclusive"))
+		return OutputAuto, errors.New(i18n.T("input.conflicting_output_modes"))
 	}
 	switch {
 	case flagNDJSON:
@@ -92,7 +92,7 @@ func (w *Writer) Write(envelope Envelope) error {
 			ref = envelope.ID
 		}
 		if ref == "" {
-			return i18n.Errorf("cli.envelope_has_no_printable_ref_or_id")
+			return i18n.Errorf("record.missing_ref")
 		}
 		_, err := fmt.Fprintln(w.out, ref)
 		return err

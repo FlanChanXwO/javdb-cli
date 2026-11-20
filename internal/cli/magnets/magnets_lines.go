@@ -12,7 +12,7 @@ import (
 // writeMagnets 用 magnet 投影写出磁力行文本；空列表输出 (无磁力链)。
 func writeMagnets(w, errW io.Writer, items []map[string]any) {
 	if len(items) == 0 {
-		fmt.Fprintln(errW, i18n.T("cli.message"))
+		fmt.Fprintln(errW, i18n.T("result.no_magnets"))
 		return
 	}
 	for _, row := range display.ProjectMagnets(items) {

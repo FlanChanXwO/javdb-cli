@@ -14,8 +14,8 @@ import (
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "assets",
-		Short: i18n.T("cli.discover_and_download_movie_media_assets"),
-		Long:  i18n.T("cli.discover_list_and_download_the_media_assets_attached_to_a_movie_thumbn"),
+		Short: i18n.T("command.assets"),
+		Long:  i18n.T("assets.description"),
 	}
 	cmd.AddCommand(NewList(options, streams))
 	cmd.AddCommand(NewDownload(options, streams))

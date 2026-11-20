@@ -33,7 +33,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 				return nil, err
 			}
 			if refresh {
-				fmt.Fprintf(streams.Diagnostics(slog.LevelInfo), i18n.T("cli.taxonomy_s"), path)
+				fmt.Fprintf(streams.Diagnostics(slog.LevelInfo), i18n.T("tags.saved"), path)
 			}
 			var envelopes []record.Envelope
 			if doc == nil {
@@ -53,7 +53,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 		},
 		RenderText: func(w io.Writer, envelopes []record.Envelope) error {
 			if len(envelopes) == 0 {
-				_, err := fmt.Fprintln(streams.Diagnostics(slog.LevelInfo), i18n.T("cli.message_3"))
+				_, err := fmt.Fprintln(streams.Diagnostics(slog.LevelInfo), i18n.T("result.empty"))
 				return err
 			}
 			currentCategory := ""
@@ -96,14 +96,14 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "tags",
-		Short: i18n.T("cli.list_content_tag_taxonomy_id_en"),
+		Short: i18n.T("command.tags"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&zone, "zone", "censored", i18n.T("cli.censored_uncensored_western_fc"))
-	cmd.Flags().BoolVar(&refresh, "refresh", false, i18n.T("cli.re_fetch_from_api_and_rewrite_local_json"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().StringVar(&zone, "zone", "censored", "censored|uncensored|western|fc2")
+	cmd.Flags().BoolVar(&refresh, "refresh", false, i18n.T("flag.refresh_tags"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

@@ -13,7 +13,7 @@ import (
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rankings",
-		Short: i18n.T("cli.movie_actor_rankings_no_login_needed"),
+		Short: i18n.T("command.rankings"),
 	}
 	cmd.AddCommand(NewMovies(options, streams))
 	cmd.AddCommand(NewActors(options, streams))

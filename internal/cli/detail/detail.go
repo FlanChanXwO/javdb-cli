@@ -102,16 +102,16 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "detail NUMBER",
-		Short: i18n.T("cli.show_movie_detail_graph_ids_for_agent_navigation"),
+		Short: i18n.T("command.detail"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("cli.treat_argument_as_internal_movie_id"))
-	cmd.Flags().BoolVar(&withMagnets, "magnets", false, i18n.T("cli.also_list_magnet_links"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("flag.movie_id"))
+	cmd.Flags().BoolVar(&withMagnets, "magnets", false, i18n.T("flag.magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

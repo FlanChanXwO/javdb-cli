@@ -16,7 +16,7 @@ import (
 func NewList(streams *environment.Streams) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: i18n.T("cli.list_saved_accounts"),
+		Short: i18n.T("command.auth_list"),
 		RunE: func(command *cobra.Command, args []string) error {
 			// 本地命令也按"第一个真实命令创建配置"契约触发首次创建。
 			if err := paths.EnsureDefaultConfigFile(); err != nil {
@@ -27,7 +27,7 @@ func NewList(streams *environment.Streams) *cobra.Command {
 				return err
 			}
 			if len(store.Accounts) == 0 {
-				fmt.Fprintln(streams.Diagnostics(slog.LevelInfo), i18n.T("cli.no_accounts"))
+				fmt.Fprintln(streams.Diagnostics(slog.LevelInfo), i18n.T("auth.no_accounts"))
 				return nil
 			}
 			for _, account := range store.Accounts {
@@ -35,7 +35,7 @@ func NewList(streams *environment.Streams) *cobra.Command {
 				if account.UserID == store.DefaultUserID {
 					mark = "*"
 				}
-				fmt.Fprintf(streams.Out, i18n.T("cli.s_d_s_has_token_v"), mark, account.UserID, account.Username, account.Token != "")
+				fmt.Fprintf(streams.Out, "%s\t%d\t%s\thas_token=%v\n", mark, account.UserID, account.Username, account.Token != "")
 			}
 			return nil
 		},

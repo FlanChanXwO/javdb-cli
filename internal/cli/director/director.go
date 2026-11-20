@@ -12,5 +12,5 @@ import (
 
 // New builds the director filmography command.
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
-	return command.New("director", "director REF", i18n.T("cli.list_movies_for_a_director_id_or_name"), options, streams)
+	return command.New("director", "director REF", i18n.T("command.director"), options, streams)
 }

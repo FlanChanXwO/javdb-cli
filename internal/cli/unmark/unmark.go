@@ -55,9 +55,9 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 					return err
 				}
 				if ok {
-					fmt.Fprintf(streams.Out, i18n.T("cli.s_s_9"), args[0], mid)
+					fmt.Fprintf(streams.Out, i18n.T("mark.removed"), args[0], mid)
 				} else {
-					fmt.Fprintf(streams.Out, i18n.T("cli.s_s_10"), args[0], mid)
+					fmt.Fprintf(streams.Out, i18n.T("mark.unchanged"), args[0], mid)
 				}
 				return nil
 			})
@@ -65,14 +65,14 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "unmark NUMBER",
-		Short: i18n.T("cli.remove_watched_want_mark_for_a_movie"),
+		Short: i18n.T("command.unmark"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("cli.treat_number_as_internal_movie_id"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("flag.movie_id"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

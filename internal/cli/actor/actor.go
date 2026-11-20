@@ -12,5 +12,5 @@ import (
 
 // New builds the actor filmography command.
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
-	return command.New("actor", "actor REF", i18n.T("cli.list_movies_for_an_actor_id_or_name"), options, streams)
+	return command.New("actor", "actor REF", i18n.T("command.actor"), options, streams)
 }

@@ -43,16 +43,16 @@ func NewMovies(options *session.Options, streams *environment.Streams) *cobra.Co
 	}
 	cmd := &cobra.Command{
 		Use:   "movies",
-		Short: i18n.T("cli.movie_rankings"),
+		Short: i18n.T("command.rankings_movies"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return producer.Execute(streams, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().StringVar(&type_, "type", "censored", i18n.T("cli.censored_uncensored_western_fc"))
-	cmd.Flags().StringVar(&period, "period", "day", i18n.T("cli.day_week_month"))
-	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("cli.drop_magnets_count"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().StringVar(&type_, "type", "censored", "censored|uncensored|western|fc2")
+	cmd.Flags().StringVar(&period, "period", "day", "day|week|month")
+	cmd.Flags().BoolVar(&hasMagnets, "has-magnets", false, i18n.T("flag.has_magnets"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 

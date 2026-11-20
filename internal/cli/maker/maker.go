@@ -12,5 +12,5 @@ import (
 
 // New builds the maker filmography command.
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
-	return command.New("maker", "maker REF", i18n.T("cli.list_movies_for_a_maker_studio_id_or_name"), options, streams)
+	return command.New("maker", "maker REF", i18n.T("command.maker"), options, streams)
 }

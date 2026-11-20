@@ -43,7 +43,7 @@ func NewUse(streams *environment.Streams) *cobra.Command {
 		RunOne: func(_ *session.Client, ctx context.Context, input record.Envelope) (record.Envelope, error) {
 			userID, err := strconv.ParseInt(record.ConsumerRef(input), 10, 64)
 			if err != nil {
-				return record.Envelope{}, fmt.Errorf(i18n.T("cli.user_id_must_be_integer_w"), err)
+				return record.Envelope{}, fmt.Errorf(i18n.T("auth.invalid_user_id"), err)
 			}
 			username, err := runOne(userID)
 			if err != nil {
@@ -54,25 +54,25 @@ func NewUse(streams *environment.Streams) *cobra.Command {
 		Legacy: func(args []string) error {
 			userID, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
-				return fmt.Errorf(i18n.T("cli.user_id_must_be_integer_w"), err)
+				return fmt.Errorf(i18n.T("auth.invalid_user_id"), err)
 			}
 			username, err := runOne(userID)
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(streams.Out, i18n.T("cli.default_account_s_id_d"), username, userID)
+			_, err = fmt.Fprintf(streams.Out, i18n.T("auth.default_set"), username, userID)
 			return err
 		},
 	}
 	cmd := &cobra.Command{
 		Use:   "use <user_id>",
-		Short: i18n.T("cli.set_the_default_account"),
+		Short: i18n.T("command.auth_use"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

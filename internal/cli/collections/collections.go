@@ -28,7 +28,7 @@ var collectionKinds = map[string]record.Kind{
 func collectionKind(selector string) (record.Kind, error) {
 	kind, ok := collectionKinds[selector]
 	if !ok {
-		return "", i18n.Errorf("cli.collection_kind_must_be_one_of_actors_series_codes_makers_directors")
+		return "", i18n.Errorf("collections.invalid_kind")
 	}
 	return kind, nil
 }
@@ -36,7 +36,7 @@ func collectionKind(selector string) (record.Kind, error) {
 func collectionEnvelope(selector string, kind record.Kind, item map[string]any) (record.Envelope, error) {
 	row := display.ProjectNamed(item)
 	if row.ID == "" {
-		return record.Envelope{}, fmt.Errorf(i18n.T("cli.collections_s_entity_has_no_id"), selector)
+		return record.Envelope{}, fmt.Errorf(i18n.T("collections.missing_id"), selector)
 	}
 	ref := row.Name
 	if ref == "" {
@@ -98,7 +98,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "collections KIND",
-		Short: i18n.T("cli.list_a_collection_actors_series_codes_makers_directors"),
+		Short: i18n.T("command.collections"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -109,15 +109,15 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }
 
 // writeNamed 用 entity 投影写出命名实体列表文本；空列表输出 (空列表)。
 func writeNamed(w, errW io.Writer, items []map[string]any) error {
 	if len(items) == 0 {
-		_, err := errW.Write([]byte(i18n.T("cli.empty_list_line")))
+		_, err := fmt.Fprintln(errW, i18n.T("result.empty"))
 		return err
 	}
 	for _, row := range display.ProjectNamedAll(items) {

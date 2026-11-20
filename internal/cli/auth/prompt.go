@@ -16,7 +16,7 @@ import (
 
 // PromptUsername reads a non-empty username from in (or interactive stdin).
 func PromptUsername(in io.Reader, out io.Writer) (string, error) {
-	if _, err := fmt.Fprint(out, i18n.T("cli.username")); err != nil {
+	if _, err := fmt.Fprint(out, i18n.T("auth.username_prompt")); err != nil {
 		return "", err
 	}
 	sc := bufio.NewScanner(in)
@@ -24,18 +24,18 @@ func PromptUsername(in io.Reader, out io.Writer) (string, error) {
 		if err := sc.Err(); err != nil {
 			return "", err
 		}
-		return "", errors.New(i18n.T("cli.username_required"))
+		return "", errors.New(i18n.T("auth.username_required"))
 	}
 	u := strings.TrimSpace(sc.Text())
 	if u == "" {
-		return "", errors.New(i18n.T("cli.username_required"))
+		return "", errors.New(i18n.T("auth.username_required"))
 	}
 	return u, nil
 }
 
 // PromptPassword reads a password without echo when stdin is a TTY.
 func PromptPassword(out io.Writer) (string, error) {
-	if _, err := fmt.Fprint(out, i18n.T("cli.password_2")); err != nil {
+	if _, err := fmt.Fprint(out, i18n.T("auth.password_prompt")); err != nil {
 		return "", err
 	}
 	fd := int(syscall.Stdin)
@@ -46,7 +46,7 @@ func PromptPassword(out io.Writer) (string, error) {
 			if err := sc.Err(); err != nil {
 				return "", err
 			}
-			return "", errors.New(i18n.T("cli.password_required"))
+			return "", errors.New(i18n.T("auth.password_required"))
 		}
 		fmt.Fprintln(out)
 		return sc.Text(), nil
@@ -57,7 +57,7 @@ func PromptPassword(out io.Writer) (string, error) {
 		return "", err
 	}
 	if len(b) == 0 {
-		return "", errors.New(i18n.T("cli.password_required"))
+		return "", errors.New(i18n.T("auth.password_required"))
 	}
 	return string(b), nil
 }

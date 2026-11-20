@@ -51,10 +51,10 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 		},
 		Legacy: func(args []string) error {
 			if page < 1 {
-				return i18n.Errorf("cli.page_must_be_positive")
+				return i18n.Errorf("input.invalid_page")
 			}
 			if limit < 1 {
-				return i18n.Errorf("cli.limit_must_be_positive")
+				return i18n.Errorf("input.invalid_limit")
 			}
 			return session.WithOptionalAuth(options, streams.Err, func(c *session.Client) error {
 				ctx := context.Background()
@@ -89,24 +89,24 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 	}
 	cmd := &cobra.Command{
 		Use:   "comments NUMBER",
-		Short: i18n.T("cli.list_one_page_of_movie_reviews"),
-		Long:  i18n.T("cli.list_one_requested_page_of_movie_reviews_the_command_never_fetches_lat"),
+		Short: i18n.T("command.comments"),
+		Long:  i18n.T("comments.description"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if page < 1 {
-				return i18n.Errorf("cli.page_must_be_positive")
+				return i18n.Errorf("input.invalid_page")
 			}
 			if limit < 1 {
-				return i18n.Errorf("cli.limit_must_be_positive")
+				return i18n.Errorf("input.invalid_limit")
 			}
 			runner.Context = cmd.Context()
 			return runner.Execute(streams, args, asNDJSON, asJSON)
 		},
 	}
-	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("cli.treat_number_as_internal_movie_id"))
-	cmd.Flags().IntVar(&page, "page", 1, i18n.T("cli.page_number"))
-	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("cli.page_size"))
-	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("cli.machine_readable_json"))
-	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("cli.pipeline_ndjson_envelopes"))
+	cmd.Flags().BoolVarP(&isID, "id", "i", false, i18n.T("flag.movie_id"))
+	cmd.Flags().IntVar(&page, "page", 1, i18n.T("flag.page"))
+	cmd.Flags().IntVar(&limit, "limit", 20, i18n.T("flag.limit"))
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
 	return cmd
 }

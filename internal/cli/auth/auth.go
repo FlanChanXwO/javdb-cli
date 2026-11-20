@@ -13,7 +13,7 @@ import (
 func New(options *session.Options, streams *environment.Streams) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "auth",
-		Short: i18n.T("cli.account_login_and_multi_account_management"),
+		Short: i18n.T("command.auth"),
 	}
 	command.AddCommand(NewLogin(options, streams))
 	command.AddCommand(NewList(streams))

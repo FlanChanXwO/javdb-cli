@@ -42,7 +42,7 @@ func parseAssetSelector(input string, assetCount int) ([]int, error) {
 // parseSelectorToken 解析单个编号或闭区间 token。
 // 解析 start/end 后先结合 assetCount 校验，再展开。
 func parseSelectorToken(token string, assetCount int) ([]int, error) {
-	invalid := fmt.Errorf(i18n.T("cli.invalid_selector_q"), token)
+	invalid := fmt.Errorf(i18n.T("assets.invalid_selector"), token)
 	if before, after, found := strings.Cut(token, "-"); found {
 		start, errStart := strconv.Atoi(before)
 		end, errEnd := strconv.Atoi(after)
@@ -52,10 +52,10 @@ func parseSelectorToken(token string, assetCount int) ([]int, error) {
 		// 结合资产数校验后再展开：
 		// 禁止在不知道资产数量时展开巨大 range。
 		if start > assetCount {
-			return nil, fmt.Errorf(i18n.T("cli.asset_number_d_out_of_range_d"), start, assetCount)
+			return nil, fmt.Errorf(i18n.T("assets.selector_out_of_range"), start, assetCount)
 		}
 		if end > assetCount {
-			return nil, fmt.Errorf(i18n.T("cli.asset_number_d_out_of_range_d"), end, assetCount)
+			return nil, fmt.Errorf(i18n.T("assets.selector_out_of_range"), end, assetCount)
 		}
 		nums := make([]int, 0, end-start+1)
 		for n := start; n <= end; n++ {
