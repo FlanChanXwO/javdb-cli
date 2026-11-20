@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	http "github.com/bogdanfinn/fhttp"
@@ -47,6 +48,7 @@ type Client struct {
 	http       *httpx.Client
 	host       string
 	token      string
+	tokenMu    sync.RWMutex
 	deviceUUID string
 	lang       string
 	public     map[string]string
@@ -114,10 +116,10 @@ func New(opts Options) (*Client, error) {
 }
 
 // SetToken updates the bearer token.
-func (c *Client) SetToken(token string) { c.token = token }
+func (c *Client) SetToken(token string) { c.tokenMu.Lock(); defer c.tokenMu.Unlock(); c.token = token }
 
 // Token returns the current bearer token.
-func (c *Client) Token() string { return c.token }
+func (c *Client) Token() string { c.tokenMu.RLock(); defer c.tokenMu.RUnlock(); return c.token }
 
 // DeviceUUID returns the device id used in public params.
 func (c *Client) DeviceUUID() string { return c.deviceUUID }
@@ -162,8 +164,8 @@ func (c *Client) headers(ts int64) http.Header {
 	h.Set("accept-language", c.lang)
 	h.Set("connection", "keep-alive")
 	h.Set("user-agent", UserAgent)
-	if c.token != "" {
-		h.Set("authorization", "Bearer "+c.token)
+	if token := c.Token(); token != "" {
+		h.Set("authorization", "Bearer "+token)
 	}
 	// Order-ish: fhttp uses http.Header map; ok for this API.
 	return h

@@ -4,20 +4,20 @@
 
 `cmd/javdb/main.go` 是唯一官方二进制入口，只负责把进程参数和标准流交给
 `internal/cli.Run` 并返回退出码。`internal/cli` 的根包（`root.go`）直接组装最终
-Cobra 命令树并实现 `Run`；命令域位于 `internal/cli/commands/*`（每个真实命令一个
-同名目录），调用期数据由 `cli/invocation` 提供，配置/SDK client/认证生命周期由
-`cli/client` 提供，认证文件由 `cli/authstore` 提供，纯结果投影由 `cli/result` 提供，
-六实体查询用例由 `cli/entity` 提供。远程 JavDB 操作只能通过公开 `sdk/`（声明为
+Cobra 命令树并实现 `Run`；命令域位于 `internal/cli/*`（每个真实命令一个
+同名目录），调用期数据由 `environment` 提供，配置/SDK client/认证生命周期由
+`session` 提供，认证文件由 `session/authstore` 提供，纯结果投影由 `display` 提供，
+六实体查询用例由 `target` 提供。远程 JavDB 操作只能通过公开 `sdk/`（声明为
 `package javdb`）调用；`sdk` 再组合 `internal/javdb/appapi` 的真实 Client 组合层与
 协议实现。
 
 ```text
 cmd/javdb → internal/cli (root.go → commands/*) → sdk (public; package javdb)
-                         ├── cli/invocation              （RootOptions + Streams）
-                         ├── cli/client → config/{paths,settings} + storage/route + sdk
-                         ├── cli/authstore → storage/auth
-                         ├── cli/result                   （movie/magnet/named 纯投影）
-                         ├── cli/entity                   （六实体查询用例）
+                         ├── environment              （RootOptions + Streams）
+                         ├── session → config/{paths,settings} + storage/route + sdk
+                         ├── session/authstore → storage/auth
+                         ├── display                   （movie/magnet/named 纯投影）
+                         ├── target                   （六实体查询用例）
                          └── internal/common/{jsonx,scalar}（纯 JSON/标量）
 sdk → internal/javdb/appapi (真实 Client 组合 → client/model/codec/media/endpoint/*)
                               └── internal/javdb/protocol/{httpx,signature}
@@ -25,7 +25,7 @@ internal/javdb/appapi → internal/storage/tags (taxonomy cache)
 ```
 
 `config`、`storage` 与 `update` 负责本机状态或显式更新，而不是终端输出或远程协议。
-CLI 可以通过 `cli/client`、`cli/authstore` 和对应命令域使用它们完成账号、配置和
+CLI 可以通过 `session`、`session/authstore` 和对应命令域使用它们完成账号、配置和
 update 命令；CLI 命令包不应直接导入 `internal/javdb/appapi` 或
 `internal/javdb/protocol/*`。
 
@@ -37,37 +37,36 @@ update 命令；CLI 命令包不应直接导入 `internal/javdb/appapi` 或
 
 ### `internal/cli`
 
-命令适配层：Cobra 命令树、flag/参数校验、交互提示、文本或 JSON 输出，以及
-将用户选择映射为 `javdb` 的公开请求类型。它维护 CLI 输出兼容性，但不实现
-HTTP、签名或上游响应解码。目录职责如下：
+CLI 只保留命令树、执行入口和依赖装配，以及各真实命令或命令组的目录。
+`root.go` 定义根命令与全局 flag，`composition.go` 装配命令树，
+`execution.go` 管理日志初始化和退出码，`help.go`
+本地化 Cobra 帮助。`actor/series/maker/director/code/list` 分别保留自己的命令入口；
+共享构造逻辑归 `internal/command`，远程操作统一经过公开 `sdk/`。
 
-- `cli/root.go`：persistent flags、根命令、26 个命令的注册顺序和 `Run` 入口（含
-  Windows 待清理更新）；`internal/cli` 根包只保留 `root.go` 与 `root_test.go`，
-  没有渲染/输入 wrapper 或命令专属测试。
-- `cli/invocation`：`RootOptions`（persistent flags 目标）与 `Streams`（调用方提供的
-  标准流），只保存调用期数据，不含服务方法。
-- `cli/client`：统一配置解析（config path/file/host 校验/runtime 解析/device UUID）、
-  SDK client 创建，以及 `WithRequiredAuth`/`WithOptionalAuth` 的认证生命周期（自动
-  重登、匿名重试、token 持久化）。对默认 `auto` host，构造业务 client 前先读
-  `storage/route` cache，用公开 SDK `SelectAutoHost` 验证/重选线路，必要时持久化新主机；
-  固定 host 完全绕过 cache 与 selector。
-- `cli/authstore`：只负责默认认证文件的路径、目录与 store 打开（`Open`）。
-- `cli/result`：纯结果投影与过滤，按领域分文件（`movie.go`/`magnet.go`/`named.go`），
-  类型与函数使用领域前缀（`MovieRow`/`ProjectMovie`/`FilterMoviesWithMagnets`、
-  `MagnetRow`/`ProjectMagnet`、`NamedRow`/`ProjectNamed`）。
-- `cli/entity`：只保留六类实体命令共享的查询用例 `Execute`；命名实体投影位于
-  `cli/result`。
-- `cli/commands/{auth,config,search,detail,comments,magnets,assets,tags,browse,actor,series,maker,director,code,list,watched,want,recent,collections,mark,unmark,rankings,top250,lists,update}`：
-  每个目录对应一个真实命令或命令组，主文件与目录同名；每个命令持有自己的 Cobra
-  metadata、参数校验、flag、文本和 JSON 写入；远程操作只通过 `sdk`。
-  其中 `commands/assets` 持有 `assets list` 与 `assets download`，不提供顶层 `download` 别名。
-  `commands/update` 同时拥有独立于 JavDB host 设置的 proxy 解析、production coordinator 组装与 build info
-  获取（未导出 helper）。
+共享机制按模块级 owner 分工：
+
+- `internal/environment`：标准流、终端状态和调用期诊断出口。
+- `internal/session`：配置解析、选线、SDK 装配、默认账号及一次自动重登；
+  `session/authstore` 打开本机账号存储。个人命令提前检查凭证，公开查询允许匿名。
+  默认拒绝失效凭证并提示登录；显式开启 `auto_relogin` 后才重登一次。
+  并发操作共享重登结果，token 成功持久化后重试失败操作。
+- `internal/record`：`javdb.pipeline/v1`、管道输入、输出模式与有序批处理。
+- `internal/display`：影片、磁力和实体的文本投影及展示。
+- `internal/target`：实体解析与共享查询用例，通过 SDK 窄能力接口执行。
+- `internal/logging`：调用期 `slog` logger，stderr text/JSON 格式、完整级别名和统一错误出口。
+- `internal/i18n`：嵌入的 `en.json` / `zh-CN.json` 文案、系统语言选择与格式参数。
+  条目按使用场景命名，完整消息与共享 flag 说明各自复用；协议值、命令示例和纯记录格式由代码持有。
+  不改变 API 的 `lang` 配置；格式参数沿用 Go 规则，保留 `%w` 错误链。
+
+单项失败只记录一次；批处理逐项记录并返回带失败数量的结果，根入口只输出多项汇总。
+机器结果继续写 stdout，完整原始错误作为诊断字段保留，账号凭证和认证请求体保持私密。
+图片反搜先取得 provider 候选，再通过公开 SDK `LinkImageCandidates` 和带认证的查询接口关联；
+重登只重试被拒绝的 JavDB 操作，成功候选和 provider 上传保持原样。
 
 ### `sdk/`（`package javdb`）
 
 公开 Go SDK，导入路径为 `github.com/FlanChanXwO/javdb-cli/sdk`，声明为
-`package javdb`。它提供 client options、稳定的操作方法、公开的请求/错误别名、本机
+`package javdb`。它提供 client options、稳定的操作方法、`CheckAuth` 服务端认证检查、`LinkImageCandidates` 候选关联、公开的请求/错误别名、本机
 device UUID helper、排行参数 helper、显式自动选线 `SelectAutoHost`，以及影片单页评论和
 本地影片资源 API（`MovieAssets`、`DownloadMovieAsset` 与最小 `MovieAsset{Type,URL}` 模型，
 辅以 `MovieAssetsFromDetail`、`MovieAssetDescriptions`、`ImageAssetFormat`）。CLI 与外部 Go 调用方应共享这条能力面；`internal` 下的包不是外部
@@ -160,7 +159,7 @@ adapter，统一 multipart `file` 响应协议、三次总请求与 30/60s 退�
 脱敏）并以 `javdb.ReverseSearchCache` 接口注入本机缓存；SDK 不读取
 `~/.javdb-cli`。
 
-### `internal/cli/pipeline`
+### `internal/record`
 
 `javdb.pipeline/v1` 机器协议核心：typed envelope（schema/kind/ref/id/data/
 meta）、严格 NDJSON 与逐行文本解码、输入分类（图片 magic → NDJSON → 文本）、

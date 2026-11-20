@@ -155,3 +155,6 @@ func (c *Client) ResolveUserID(ctx context.Context) (userID int64, username stri
 // API 为兼容旧调用方返回底层 adapter。该返回值不是稳定的外部 SDK 契约；新代码应优先使用 typed 方法。
 // Deprecated: use the documented Client methods instead.
 func (c *Client) API() *appapi.Client { return c.api }
+
+// CheckAuth verifies the current token with the server without refreshing or persisting it.
+func (c *Client) CheckAuth(ctx context.Context) error { return c.api.CheckAuthContext(ctx) }

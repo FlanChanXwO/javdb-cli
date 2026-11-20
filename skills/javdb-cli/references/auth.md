@@ -6,7 +6,7 @@ For an explicit login request, let the user run `javdb auth login` in a private 
 
 If the username is already known, `javdb auth login -u USER` may be used, but always omit `-p`/`--password` and enter the password through the hidden interactive prompt. Never transmit passwords through command arguments, tool calls, logs, or results.
 
-`javdb auth list` omits tokens and is appropriate only for an account decision or explicit request. `javdb auth check --json` makes a real API request. A failed check does not authorize automatic login or account/host changes.
+`javdb auth list` omits tokens and is appropriate only for an account decision or explicit request. `javdb auth check --json` makes a real API request. It checks the current token on the server without refreshing it; `ok=false` exits 1 in JSON mode too. A failed check does not authorize login or account/host changes.
 
 `auth use USER_ID` and `auth remove USER_ID` change local account state; require the current explicit target/action. `auto_relogin=true` uses the saved password to relogin once when the selected account JWT expires. Enable it through `javdb config set auto_relogin true` only after explaining that stored-password use and receiving authorization.
 

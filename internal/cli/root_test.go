@@ -2,16 +2,21 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
 )
 
 // isolateHome 把 HOME 指向临时目录，避免配置创建测试污染真实本机状态。
+func TestMain(m *testing.M) { os.Setenv("LC_ALL", "C"); os.Exit(m.Run()) }
+
 func isolateHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -22,12 +27,7 @@ func isolateHome(t *testing.T) string {
 	return home
 }
 
-// CLI 根契约测试（package cli，经 New/Run 组装最终命令树）。
-//
-// 这是根目录唯一的测试文件，锁定 CLI 稳定的对外行为：根 help 全量字面、命令集合与显示
-// 顺序、persistent flags、关键命令组在最终树中的完整 help 字面，以及无网络前置参数错误
-// （stderr 文本、stdout 空值、退出码）。命令专属的 flag/前置校验由各 commands/* owner
-// 测试拥有，不在此重复。
+// Root tests pin English help, command syntax, and structured diagnostic behavior.
 
 const rootHelpLiteral = `JavDB app API command-line client
 
@@ -37,7 +37,7 @@ Usage:
 Available Commands:
   actor       List movies for an actor (id or name)
   assets      Discover and download movie media assets
-  auth        Account login and multi-account management
+  auth        Account sign-in and multi-account management
   browse      Browse movies by content tags / year / month
   cache       Inspect or clear the local reverse-search cache
   code        List movies for a code/prefix e.g. SSIS
@@ -48,27 +48,29 @@ Available Commands:
   detail      Show movie detail (graph ids for agent navigation)
   director    List movies for a director (id or name)
   help        Help about any command
-  list        List movies inside a 合集 (user playlist)
-  lists       My 合集; subcommands: show/search/related
+  list        List movies inside a user playlist
+  lists       My playlists; subcommands: show/search/related
   magnets     List magnet links for a movie
   maker       List movies for a maker/studio (id or name)
-  mark        Mark a movie as 看過 (--watched) or 想看 (--want)
-  rankings    Movie/actor rankings (no login needed)
-  recent      List recently viewed (最近浏览) movies
+  mark        Mark a movie as watched (--watched) or want-to-watch (--want)
+  rankings    Movie, actor and playback rankings
+  recent      List recently viewed movies
   search      Search movies (or other dimensions with --type)
   series      List movies for a series (id or name)
-  tags        List content-tag taxonomy (id + EN + 中文)
-  top250      TOP250 list (needs login)
+  tags        List content-tag taxonomy (id + English + Chinese)
+  top250      TOP250 list (requires sign-in)
   unmark      Remove watched/want mark for a movie
   update      Check for or install updates
-  want        List want-to-watch (想看) movies
-  watched     List watched (看過) movies
+  want        List want-to-watch movies
+  watched     List watched movies
 
 Flags:
-  -h, --help           help for javdb
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
-  -v, --version        version for javdb
+  -h, --help                help for javdb
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+  -v, --version             version for javdb
 
 Use "javdb [command] --help" for more information about a command.
 `
@@ -81,6 +83,53 @@ func TestRootHelpFullLiteral(t *testing.T) {
 	}
 	if out.String() != rootHelpLiteral {
 		t.Fatalf("root help mismatch:\n--- want ---\n%q\n--- got ---\n%q", rootHelpLiteral, out.String())
+	}
+}
+
+func TestChineseHelpHeadings(t *testing.T) {
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
+	cases := []struct {
+		name    string
+		args    []string
+		grouped bool
+		want    string
+	}{
+		{"root", []string{"--help"}, false, "可用命令："},
+		{"grouped", []string{"--help"}, true, "其他命令："},
+		{"subcommand", []string{"search", "--help"}, false, "全局选项："},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errb bytes.Buffer
+			root := New(strings.NewReader(""), &out, &errb)
+			root.SetOut(&out)
+			root.SetErr(&errb)
+			if tc.grouped {
+				root.AddGroup(&cobra.Group{ID: "discovery", Title: "发现："})
+				for _, child := range root.Commands() {
+					if child.Name() == "search" {
+						child.GroupID = "discovery"
+					}
+				}
+			}
+			root.SetArgs(tc.args)
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			for _, heading := range []string{"Usage:", "Flags:", "Additional Commands:", "Available Commands:", "Global "} {
+				if strings.Contains(out.String(), heading) {
+					t.Errorf("untranslated heading %q", heading)
+				}
+			}
+			for _, heading := range []string{"用法：", "选项：", tc.want} {
+				if !strings.Contains(out.String(), heading) {
+					t.Errorf("missing heading %q", heading)
+				}
+			}
+			if strings.Contains(out.String(), "(默认 ") {
+				t.Error("default value uses ASCII parentheses in Chinese help")
+			}
+		})
 	}
 }
 
@@ -117,8 +166,10 @@ Flags:
       --prerelease   Include prerelease updates
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"search", `Search movies (or other dimensions with --type)
 
@@ -128,7 +179,7 @@ Usage:
 Flags:
       --cnsub              Only magnets with Chinese subtitles (requires --magnets)
       --filter-by string   can_play|magnets|subtitle|single
-      --has-magnets        Drop movie rows with magnets_count == 0
+      --has-magnets        Only keep movies that have magnets
       --hd                 Only HD magnets (requires --magnets)
   -h, --help               help for search
       --image              Treat the argument as an image path or HTTP(S) URL
@@ -136,7 +187,7 @@ Flags:
       --limit int          Page size (0 = server default)
       --magnets int        Fetch magnets for each result: 0=all, N=top N by best rule
       --min-size string    Min magnet size e.g. 2000, 4GB, 500MB (requires --magnets)
-      --ndjson             Pipeline NDJSON envelopes
+      --ndjson             Output pipeline NDJSON records (javdb.pipeline/v1)
       --no-cache           Bypass the reverse-search response cache
       --page int           Page number (default 1)
       --sort string        relevance|release|score|update|hit
@@ -145,8 +196,10 @@ Flags:
       --zone string        censored|uncensored|western|fc2|all (default "censored")
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"detail", `Show movie detail (graph ids for agent navigation)
 
@@ -158,11 +211,13 @@ Flags:
   -i, --id        Treat argument as internal movie id
       --json      Machine-readable JSON
       --magnets   Also list magnet links
-      --ndjson    Pipeline NDJSON envelopes
+      --ndjson    Output pipeline NDJSON records (javdb.pipeline/v1)
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
 		{"magnets", `List magnet links for a movie
 
@@ -174,16 +229,18 @@ Flags:
       --cnsub             Only magnets with Chinese subtitles
       --hd                Only HD magnets
   -h, --help              help for magnets
-  -i, --id                Treat NUMBER as internal movie id
+  -i, --id                Treat argument as internal movie id
       --json              Machine-readable JSON
       --min-size string   Min size e.g. 2000, 4GB, 500MB
-      --ndjson            Pipeline NDJSON envelopes
+      --ndjson            Output pipeline NDJSON records (javdb.pipeline/v1)
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
-		{"mark", `Mark a movie as 看過 (--watched) or 想看 (--want)
+		{"mark", `Mark a movie as watched (--watched) or want-to-watch (--want)
 
 Usage:
   javdb mark NUMBER [flags]
@@ -191,43 +248,47 @@ Usage:
 Flags:
       --content string   Optional review text
   -h, --help             help for mark
-  -i, --id               Treat NUMBER as internal movie id
+  -i, --id               Treat argument as internal movie id
       --json             Machine-readable JSON
-      --ndjson           Pipeline NDJSON envelopes
+      --ndjson           Output pipeline NDJSON records (javdb.pipeline/v1)
       --score int        Optional score
-      --want             Mark as 想看
-      --watched          Mark as 看過
+      --want             Mark as want-to-watch
+      --watched          Mark as watched
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 `},
-		{"lists", `My 合集; subcommands: show/search/related
+		{"lists", `My playlists; subcommands: show/search/related
 
 Usage:
   javdb lists [flags]
   javdb lists [command]
 
 Available Commands:
-  related     Public 合集 related to a movie
-  search      Search public 合集
-  show        Show 合集 meta (movies: use list <id>)
+  related     Public playlists related to a movie
+  search      Search public playlists
+  show        Show playlist metadata (movies: use list <id>)
 
 Flags:
   -h, --help             help for lists
-      --json             JSON output
+      --json             Machine-readable JSON
       --limit int        Page size (default 20)
-      --ndjson           Pipeline NDJSON envelopes
-      --page int         Page (default 1)
+      --ndjson           Output pipeline NDJSON records (javdb.pipeline/v1)
+      --page int         Page number (default 1)
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb lists [command] --help" for more information about a command.
 `},
-		{"rankings", `Movie/actor rankings (no login needed)
+		{"rankings", `Movie, actor and playback rankings
 
 Usage:
   javdb rankings [command]
@@ -241,12 +302,14 @@ Flags:
   -h, --help   help for rankings
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb rankings [command] --help" for more information about a command.
 `},
-		{"auth", `Account login and multi-account management
+		{"auth", `Account sign-in and multi-account management
 
 Usage:
   javdb auth [command]
@@ -254,7 +317,7 @@ Usage:
 Available Commands:
   check       Check default account token (does not print token)
   list        List saved accounts
-  login       Log in with username/password (interactive if flags omitted)
+  login       Sign in with username/password (interactive if options are omitted)
   remove      Remove a saved account
   use         Set the default account
 
@@ -262,8 +325,10 @@ Flags:
   -h, --help   help for auth
 
 Global Flags:
-      --host string    auto|mirror|main|URL (default: config or auto)
-      --proxy string   Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
+      --host string         auto|mirror|main|URL (default: config or auto)
+      --log-format string   Diagnostic format: text|json (default: text)
+      --log-level string    Diagnostic level: debug|info|warning|error (default: info)
+      --proxy string        Proxy URL (else HTTPS_PROXY/ALL_PROXY/config)
 
 Use "javdb auth [command] --help" for more information about a command.
 `},
@@ -306,7 +371,8 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"search"}, "keyword or an image"},
+		{[]string{"search"}, "search requires a keyword or an image"},
+		{[]string{"--log-level", "bogus", "search", "fixture"}, `Unknown log level "bogus". Choose debug, info, warning or error.`},
 		{[]string{"detail"}, "detail: input required"},
 		{[]string{"mark"}, "specify exactly one of --watched or --want"},
 		{[]string{"update", "--json"}, "--json is only supported with --check"},
@@ -314,11 +380,18 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 	}
 	for _, tc := range cases {
 		var out, errb bytes.Buffer
-		code := Run(tc.args, strings.NewReader(""), &out, &errb)
+		code := Run(append([]string{"--log-format", "json"}, tc.args...), strings.NewReader(""), &out, &errb)
 		if code == 0 {
 			t.Fatalf("%v unexpectedly succeeded (out=%q)", tc.args, out.String())
 		}
-		if errb.String() != tc.want+"\n" {
+		var diagnostic struct {
+			Level string `json:"level"`
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(errb.Bytes(), &diagnostic); err != nil {
+			t.Fatal(err)
+		}
+		if diagnostic.Error != tc.want || diagnostic.Level != "ERROR" {
 			t.Fatalf("%v: stderr=%q, want %q", tc.args, errb.String(), tc.want+"\n")
 		}
 		if out.String() != "" {

@@ -1,0 +1,391 @@
+package config
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	"strconv"
+
+	"github.com/spf13/cobra"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/config/paths"
+	"github.com/FlanChanXwO/javdb-cli/internal/config/settings"
+	"github.com/FlanChanXwO/javdb-cli/internal/environment"
+	"github.com/FlanChanXwO/javdb-cli/internal/i18n"
+	"github.com/FlanChanXwO/javdb-cli/internal/logging"
+	"github.com/FlanChanXwO/javdb-cli/internal/record"
+	"github.com/FlanChanXwO/javdb-cli/internal/session"
+)
+
+// configKey 描述一个可 set/unset/get 的配置键及其值的 Go 类型。
+type configKey struct {
+	kind string // "string" | "bool" | "int"
+}
+
+// knownConfigKeys 是 config.toml 支持的键集合。未知键必须先报错，再决定是否
+// 创建或读取配置，避免把无效命令的副作用落盘。
+var knownConfigKeys = map[string]configKey{
+	"log_level": {kind: "string"}, "log_format": {kind: "string"},
+	"assets.probe.enabled":           {kind: "bool"},
+	"assets.probe.concurrency":       {kind: "int"},
+	"host":                           {kind: "string"},
+	"https_proxy":                    {kind: "string"},
+	"proxy":                          {kind: "string"},
+	"auto_relogin":                   {kind: "bool"},
+	"lang":                           {kind: "string"},
+	"reverse_search.default_source":  {kind: "string"},
+	"reverse_search.cache":           {kind: "bool"},
+	"reverse_search.cache_ttl":       {kind: "string"},
+	"reverse_search.retries":         {kind: "int"},
+	"reverse_search.retry_wait":      {kind: "string"},
+	"reverse_search.request_timeout": {kind: "string"},
+}
+
+func knownConfigKey(key string) bool {
+	_, ok := knownConfigKeys[key]
+	return ok
+}
+
+func configKeyEnvelope(cfg settings.Settings, key string) (record.Envelope, error) {
+	if !knownConfigKey(key) {
+		return record.Envelope{}, fmt.Errorf(i18n.T("config.unknown_key"), key)
+	}
+
+	value, err := lookupKey(cfg, key)
+	if err != nil {
+		return record.Envelope{}, err
+	}
+
+	return record.New(record.KindConfigKey, key, "").WithData(map[string]any{
+		"value": redactSensitiveValue(key, value),
+	}), nil
+}
+
+func parseKeyValue(key, value string) (any, error) {
+	if key == "log_level" || key == "log_format" {
+		level, format := "info", "text"
+		if key == "log_level" {
+			level = value
+		} else {
+			format = value
+		}
+		if _, err := logging.New(io.Discard, level, format); err != nil {
+			return nil, err
+		}
+	}
+	switch knownConfigKeys[key].kind {
+	case "bool":
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return nil, fmt.Errorf(i18n.T("config.boolean_required"), key, value)
+		}
+		return parsed, nil
+	case "int":
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return nil, fmt.Errorf(i18n.T("config.integer_required"), key, value)
+		}
+		return parsed, nil
+	default:
+		return value, nil
+	}
+}
+
+// displayConfigKeys 是 `config get` 无参输出顺序。
+var displayConfigKeys = []string{
+	"host",
+	"https_proxy",
+	"auto_relogin",
+	"log_level", "log_format",
+	"lang",
+	"assets.probe.enabled",
+	"assets.probe.concurrency",
+	"reverse_search.default_source",
+	"reverse_search.cache",
+	"reverse_search.cache_ttl",
+	"reverse_search.retries",
+	"reverse_search.retry_wait",
+	"reverse_search.request_timeout",
+}
+
+// New builds config path/get/set/unset commands.
+func New(streams *environment.Streams) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "config",
+		Short: i18n.T("command.config"),
+	}
+	command.AddCommand(&cobra.Command{
+		Use:   "path",
+		Short: i18n.T("flag.config_path"),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := paths.EnsureDefaultConfigFile(); err != nil {
+				return err
+			}
+			path, err := paths.ConfigPath()
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(streams.Out, path)
+			return nil
+		},
+	})
+	command.AddCommand(newGet(streams))
+	command.AddCommand(&cobra.Command{
+		Use:   "set <key> <value>",
+		Short: i18n.T("command.config_set"),
+		Args:  cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			if !knownConfigKey(args[0]) {
+				return fmt.Errorf(i18n.T("config.unknown_key"), args[0])
+			}
+			// host 值语义校验必须先于创建，避免无效命令落盘基线配置。
+			if args[0] == "host" {
+				if err := settings.ValidateHost(args[1]); err != nil {
+					return err
+				}
+			}
+			value, err := parseKeyValue(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if args[0] == "assets.probe.concurrency" && value.(int) <= 0 {
+				return fmt.Errorf(i18n.T("assets.invalid_probe_concurrency"), value)
+			}
+			if err := paths.EnsureDefaultConfigFile(); err != nil {
+				return err
+			}
+			path, err := paths.ConfigPath()
+			if err != nil {
+				return err
+			}
+			document, err := settings.LoadDocument(path)
+			if err != nil {
+				return err
+			}
+			if err := document.Set(args[0], value); err != nil {
+				return err
+			}
+			return document.Save(path)
+		},
+	})
+	command.AddCommand(newUnset(streams))
+	return command
+}
+
+// newGet 构建 config get：一个 key 或无 key 时的非 TTY stdin 批处理。
+func newGet(streams *environment.Streams) *cobra.Command {
+	var asJSON, asNDJSON bool
+	load := func() (settings.Settings, string, error) {
+		if err := paths.EnsureDefaultConfigFile(); err != nil {
+			return settings.Settings{}, "", err
+		}
+		path, err := paths.ConfigPath()
+		if err != nil {
+			return settings.Settings{}, "", err
+		}
+		cfg, err := settings.LoadFile(path)
+		if err != nil {
+			return settings.Settings{}, "", err
+		}
+		return cfg, path, nil
+	}
+	runner := &record.BatchRunner{
+		Name:          "config get",
+		Kinds:         []record.Kind{record.KindConfigKey},
+		ClientFactory: nil,
+		RunOne: func(_ *session.Client, ctx context.Context, input record.Envelope) (record.Envelope, error) {
+			key := record.ConsumerRef(input)
+			cfg, _, err := load()
+			if err != nil {
+				return record.Envelope{}, err
+			}
+			return configKeyEnvelope(cfg, key)
+		},
+		Legacy: func(args []string) error {
+			if !knownConfigKey(args[0]) {
+				return fmt.Errorf(i18n.T("config.unknown_key"), args[0])
+			}
+			cfg, _, err := load()
+			if err != nil {
+				return err
+			}
+			value, err := lookupKey(cfg, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(streams.Out, value)
+			return nil
+		},
+	}
+	cmd := &cobra.Command{
+		Use:   "get [key]",
+		Short: i18n.T("command.config_get"),
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if len(args) == 1 && !knownConfigKey(args[0]) {
+				return fmt.Errorf(i18n.T("config.unknown_key"), args[0])
+			}
+			if len(args) == 0 {
+				if streams.InIsTerminal && (asJSON || asNDJSON) {
+					mode, err := record.ResolveOutputMode(asNDJSON, asJSON, streams.OutIsTerminal)
+					if err != nil {
+						return err
+					}
+					cfg, _, err := load()
+					if err != nil {
+						return err
+					}
+					writer := record.NewWriter(streams.Out, mode)
+					for _, key := range displayConfigKeys {
+						envelope, err := configKeyEnvelope(cfg, key)
+						if err != nil {
+							return err
+						}
+						if err := writer.Write(envelope); err != nil {
+							return err
+						}
+					}
+					return writer.Finish()
+				}
+				// 无 key：TTY 打印全部；非 TTY 从 stdin 读取 key 批处理。
+				cfg, _, err := load()
+				if err != nil {
+					return err
+				}
+				if streams.InIsTerminal {
+					return printAll(streams, cfg)
+				}
+			}
+			return runner.Execute(streams, args, asNDJSON, asJSON)
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
+	return cmd
+}
+
+// newUnset 构建 config unset：一个 key 或非 TTY stdin key 批处理。
+func newUnset(streams *environment.Streams) *cobra.Command {
+	var asJSON, asNDJSON bool
+	runOne := func(key string) error {
+		if !knownConfigKey(key) {
+			return fmt.Errorf(i18n.T("config.unknown_key"), key)
+		}
+		path, err := paths.ConfigPath()
+		if err != nil {
+			return err
+		}
+		// 缺失配置上的合法 key unset 是 no-op：默认值已经生效，不创建文件。
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		document, err := settings.LoadDocument(path)
+		if err != nil {
+			return err
+		}
+		if err := document.Delete(key); err != nil {
+			return err
+		}
+		return document.Save(path)
+	}
+	runner := &record.BatchRunner{
+		Name:          "config unset",
+		Kinds:         []record.Kind{record.KindConfigKey},
+		ClientFactory: nil,
+		RunOne: func(_ *session.Client, ctx context.Context, input record.Envelope) (record.Envelope, error) {
+			key := record.ConsumerRef(input)
+			if err := runOne(key); err != nil {
+				return record.Envelope{}, err
+			}
+			return record.New(record.KindConfigKey, key, "").WithData(map[string]any{"unset": true}), nil
+		},
+		Legacy: func(args []string) error {
+			return runOne(args[0])
+		},
+	}
+	cmd := &cobra.Command{
+		Use:   "unset <key>",
+		Short: i18n.T("command.config_unset"),
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			return runner.Execute(streams, args, asNDJSON, asJSON)
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, i18n.T("flag.json"))
+	cmd.Flags().BoolVar(&asNDJSON, "ndjson", false, i18n.T("flag.ndjson"))
+	return cmd
+}
+
+// redactSensitiveValue 对可能携带凭据的 proxy 值做脱敏：包含 userinfo 时
+// 值以 "***" 替代，避免管道信封泄漏 secret。
+func redactSensitiveValue(key, value string) string {
+	if key != "https_proxy" && key != "proxy" {
+		return value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User == nil {
+		return value
+	}
+	return "***"
+}
+
+// printAll 按 displayConfigKeys 顺序打印全部有效配置。任一键解析失败都会
+// 原样返回错误，不能把损坏的配置（例如 concurrency = 0）伪装成“该项不存在”。
+func printAll(streams *environment.Streams, cfg settings.Settings) error {
+	for _, key := range displayConfigKeys {
+		value, err := lookupKey(cfg, key)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(streams.Out, "%s=%s\n", key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func lookupKey(cfg settings.Settings, key string) (string, error) {
+	switch key {
+	case "log_level":
+		return cfg.LogLevel, nil
+	case "log_format":
+		return cfg.LogFormat, nil
+	case "assets.probe.enabled", "assets.probe.concurrency":
+		resolved, err := settings.ResolveAssetProbe(cfg)
+		if err != nil {
+			return "", err
+		}
+		if key == "assets.probe.enabled" {
+			return strconv.FormatBool(resolved.Enabled), nil
+		}
+		return strconv.Itoa(resolved.Concurrency), nil
+	case "host":
+		return cfg.Host, nil
+	case "https_proxy", "proxy":
+		return cfg.HTTPSProxy, nil
+	case "auto_relogin":
+		return strconv.FormatBool(cfg.AutoRelogin), nil
+	case "lang":
+		return cfg.Lang, nil
+	case "reverse_search.default_source":
+		return cfg.ReverseSearch.DefaultSource, nil
+	case "reverse_search.cache":
+		return strconv.FormatBool(cfg.ReverseSearch.CacheEnabled()), nil
+	case "reverse_search.cache_ttl":
+		return cfg.ReverseSearch.CacheTTL, nil
+	case "reverse_search.retries":
+		return strconv.Itoa(cfg.ReverseSearch.Retries), nil
+	case "reverse_search.retry_wait":
+		return cfg.ReverseSearch.RetryWait, nil
+	case "reverse_search.request_timeout":
+		return cfg.ReverseSearch.RequestTimeout, nil
+	default:
+		return "", fmt.Errorf(i18n.T("config.unknown_key"), key)
+	}
+}

@@ -247,10 +247,14 @@ javdb auth check --json
 javdb config set auto_relogin true
 ```
 
-`search`（包括图片搜索与 `--magnets`）和所有 `rankings` 命令有默认账号 token 时自动携带，
-否则匿名请求。令牌使用与错误处理详见 [认证契约](docs/zh-CN/cli-reference.md#登录与本机状态)。
-`magnets` 与 `detail --magnets` 同样支持匿名请求，有默认账号 token 时自动携带，失效则回退匿名。TOP250 和用户列表
-需要默认已认证账号。`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
+所有业务命令统一复用默认账号。公开查询在上游线路允许时支持匿名访问，认证失败会提示运行
+`javdb auth login`。显式开启的 `auto_relogin` 对普通调用和管道调用统一生效；
+`auth check` 通过服务端检查当前 token。详见[认证契约](docs/zh-CN/cli-reference.md#登录与本机状态)。
+
+诊断日志写 stderr，可用 `--log-format json` 选择 JSON，或用
+`--log-level debug|info|warning|error` 调整级别。帮助与提示按系统语言使用英文或简体中文，
+API 的 `lang` 配置保持原有含义。TOP250 与个人列表需要默认账号登录。
+`mark`/`unmark`、账号变更以及 `config set`/`unset` 会修改服务端或本地状态，应审慎使用。
 `javdb assets download` 会将选定的媒体资源写入明确指定的新本地路径，stdout 每行只输出最终路径。MP4 支持单 H.264 视频轨和至多一条 mono/stereo AAC-LC 音轨；校验边界见[媒体契约](docs/zh-CN/cli-reference.md#本地影片资源)。
 `javdb assets list` 会在过滤与 selector 后执行有界并发的流式元数据 probe。JSON/NDJSON 始终输出
 `type` 与 `url`，并在可用时增加图片 `width`/`height` 与预览视频 `duration`（整数秒）；TTY 增加

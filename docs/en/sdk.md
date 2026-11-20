@@ -89,6 +89,14 @@ userID, username, err := client.ResolveUserID(ctx)
 The caller owns credentials and persistence. Do not put a JWT or password in a
 log, panic, error wrapper, or test fixture.
 
+`client.CheckAuth(ctx)` verifies the current token with the server and returns
+an authentication error when rejected; it never refreshes or persists credentials.
+`ResolveUserID` remains an identity resolver and can decode local JWT claims.
+`LinkImageCandidates(ctx, resolver, response, opts)` links an existing reverse-search
+response using an `ImageMovieResolver` (`ResolveMovieIDExact`, `MovieDetail`).
+It preserves candidate order and partial errors, allowing caller-owned authentication
+without repeating the provider upload. `SearchByImage` retains its existing behavior.
+
 ## Operations
 
 | Capability | Methods |
