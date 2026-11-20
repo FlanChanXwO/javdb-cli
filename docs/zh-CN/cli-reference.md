@@ -24,7 +24,7 @@ javdb config set KEY VALUE
 javdb config unset KEY
 ```
 
-支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`、
+支持的键为 `host`、`https_proxy`（或 `proxy`）、`auto_relogin`、`lang`、`log_level`、`log_format`、
 `assets.probe.enabled`、`assets.probe.concurrency`，以及 `reverse_search` 标量（`reverse_search.default_source`、
 `reverse_search.cache`、`reverse_search.cache_ttl`、`reverse_search.retries`、
 `reverse_search.retry_wait`、`reverse_search.request_timeout`）。默认关闭
@@ -60,13 +60,27 @@ javdb auth check [--json]
   不以相同方式公开 POSIX mode bits。
 - `auth use` 会修改默认账号，`auth remove` 会删除账号；两者都是明确状态变更。
 
-不要把密码或 JWT 写入命令记录、issue、聊天或源码。`magnets` 与 `detail --magnets`
-无需登录即可使用（有默认账号 token 时自动携带，失效则回退匿名）；TOP250 和个人列表命令需要默认账号。
+所有 JavDB 业务命令统一携带默认账号 token。没有 token 时，公开查询继续匿名访问；
+个人列表、TOP250 与写操作提前检查登录。匿名请求被拒绝时，提示运行 `javdb auth login`；
+已有凭证失效时提示重新登录，显式开启 `auto_relogin=true` 后才自动重登一次。
+新 token 成功持久化后重试失败操作，并发调用共享重登结果；成功项和反搜图片上传保持原样。
 
-搜索（包括 `--magnets`）和 `rankings movies|actors|playback` 在有默认账号 token 时
-自动携带，否则匿名请求。图片搜索仅在 JavDB 查询阶段（影片匹配、详情和磁力）使用该令牌，
-不会将其发送给图片下载地址或反搜服务。如果匿名请求被拒绝，请运行 `javdb auth login` 后
-重试。这些命令不会自动重新登录，也不会在 token 被拒绝后自动改用匿名请求。
+`auth check` 通过服务端验证当前 token，直接报告验证结果。检查失败退出 1，
+包括 `--json` 的 `ok=false` 情况；网络与上游错误完整保留。图片下载和反搜 provider
+请求只使用各自的认证。密码和 JWT 应保持私密。
+
+### 诊断日志与界面语言
+
+`--log-format text|json` 选择 stderr 日志格式（默认 text），
+`--log-level debug|info|warning|error` 选择级别（默认 info）。flag 优先于
+`log_format` / `log_level` 配置。级别完整显示 DEBUG、INFO、WARNING、ERROR。
+文本包含本地时间、命令和源码位置；JSON 每行一个对象。`NO_COLOR` 关闭终端着色。
+每项失败只记录一次，多项失败另有数量汇总；命令结果与既有 JSON/NDJSON schema 继续写 stdout。
+
+帮助、flag 说明、交互、状态与错误提示来自内嵌的英文及简体中文 JSON 文案。
+依次读取 `LC_ALL`、`LC_MESSAGES`、`LANG`，`C`/`POSIX` 使用英文；环境未指定时，
+macOS/Windows 读取用户首选界面语言。中文选择简体中文，其他未覆盖或未取得的语言使用英文。
+API 的 `lang` / `JAVDB_LANG` 保留原有含义。命令语法、字段名和上游诊断原文保持原样。
 
 ## 只读发现
 
@@ -279,7 +293,7 @@ javdb unmark NUMBER [--id]
 
 `rankings movies`、`rankings playback` 与 `top250` 使用 `--json` 时输出 `{"movies":[...]}`；
 `rankings actors` 输出 `{"actors":[...]}`。这些只含结果的对象会在 `--has-magnets`
-过滤后输出。`magnets` 无需登录即可使用，token 失效时自动回退匿名请求。`top250` 需要登录。
+过滤后输出。`magnets` 在上游允许时支持匿名查询，已有凭证失效时统一遵循 `auto_relogin`。`top250` 需要登录。
 `--best` 只从服务端返回的磁力集中选择，不会下载。
 `mark`/`unmark` 会改写远程的看过/想看状态；`mark` 必须且只能传入
 `--watched` 或 `--want` 之一。替他人或其他账号操作前必须确认。

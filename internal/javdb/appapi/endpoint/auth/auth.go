@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/FlanChanXwO/javdb-cli/internal/javdb/appapi/client"
@@ -89,4 +90,9 @@ func (e *AuthEndpoint) ResolveUserID(token string) (int64, string, error) {
 		}
 	}
 	return 0, "", &model.Error{Action: "NoUserID", Message: "could not resolve numeric user id from token/users/startup"}
+}
+
+// CheckAuthContext verifies the token using the authenticated profile endpoint.
+func (e *AuthEndpoint) CheckAuthContext(ctx context.Context) error {
+	return e.c.GetJSONContext(ctx, "/api/v1/users", nil, nil)
 }

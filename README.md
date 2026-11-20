@@ -281,13 +281,16 @@ password for one re-login attempt; enable it only when you accept that behavior:
 javdb config set auto_relogin true
 ```
 
-`search` (including image search and `--magnets`) and all `rankings` commands
-use the saved default account token when available, otherwise anonymous requests.
-See the [authentication contract](docs/en/cli-reference.md#authentication-and-local-state) for
-token handling and errors.
-`magnets` and `detail --magnets` also support anonymous requests and retry
-anonymously when the saved token is rejected.
-TOP250 and user-list commands need the default authenticated account.
+All business commands reuse the saved default account. Public queries support
+anonymous access when the upstream route allows it; authentication failures tell
+you to run `javdb auth login`. The opt-in `auto_relogin` setting applies consistently
+to normal and piped commands. `auth check` checks the current token with the server.
+See the [authentication contract](docs/en/cli-reference.md#authentication-and-local-state).
+
+Diagnostics use stderr; select JSON with `--log-format json` or adjust verbosity
+with `--log-level debug|info|warning|error`. Help and prompts follow the system
+language (English or Simplified Chinese), separately from the API's `lang` setting.
+TOP250 and personal-list commands require a signed-in default account.
 `mark`/`unmark`, account changes, and `config set`/`unset` modify server or
 local state and should be used deliberately. `javdb assets download` writes
 selected media assets to explicit new local paths and outputs only the final

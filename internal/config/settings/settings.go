@@ -27,6 +27,8 @@ var HostURLs = map[string]string{
 
 // Settings is the on-disk config.toml schema.
 type Settings struct {
+	LogLevel      string                `toml:"log_level,omitempty"`
+	LogFormat     string                `toml:"log_format,omitempty"`
 	Host          string                `toml:"host"`
 	HTTPSProxy    string                `toml:"https_proxy,omitempty"`
 	AutoRelogin   bool                  `toml:"auto_relogin"`
@@ -41,7 +43,8 @@ func Defaults() Settings {
 	assetProbeEnabled := true
 	assetProbeConcurrency := DefaultAssetProbeConcurrency
 	return Settings{
-		Host:        HostAuto,
+		Host:     HostAuto,
+		LogLevel: "info", LogFormat: "text",
 		AutoRelogin: false,
 		Lang:        "en",
 		Assets: AssetsSettings{Probe: AssetProbeSettings{
@@ -93,6 +96,16 @@ func SaveFile(path string, s Settings) error {
 	}
 	if err := document.Set("auto_relogin", s.AutoRelogin); err != nil {
 		return err
+	}
+	if s.LogLevel != "" {
+		if err := document.Set("log_level", s.LogLevel); err != nil {
+			return err
+		}
+	}
+	if s.LogFormat != "" {
+		if err := document.Set("log_format", s.LogFormat); err != nil {
+			return err
+		}
 	}
 	if s.Lang != "" {
 		if err := document.Set("lang", s.Lang); err != nil {

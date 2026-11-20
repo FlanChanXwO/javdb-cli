@@ -9,7 +9,7 @@ Inspect status, diff statistics, and the full relevant diff before broader navig
 
 Trace the real flow and confirm the requested behavior. Check the Go design rules in [javdb-cli-develop](../javdb-cli-develop/SKILL.md), SDK boundaries, context/error propagation, stream identity/cardinality, auth modes, persistence, and no-overwrite behavior. Review media changes with [javdb-cli-media](../javdb-cli-media/SKILL.md).
 
-Pay particular attention to default piped text versus explicit NDJSON, legacy JSON projections, exact movie resolution before writes, optional-auth anonymous retry, auto-route caching, redacted credentials, and update trust before replacing a binary. Existing compatibility exceptions are neither permission to widen them nor permission to remove them silently.
+Pay particular attention to default piped text versus explicit NDJSON, legacy JSON projections, exact movie resolution before writes, shared optional authentication, auto-route caching, redacted credentials, and update trust before replacing a binary. Existing compatibility exceptions are neither permission to widen them nor permission to remove them silently.
 
 Check test evidence and documentation against the actual change. Do not demand release metadata removed from the PR template or a new changelog entry for every feature PR. Review workflow security and artifact trust when affected; avoid assertions tied only to YAML wording, step counts, or a preference for more layers.
 

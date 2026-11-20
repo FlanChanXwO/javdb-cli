@@ -25,7 +25,7 @@ Drive the installed `javdb` binary, not a guessed API or a source checkout. Read
 - `~/.javdb-cli/auth.json` contains usernames, passwords, and JWTs. Never read, print, upload, quote, or summarize its contents. Supported POSIX systems use private `0600` permissions.
 - For login and credential handling, read [auth.md](references/auth.md). Do not launch a hidden prompt in an agent terminal the user cannot type into. Never request an undisclosed password in chat as a workaround.
 - Account/config changes, `mark`/`unmark`, cache clearing/refresh, updates, and file downloads require the user's explicit current target and action. Prior authorization does not extend to a new target. Reuse an already explicit instruction rather than asking the same question again.
-- Use the App API. Do not substitute browser cookies or scraping after an error. Existing optional-auth anonymous retry for magnets and explicitly enabled `auto_relogin` are documented product behavior, not permission to add other fallback or retry steps.
+- Use the App API. Do not substitute browser cookies or scraping after an error. Public queries retain anonymous access. Saved credentials follow the shared, explicitly configured `auto_relogin` policy; additional recovery steps require authorization.
 - Image search uploads the image to AVScan or a configured provider. Explain that privacy effect and use only an authorized source. Media assets are previews/thumbnails, not full movies or magnet-target downloads.
 
 ## Choose the operation
@@ -40,15 +40,17 @@ Drive the installed `javdb` binary, not a guessed API or a source checkout. Read
 | Inspect/update installation | `update --check --json` is read-only; actual `update` requires explicit authorization |
 | Manage caches | `tags --refresh` rebuilds tags; `cache reverse-search --clear` clears only reverse-search cache; use only for the requested cache task |
 
-`magnets` and `detail --magnets` can run anonymously; a configured account is used when present, and a rejected optional token falls back to anonymous inside the CLI. Do not apply that behavior to authenticated list or write commands.
-
-`search` (including image search and `--magnets`) and all `rankings` commands use the saved default account token when available, otherwise anonymous requests. Image downloads and reverse-search providers receive no JavDB token. These commands return authentication errors without automatic re-login or anonymous retry; report the error and obtain authorization before logging in. See [auth.md](references/auth.md) for account operations.
+All JavDB business commands use the saved default account token when available.
+Public queries may run anonymously; rejected anonymous requests provide a sign-in
+instruction. Rejected saved credentials prompt re-login unless `auto_relogin=true`
+explicitly enables one shared re-login. Personal lists and writes require credentials.
+Image downloads/providers receive no JavDB token. See [auth.md](references/auth.md).
 
 ## Output and input contracts
 
 Use the user's requested scope. Supply a positive `--limit` only when supported and appropriate to that scope; never add an arbitrary limit, page cap, timeout, or retry to save context. `--all` is command-specific and only for an explicit exhaustive traversal. `comments` reads one selected page (default page 1, limit 20), not an automatic all-pages loop.
 
-TTY stdout defaults to human-readable text. Piped stdout normally uses stable text references/URIs; **explicit `--ndjson`** selects `javdb.pipeline/v1` envelopes. `--json` retains the command's aggregate/legacy shape where applicable and is mutually exclusive with `--ndjson`. Inspect exit status before parsing: errors can be plain stderr and empty stdout.
+TTY stdout defaults to human-readable text. Piped stdout normally uses stable text references/URIs; **explicit `--ndjson`** selects `javdb.pipeline/v1` envelopes. `--json` retains the command's aggregate/legacy shape where applicable and is mutually exclusive with `--ndjson`. Inspect exit status before parsing: failures may leave stdout empty. Diagnostics use stderr with `--log-format text|json` (default text) and `--log-level debug|info|warning|error` (default info). Help/prompts follow system locale: English or Simplified Chinese. `lang` controls API responses separately; keep machine field names and codes unchanged.
 
 Most data commands accept non-TTY batch input. Explicit positional arguments plus non-empty stdin are ambiguous and fail. Login, password prompts, and `config set` are outside this generic pipeline path. Batch failures can preserve successful items and still exit nonzero; report both rather than calling them empty results.
 

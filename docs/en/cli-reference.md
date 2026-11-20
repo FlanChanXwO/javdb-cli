@@ -27,7 +27,7 @@ javdb config unset KEY
 ```
 
 Supported keys are `host`, `https_proxy` (or `proxy`), `auto_relogin`,
-`lang`, `assets.probe.enabled`, `assets.probe.concurrency`, and the
+`lang`, `log_level`, `log_format`, `assets.probe.enabled`, `assets.probe.concurrency`, and the
 `reverse_search` scalars (`reverse_search.default_source`,
 `reverse_search.cache`, `reverse_search.cache_ttl`,
 `reverse_search.retries`, `reverse_search.retry_wait`,
@@ -75,17 +75,36 @@ javdb auth check [--json]
 - `auth use` changes the default account, and `auth remove` deletes an account.
   Treat both as deliberate state changes.
 
-Do not put a password or JWT in a command transcript, issue, chat, or source
-file. `magnets` and `detail --magnets` work anonymously, use the saved token when
-available, and retry anonymously if that token is rejected;
-TOP250 and personal-list commands require the default account.
+All JavDB business commands use the saved default account token. Public queries
+remain anonymous when no token exists; personal lists, TOP250 and write commands
+check local credentials before proceeding. A rejected anonymous request explains
+how to sign in with `javdb auth login`. Rejected saved credentials prompt a fresh
+sign-in, or perform one re-login when `auto_relogin=true`. Successful token
+persistence precedes replay; concurrent operations share that re-login. Successful
+items and reverse-search uploads are not repeated.
 
-Search (including `--magnets`) and `rankings movies|actors|playback` send the
-saved default account token when available and otherwise make anonymous requests.
-For image search, the token is used only for JavDB lookups (movie resolution,
-details, and magnets), never for image downloads or the reverse-search provider.
-If an anonymous request is rejected, run `javdb auth login` and retry. These
-commands do not automatically re-login or retry a rejected token anonymously.
+`auth check` verifies the current token with the server, without refreshing it.
+A failed check exits 1, including `--json` with `ok=false`; network and upstream
+errors remain visible. Image downloads and reverse-search providers receive no
+JavDB token. Keep passwords and JWTs out of transcripts and diagnostics.
+
+### Diagnostics and interface language
+
+`--log-format text|json` selects stderr diagnostics (default `text`), and
+`--log-level debug|info|warning|error` selects their level (default `info`).
+Flags override `log_format` / `log_level` in configuration. Levels display as
+DEBUG, INFO, WARNING and ERROR. Text includes local time, command and source
+location; JSON emits one object per line. `NO_COLOR` disables terminal color.
+Each failed item is reported once; multi-item failures also produce a count-only
+summary. Command results and existing JSON/NDJSON schemas remain on stdout.
+
+Help, flag descriptions, prompts and status/error messages come from embedded
+English and Simplified Chinese JSON catalogs. `LC_ALL`, `LC_MESSAGES`, then `LANG`
+select the interface language; `C`/`POSIX` select English. Otherwise macOS/Windows
+use the user's preferred UI language. Chinese selects Simplified Chinese; other
+unsupported or unavailable languages use English. API `lang` / `JAVDB_LANG`
+keep their existing meaning. Command syntax, field names and upstream diagnostics
+retain their original spelling.
 
 ## Read-only discovery
 
@@ -354,8 +373,7 @@ retains the legacy aggregate `{"items":[...]}` shape.
 
 `rankings movies`, `rankings playback`, and `top250` emit `{"movies":[...]}` with `--json`;
 `rankings actors` emits `{"actors":[...]}`. These result-only objects are emitted
-after any `--has-magnets` filtering. `magnets` works without login and falls back to anonymous when a saved token is
-rejected. `top250` needs authentication. `--best` chooses from the returned
+after any `--has-magnets` filtering. `magnets` permits anonymous queries where the upstream allows them; rejected saved credentials follow `auto_relogin`. `top250` needs authentication. `--best` chooses from the returned
 magnet set; it does not download anything. `mark` and `unmark` change remote
 watch/want state. `mark` requires exactly one of `--watched` or `--want`; obtain
 confirmation before running either command for another person or account.

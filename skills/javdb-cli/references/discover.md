@@ -17,7 +17,7 @@ Use the main skill's preflight and verify current flags with `--help`. Identify 
 
 ## Magnets, rankings, and comments
 
-`javdb magnets ABC-123 --json` permits anonymous use and has the existing optional-token fallback. `--best` selects one preferred item (subtitles, HD, then size); omit it when the user wants all results. Apply `--cnsub`, `--hd`, or non-negative `--min-size` only for requested criteria and state those filters.
+`javdb magnets ABC-123 --json` permits anonymous queries where the upstream allows them. Saved credentials use the shared authentication policy; rejected credentials prompt re-login unless `auto_relogin` explicitly enables one attempt. `--best` selects one preferred item (subtitles, HD, then size); omit it when the user wants all results. Apply `--cnsub`, `--hd`, or non-negative `--min-size` only for requested criteria and state those filters.
 
 `rankings movies|actors|playback` is public; `top250` requires an account. Movie/playback results use `movies`, actor ranking uses `actors`. Movie `--type` and playback `--filter-by` accept `censored|uncensored|western|fc2`; periods are `day|week|month`. Do not substitute numeric zones or invented `daily|weekly` spellings.
 

@@ -1,0 +1,16 @@
+// Package maker 提供实体影片列表命令。
+package maker
+
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/FlanChanXwO/javdb-cli/internal/command"
+	"github.com/FlanChanXwO/javdb-cli/internal/environment"
+	"github.com/FlanChanXwO/javdb-cli/internal/i18n"
+	"github.com/FlanChanXwO/javdb-cli/internal/session"
+)
+
+// New builds the maker filmography command.
+func New(options *session.Options, streams *environment.Streams) *cobra.Command {
+	return command.New("maker", "maker REF", i18n.T("cli.list_movies_for_a_maker_studio_id_or_name"), options, streams)
+}

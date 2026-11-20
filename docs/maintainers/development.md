@@ -41,57 +41,52 @@ pre-commit run --all-files
 ## 目录地图
 
 ```text
-cmd/javdb/                              # 二进制入口 → cli.Run
-sdk/                                    # 公开 Go SDK（package javdb）
-internal/cli/root.go                    # 真实根命令、persistent flags、注册顺序与 Run
-internal/cli/root_test.go               # 根目录唯一测试文件（CLI-wide 契约）
-internal/cli/invocation/                # RootOptions + Streams（调用期数据，仅 stdlib）
-internal/cli/client/                    # 配置解析、SDK client、required/optional 认证生命周期
-internal/cli/authstore/                 # 默认认证文件路径/目录/store 打开
-internal/cli/result/                    # 纯结果投影与过滤（movie/magnet/named 分文件）
-internal/cli/entity/                    # 六实体查询用例 Execute
-internal/common/{jsonx,scalar,atomicfile}/ # 转换与原子 no-replace 文件原语（根目录无包）
-internal/cli/commands/{auth,config}/    # 认证与配置命令域
-internal/cli/commands/{search,detail,comments,magnets,assets,tags,browse}/    # 影片目录命令域
-internal/cli/commands/{actor,series,maker,director,code,list}/                # 六个实体命令域
-internal/cli/commands/{watched,want,recent,collections,mark,unmark}/          # 个人状态命令域
-internal/cli/commands/{rankings,top250}/ # 排行命令域（rankings 含 movies/actors/playback）
-internal/cli/commands/{lists,update}/         # 列表和更新命令域（update 拥有 proxy/coordinator/buildinfo）
-internal/javdb/appapi/                  # 真实 Client 组合层（client.go）
-internal/javdb/appapi/{client,model}/   # transport 与 wire/domain model
-internal/javdb/appapi/endpoint/*        # auth/browse/entity/lists/magnets/movie/rankings/search/user
-internal/javdb/appapi/{codec,media}/    # 解码与媒体传输
-internal/javdb/protocol/httpx/          # TLS 指纹 HTTP transport
-internal/javdb/protocol/signature/      # 请求签名协议
-internal/config/{paths,settings}/       # 路径与配置 schema（根目录无包）
-internal/storage/auth/                  # 多账号 auth.json（model/store/file/resolve）
-internal/storage/tags/                  # 公开标签目录缓存（model/file/resolve）
-internal/buildinfo/                     # linker 注入版本信息
-internal/update/                        # Coordinator 与最小依赖接口（coordinator.go/interfaces.go）
-internal/update/{model,archive}/        # 更新模型与归档校验/安装
-internal/update/manifest/               # v1 签名发布清单协议、Ed25519 签名与受信公钥环
-internal/update/{release,source,process}/ # Release、来源和进程/平台边界
-scripts/releasenotes/                   # release-note command 入口（仅分派）
-scripts/sign-release/                   # 从环境私钥生成/签名 v1 发布清单与兼容 checksums
-scripts/internal/releasenotes/{model,github,audit,document,history}/ # release-note 领域实现
-scripts/                                # 构建、打包和静态检查
-skills/javdb-cli/                  # 面向产品使用者的 agent skill
-.agents/skills/                    # 仓库 review/docs/commit/release skills
-changelog/                         # 双语版本化发布说明与人工草稿区
-docs/en/, docs/zh-CN/              # 公开接口文档
-docs/maintainers/                  # 维护者架构、流程与协作规则
+cmd/javdb/                                   # 二进制入口 → cli.Run
+sdk/                                         # 公开 Go SDK（package javdb）
+internal/cli/                                # 命令树、执行入口和真实命令包
+internal/environment/                        # 标准流与终端状态
+internal/session/                            # SDK 装配、账号和统一认证生命周期
+internal/session/authstore/                  # 默认认证文件打开
+internal/record/                             # 管道输入、JSON/NDJSON、批处理
+internal/display/                            # 文本投影与展示
+internal/target/                             # 共享实体查询
+internal/command/                            # 实体命令共享构造
+internal/logging/                            # stderr text/JSON 日志
+internal/i18n/                               # 嵌入的英文/简体中文 JSON 文案
+internal/javdb/appapi/                       # 真实 Client 组合层（client.go）
+internal/javdb/appapi/{client,model}/        # transport 与 wire/domain model
+internal/javdb/appapi/endpoint/*             # auth/browse/entity/lists/magnets/movie/rankings/search/user
+internal/javdb/appapi/{codec,media}/         # 解码与媒体传输
+internal/javdb/protocol/httpx/               # TLS 指纹 HTTP transport
+internal/javdb/protocol/signature/           # 请求签名协议
+internal/config/{paths,settings}/            # 路径与配置 schema（根目录无包）
+internal/storage/auth/                       # 多账号 auth.json（model/store/file/resolve）
+internal/storage/tags/                       # 公开标签目录缓存（model/file/resolve）
+internal/buildinfo/                          # linker 注入版本信息
+internal/update/                             # Coordinator 与最小依赖接口（coordinator.go/interfaces.go）
+internal/update/{model,archive}/             # 更新模型与归档校验/安装
+internal/update/manifest/                    # v1 签名发布清单协议、Ed25519 签名与受信公钥环
+internal/update/{release,source,process}/    # Release、来源和进程/平台边界
+scripts/releasenotes/                        # release-note command 入口（仅分派）
+scripts/sign-release/                        # 从环境私钥生成/签名 v1 发布清单与兼容 checksums
+scripts/internal/releasenotes/{model,github,audit,document,history}/# release-note 领域实现
+scripts/                                     # 构建、打包和静态检查
+skills/javdb-cli/                            # 面向产品使用者的 agent skill
+.agents/skills/                              # 仓库 review/docs/commit/release skills
+changelog/                                   # 双语版本化发布说明与人工草稿区
+docs/en/, docs/zh-CN/                        # 公开接口文档
+docs/maintainers/                            # 维护者架构、流程与协作规则
 ```
 
 完整边界见 [架构说明](architecture.md)。新目录应按真实职责加入，不为与
 pixiv-cli 对称而创建空 application、bootstrap、MCP 或下载层。
 
-CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配置解析与 SDK client
-创建，`cli/authstore` 打开默认认证 store，`cli/result` 提供纯结果投影，显式 `update`
-依赖由 `commands/update` 组装。App API endpoint 只依赖自己的
+CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`session` 统一配置解析与 SDK client
+创建，`session/authstore` 打开默认认证 store，`display` 提供纯结果投影，显式 `update`
+依赖由 `cli/update` 组装。App API endpoint 只依赖自己的
 `client/model/codec/media`、必要的其他 endpoint capability 与 storage taxonomy，协议 `httpx/signature`
 不得被 CLI 命令包直接导入。`internal/cli`、`internal/javdb/appapi`、`internal/config`、
-`internal/update` 的根文件不再保留兼容 facade/alias/forwarder；`internal/cli` 根包只保留
-`root.go`/`root_test.go`。新增实现应放入真实职责子包，并以聚焦测试覆盖原有契约。
+`internal/update` 的根文件不再保留兼容 facade/alias/forwarder；`internal/cli` 根包保留命令树、执行入口与依赖装配；共享机制按模块级 owner 放置。新增实现应放入真实职责子包，并以聚焦测试覆盖原有契约。
 `Client.API()` 与 taxonomy `*tags.Doc` 返回类型是公开 SDK 的冻结兼容例外，新能力不得扩大。
 
 ## 本机状态与在线验证
@@ -99,7 +94,7 @@ CLI 命令包只通过 `sdk/` 执行远程 JavDB 操作；`cli/client` 统一配
 | 路径 | 内容 |
 | --- | --- |
 | `~/.javdb-cli/auth.json` | 账号、密码和 JWT；支持 POSIX 权限的平台为 `0600`。 |
-| `~/.javdb-cli/config.toml` | host、proxy、auto_relogin、lang；缺失时由首个真实命令独占创建。 |
+| `~/.javdb-cli/config.toml` | host、proxy、auto_relogin、lang、log_level、log_format；缺失时由首个真实命令独占创建。 |
 | `~/.javdb-cli/route.json` | auto 选线缓存，只保存已验证的 host URL（`0600`）。 |
 | `~/.javdb-cli/device_uuid` | 稳定的公开 device UUID。 |
 | `~/.javdb-cli/tags-*.json` | 公开标签目录缓存，不含密钥。 |

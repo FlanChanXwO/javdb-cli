@@ -81,6 +81,12 @@ userID, username, err := client.ResolveUserID(ctx)
 
 凭据与持久化由调用方负责。JWT 或密码不得进入日志、panic、错误包装或测试 fixture。
 
+`client.CheckAuth(ctx)` 通过服务端验证当前 token，被拒绝时返回认证错误，直接报告结果。
+`ResolveUserID` 继续负责身份解析，可直接读取本地 JWT claims。
+`LinkImageCandidates(ctx, resolver, response, opts)` 通过 `ImageMovieResolver`
+（`ResolveMovieIDExact`、`MovieDetail`）关联已有反搜候选，保留顺序和逐项错误，
+允许调用方处理认证而保持 provider 上传只执行一次。`SearchByImage` 保留既有行为。
+
 ## 能力
 
 | 能力 | 方法 |

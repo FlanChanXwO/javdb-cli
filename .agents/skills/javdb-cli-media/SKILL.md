@@ -5,7 +5,7 @@ description: Develop or review javdb-cli media assets, image decoding, HLS decry
 
 # Maintain javdb-cli Media
 
-Read `AGENTS.md`, `internal/cli/commands/assets`, the public asset SDK methods, and the affected files in `internal/javdb/appapi/media`. Trace the real path before choosing a fix. Keep CLI selection/presentation separate from SDK/media transfer and validation.
+Read `AGENTS.md`, `internal/cli/assets`, the public asset SDK methods, and the affected files in `internal/javdb/appapi/media`. Trace the real path before choosing a fix. Keep CLI selection/presentation separate from SDK/media transfer and validation.
 
 ## Preserve the contract
 

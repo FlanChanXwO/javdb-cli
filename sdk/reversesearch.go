@@ -175,6 +175,18 @@ func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest
 	if err != nil {
 		return ImageSearchResult{}, err
 	}
+	return LinkImageCandidates(ctx, c, response, opts)
+}
+
+// ImageMovieResolver provides the movie lookups used to link reverse-search candidates.
+// Implementations may apply caller-owned authentication without repeating the provider request.
+type ImageMovieResolver interface {
+	ResolveMovieIDExact(context.Context, string) (string, error)
+	MovieDetail(context.Context, string) (map[string]any, error)
+}
+
+// LinkImageCandidates resolves candidates concurrently and preserves provider order and partial errors.
+func LinkImageCandidates(ctx context.Context, resolver ImageMovieResolver, response ReverseSearchResponse, opts ImageSearchOptions) (ImageSearchResult, error) {
 	result := ImageSearchResult{ReverseSearch: response}
 	matches := make([]ImageSearchMatch, len(response.Candidates))
 	if len(response.Candidates) == 0 {
@@ -186,7 +198,7 @@ func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest
 		go func(index int, candidate ReverseSearchCandidate) {
 			defer wait.Done()
 			match := ImageSearchMatch{Candidate: candidate}
-			movieID, err := c.ResolveMovieIDExact(ctx, candidate.VideoCode)
+			movieID, err := resolver.ResolveMovieIDExact(ctx, candidate.VideoCode)
 			if err != nil {
 				match.Error = &ImageSearchError{Stage: "link", Code: "resolve", Message: err.Error()}
 				matches[index] = match
@@ -197,7 +209,7 @@ func (c *Client) SearchByImage(ctx context.Context, request ReverseSearchRequest
 				matches[index] = match
 				return
 			}
-			movie, err := c.MovieDetail(ctx, movieID)
+			movie, err := resolver.MovieDetail(ctx, movieID)
 			if err != nil {
 				match.Error = &ImageSearchError{Stage: "link", Code: "detail", Message: err.Error()}
 				matches[index] = match
