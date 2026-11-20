@@ -38,11 +38,11 @@ func resolveProxy(options *session.Options) (string, error) {
 func newProductionCoordinator(proxy string, stdout, stderr io.Writer) (*update.Coordinator, error) {
 	httpClient, err := release.NewReleaseHTTPClient(proxy)
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("update.create_http_client"), err)
+		return nil, fmt.Errorf("create update HTTP client: %w", err)
 	}
 	releaseClient, err := release.NewGitHubReleaseClient(release.ReleaseClientOptions{HTTPClient: httpClient})
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("update.create_release_client"), err)
+		return nil, fmt.Errorf("create GitHub Release client: %w", err)
 	}
 	return update.NewCoordinator(update.CoordinatorOptions{
 		SourceDetector:   update.SourceDetectorFunc(source.DetectInstallSource),

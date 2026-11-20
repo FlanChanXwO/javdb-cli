@@ -851,7 +851,7 @@ func runImageSearchMagnets(ctx context.Context, options *session.Options, stream
 					continue
 				}
 				if match.MovieID == "" {
-					results[i] = magnetResult{match: match, err: errors.New(i18n.T("image.missing_movie_id")), errorStage: "link", errorCode: "resolve"}
+					results[i] = magnetResult{match: match, err: errors.New("no movie id"), errorStage: "link", errorCode: "resolve"}
 					continue
 				}
 				mags, err := setup.Client.MovieMagnets(ctx, match.MovieID)

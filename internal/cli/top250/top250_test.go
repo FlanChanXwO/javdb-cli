@@ -32,7 +32,7 @@ func TestNewHelp(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("help error = %v", err)
 	}
-	if !strings.Contains(out.String(), "TOP250 list (needs login)") {
+	if !strings.Contains(out.String(), "TOP250 list (requires sign-in)") {
 		t.Fatalf("help: %s", out.String())
 	}
 }

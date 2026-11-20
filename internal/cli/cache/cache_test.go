@@ -89,7 +89,7 @@ func TestCacheReverseSearchClearScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "cleared") {
+	if !strings.Contains(out, "Cleared") {
 		t.Errorf("clear output = %q", out)
 	}
 	dir, err := paths.ReverseSearchCacheDir()

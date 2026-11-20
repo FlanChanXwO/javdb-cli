@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/FlanChanXwO/javdb-cli/internal/buildinfo"
 )
 
@@ -35,7 +37,7 @@ Usage:
 Available Commands:
   actor       List movies for an actor (id or name)
   assets      Discover and download movie media assets
-  auth        Account login and multi-account management
+  auth        Account sign-in and multi-account management
   browse      Browse movies by content tags / year / month
   cache       Inspect or clear the local reverse-search cache
   code        List movies for a code/prefix e.g. SSIS
@@ -56,7 +58,7 @@ Available Commands:
   search      Search movies (or other dimensions with --type)
   series      List movies for a series (id or name)
   tags        List content-tag taxonomy (id + English + Chinese)
-  top250      TOP250 list (needs login)
+  top250      TOP250 list (requires sign-in)
   unmark      Remove watched/want mark for a movie
   update      Check for or install updates
   want        List want-to-watch movies
@@ -81,6 +83,53 @@ func TestRootHelpFullLiteral(t *testing.T) {
 	}
 	if out.String() != rootHelpLiteral {
 		t.Fatalf("root help mismatch:\n--- want ---\n%q\n--- got ---\n%q", rootHelpLiteral, out.String())
+	}
+}
+
+func TestChineseHelpHeadings(t *testing.T) {
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
+	cases := []struct {
+		name    string
+		args    []string
+		grouped bool
+		want    string
+	}{
+		{"root", []string{"--help"}, false, "可用命令："},
+		{"grouped", []string{"--help"}, true, "其他命令："},
+		{"subcommand", []string{"search", "--help"}, false, "全局选项："},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errb bytes.Buffer
+			root := New(strings.NewReader(""), &out, &errb)
+			root.SetOut(&out)
+			root.SetErr(&errb)
+			if tc.grouped {
+				root.AddGroup(&cobra.Group{ID: "discovery", Title: "发现："})
+				for _, child := range root.Commands() {
+					if child.Name() == "search" {
+						child.GroupID = "discovery"
+					}
+				}
+			}
+			root.SetArgs(tc.args)
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			for _, heading := range []string{"Usage:", "Flags:", "Additional Commands:", "Available Commands:", "Global "} {
+				if strings.Contains(out.String(), heading) {
+					t.Errorf("untranslated heading %q", heading)
+				}
+			}
+			for _, heading := range []string{"用法：", "选项：", tc.want} {
+				if !strings.Contains(out.String(), heading) {
+					t.Errorf("missing heading %q", heading)
+				}
+			}
+			if strings.Contains(out.String(), "(默认 ") {
+				t.Error("default value uses ASCII parentheses in Chinese help")
+			}
+		})
 	}
 }
 
@@ -130,7 +179,7 @@ Usage:
 Flags:
       --cnsub              Only magnets with Chinese subtitles (requires --magnets)
       --filter-by string   can_play|magnets|subtitle|single
-      --has-magnets        Drop movie rows with magnets_count == 0
+      --has-magnets        Only keep movies that have magnets
       --hd                 Only HD magnets (requires --magnets)
   -h, --help               help for search
       --image              Treat the argument as an image path or HTTP(S) URL
@@ -138,7 +187,7 @@ Flags:
       --limit int          Page size (0 = server default)
       --magnets int        Fetch magnets for each result: 0=all, N=top N by best rule
       --min-size string    Min magnet size e.g. 2000, 4GB, 500MB (requires --magnets)
-      --ndjson             Pipeline NDJSON envelopes
+      --ndjson             Output pipeline NDJSON records (javdb.pipeline/v1)
       --no-cache           Bypass the reverse-search response cache
       --page int           Page number (default 1)
       --sort string        relevance|release|score|update|hit
@@ -162,7 +211,7 @@ Flags:
   -i, --id        Treat argument as internal movie id
       --json      Machine-readable JSON
       --magnets   Also list magnet links
-      --ndjson    Pipeline NDJSON envelopes
+      --ndjson    Output pipeline NDJSON records (javdb.pipeline/v1)
 
 Global Flags:
       --host string         auto|mirror|main|URL (default: config or auto)
@@ -183,7 +232,7 @@ Flags:
   -i, --id                Treat argument as internal movie id
       --json              Machine-readable JSON
       --min-size string   Min size e.g. 2000, 4GB, 500MB
-      --ndjson            Pipeline NDJSON envelopes
+      --ndjson            Output pipeline NDJSON records (javdb.pipeline/v1)
 
 Global Flags:
       --host string         auto|mirror|main|URL (default: config or auto)
@@ -201,7 +250,7 @@ Flags:
   -h, --help             help for mark
   -i, --id               Treat argument as internal movie id
       --json             Machine-readable JSON
-      --ndjson           Pipeline NDJSON envelopes
+      --ndjson           Output pipeline NDJSON records (javdb.pipeline/v1)
       --score int        Optional score
       --want             Mark as want-to-watch
       --watched          Mark as watched
@@ -227,7 +276,7 @@ Flags:
   -h, --help             help for lists
       --json             Machine-readable JSON
       --limit int        Page size (default 20)
-      --ndjson           Pipeline NDJSON envelopes
+      --ndjson           Output pipeline NDJSON records (javdb.pipeline/v1)
       --page int         Page number (default 1)
       --sort-by string   created|name|movies_count|views_count|updated|default (default "created")
 
@@ -260,7 +309,7 @@ Global Flags:
 
 Use "javdb rankings [command] --help" for more information about a command.
 `},
-		{"auth", `Account login and multi-account management
+		{"auth", `Account sign-in and multi-account management
 
 Usage:
   javdb auth [command]
@@ -268,7 +317,7 @@ Usage:
 Available Commands:
   check       Check default account token (does not print token)
   list        List saved accounts
-  login       Log in with username/password (interactive if flags omitted)
+  login       Sign in with username/password (interactive if options are omitted)
   remove      Remove a saved account
   use         Set the default account
 
@@ -322,7 +371,7 @@ func TestNoNetworkParameterErrorsExact(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"search"}, "keyword or an image"},
+		{[]string{"search"}, "search requires a keyword or an image"},
 		{[]string{"--log-level", "bogus", "search", "fixture"}, `Unknown log level "bogus". Choose debug, info, warning or error.`},
 		{[]string{"detail"}, "detail: input required"},
 		{[]string{"mark"}, "specify exactly one of --watched or --want"},

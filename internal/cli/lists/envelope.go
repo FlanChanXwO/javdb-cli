@@ -1,7 +1,8 @@
 package lists
 
 import (
-	"github.com/FlanChanXwO/javdb-cli/internal/i18n"
+	"fmt"
+
 	"github.com/FlanChanXwO/javdb-cli/internal/record"
 )
 
@@ -9,7 +10,7 @@ import (
 func listEnvelope(item map[string]any) (record.Envelope, error) {
 	id := display(item["id"])
 	if id == "" {
-		return record.Envelope{}, i18n.Errorf("lists.missing_id")
+		return record.Envelope{}, fmt.Errorf("list has no id")
 	}
 	ref := display(item["name"])
 	if ref == "" {

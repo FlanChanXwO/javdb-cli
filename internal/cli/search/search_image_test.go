@@ -108,7 +108,7 @@ func TestSearchImagePathAutoDetectsAndOutputsMatches(t *testing.T) {
 	if !strings.Contains(errOut, "GHOST-999") || !strings.Contains(errOut, "failed") {
 		t.Errorf("stderr lacks per-item failure:\n%s", errOut)
 	}
-	if !strings.Contains(err.Error(), "1 of 2 candidates failed") {
+	if !strings.Contains(err.Error(), "1 of 2 candidates failing") {
 		t.Errorf("error should count failures: %v", err)
 	}
 }

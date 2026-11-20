@@ -36,7 +36,7 @@ func collectionKind(selector string) (record.Kind, error) {
 func collectionEnvelope(selector string, kind record.Kind, item map[string]any) (record.Envelope, error) {
 	row := display.ProjectNamed(item)
 	if row.ID == "" {
-		return record.Envelope{}, fmt.Errorf(i18n.T("collections.missing_id"), selector)
+		return record.Envelope{}, fmt.Errorf("collections %s: entity has no id", selector)
 	}
 	ref := row.Name
 	if ref == "" {

@@ -24,7 +24,7 @@ func TestNewHelpListsFlags(t *testing.T) {
 			t.Fatalf("help missing %s:\n%s", want, out.String())
 		}
 	}
-	if strings.Contains(out.String(), "needs login") {
+	if strings.Contains(out.String(), "requires sign-in") {
 		t.Fatalf("detail must not require login")
 	}
 }

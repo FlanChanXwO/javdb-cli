@@ -58,7 +58,7 @@ func New(options *session.Options, streams *environment.Streams) *cobra.Command 
 			for _, envelope := range envelopes {
 				list, ok := envelope.Data["list"].(map[string]any)
 				if !ok {
-					return i18n.Errorf("lists.missing_data")
+					return fmt.Errorf("lists JSON renderer: envelope missing data.list")
 				}
 				items = append(items, list)
 			}

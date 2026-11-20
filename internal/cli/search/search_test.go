@@ -37,7 +37,7 @@ func TestNewRequiresKeyword(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
 	cmd.SetArgs([]string{})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "keyword or an image") {
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "search requires a keyword or an image") {
 		t.Fatalf("expected keyword/image error, got %v", err)
 	}
 }

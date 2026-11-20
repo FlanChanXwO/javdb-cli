@@ -52,7 +52,7 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, *enviro
 		return err
 	}
 	command.SetHelpTemplate("{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}\n\n{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}")
-	command.SetUsageTemplate(i18n.T("usage.template"))
+	command.SetUsageTemplate(usageTemplate)
 	command.SetVersionTemplate("{{.Version}}\n")
 	command.PersistentFlags().StringVar(&options.Proxy, "proxy", "", i18n.T("flag.proxy"))
 	command.PersistentFlags().StringVar(&options.Host, "host", "", i18n.T("flag.host"))
